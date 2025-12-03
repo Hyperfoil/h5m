@@ -1,6 +1,6 @@
 # h5m 
+h5m is H{orreu}m but lighter (thus fewer characters).
 
-h5m is H{orreu}m but liter thus fewer characters.
 This is a proof of concept for a light weight Horreum entity model based on a directed acyclical graph of computations and resulting values.
 The existing Labels with Extractors and Combination Functions are gone. 
 Extractor and Combination Function become node with edges connection the output of one node to the input of another.
@@ -9,7 +9,6 @@ Other changes:
 * Replace postgres' jsonpath with `jq`
 * Tests are Folders on the file system
 * Runs are files in the test folder on the file system
-* 
 
 ## Getting started
 ### 1. Install jq
@@ -98,8 +97,18 @@ target/h5m list test values by foo
 │ {"name":"primero","bar":{"biz":["one","first"]},"biz":["one-it","first-it"]}   │
 │ {"name":"segundo","bar":{"biz":["two","second"]},"biz":["two-it","second-it"]} │
 └────────────────────────────────────────────────────────────────────────────────┘
-
 ```
+or separate each node as a separate column with `as table`
+```shell
+arget/h5m list test values by foo as table
+┌──────────────────────────┬────────────────────────┬───────────┐
+│           bar            │          biz           │   name    │
+├──────────────────────────┼────────────────────────┼───────────┤
+│ {"biz":["one","first"]}  │ ["one-it","first-it"]  │ "primero" │
+│ {"biz":["two","second"]} │ ["two-it","second-it"] │ "segundo" │
+└──────────────────────────┴────────────────────────┴───────────┘
+```
+
 That sums up most of what exists in the h5m cli. You can further explore with
 ```shell
 target/h5m help

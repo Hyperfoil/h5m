@@ -86,7 +86,6 @@ public class ListValue implements Callable<Integer> {
                             List.of("data"),
                             List.of(JsonNode::toString)));
                 }else{
-                    System.out.println("tableizing grouping");
                     Set<String> keys = new HashSet<>();
                     for(JsonNode json : jsons){
                         if(json.isObject()){
@@ -99,7 +98,6 @@ public class ListValue implements Callable<Integer> {
                     List<String> keyList = new ArrayList<>(keys);
                     keyList.sort(String.CASE_INSENSITIVE_ORDER);
                     List<Function<JsonNode,Object>> accessors = keyList.stream().map(name-> (Function<JsonNode, Object>) json -> json.get(name).toString()).toList();
-
                     System.out.println(ListCmd.table(80, jsons, keyList, accessors));
                 }
 
