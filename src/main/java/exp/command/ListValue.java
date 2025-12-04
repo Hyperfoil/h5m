@@ -82,6 +82,7 @@ public class ListValue implements Callable<Integer> {
                 Node foundNode = foundNodes.get(0);
                 List<JsonNode> jsons = valueService.getGroupedValues(foundNode);
                 if(Format.raw.equals(format)){
+                    System.out.println("Count: " + jsons.size());
                     System.out.println(ListCmd.table(80, jsons,
                             List.of("data"),
                             List.of(JsonNode::toString)));
@@ -90,10 +91,11 @@ public class ListValue implements Callable<Integer> {
                     for(JsonNode json : jsons){
                         if(json.isObject()){
                             ObjectNode object = (ObjectNode) json;
-                            for(Iterator<String> iter = object.fieldNames(); iter.hasNext();){
+                            Iterator<String> iter = object.fieldNames();
+                            while( iter.hasNext()){
                                 String key = iter.next();
                                 if(!key.startsWith("_")){
-                                    keys.add(iter.next());
+                                    keys.add(key);
                                 }
                             }
                         }
@@ -101,12 +103,12 @@ public class ListValue implements Callable<Integer> {
                     List<String> keyList = new ArrayList<>(keys);
                     keyList.sort(String.CASE_INSENSITIVE_ORDER);
                     List<Function<JsonNode,Object>> accessors = keyList.stream().map(name-> (Function<JsonNode, Object>) json -> json.get(name).toString()).toList();
+                    System.out.println("Count: " + jsons.size());
                     System.out.println(ListCmd.table(80, jsons, keyList, accessors));
                 }
 
             }
         }else {
-
             List<Value> values = valueService.getDescendantValues(nodeGroup.root);
             System.out.println("Count: " + values.size());
             System.out.println(ListCmd.table(80, values,
