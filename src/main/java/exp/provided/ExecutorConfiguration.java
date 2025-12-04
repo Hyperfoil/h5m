@@ -7,6 +7,8 @@ import exp.svc.NodeService;
 import exp.svc.ValueService;
 import exp.svc.WorkService;
 import io.hyperfoil.tools.yaup.AsciiArt;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
@@ -24,6 +26,9 @@ import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class ExecutorConfiguration {
+
+    @Inject
+    MeterRegistry registry; // Injected by Quarkus Micrometer
 
     @Inject
     WorkService workService;
@@ -68,6 +73,10 @@ public class ExecutorConfiguration {
         );
         rtrn.allowCoreThreadTimeOut(false);
         rtrn.prestartCoreThread();
+
+        ExecutorServiceMetrics serviceMetrics = new ExecutorServiceMetrics(rtrn,"workExecutor",null);
+        serviceMetrics.bindTo(registry);
+
         return rtrn;
     }
 
