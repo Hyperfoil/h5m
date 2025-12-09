@@ -29,7 +29,7 @@ public class NodeGroup extends PanacheEntity {
     public NodeGroup(){
         this.sources = new ArrayList<>();
         this.root = new RootNode();
-        this.root.group = this;
+        //this.root.group = this;
 
     }
     public NodeGroup(String name){

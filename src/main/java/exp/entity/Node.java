@@ -158,7 +158,11 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
      * copy a NodeGroup into this node's NodeGroup as though this node is the RootNode for the copied group.
      * @param group
      */
-    public void loadGroup(NodeGroup group){
+    public boolean loadGroup(NodeGroup group){
+        return loadGroup(group,this.group);
+    }
+    public boolean loadGroup(NodeGroup group, NodeGroup thisGroup){
+        if(thisGroup == null) return false;
         //TODO do we track the sourceGroup when loading a group
         Map<Node,Node> fromGroupToThis = new HashMap<>();
         List<Node> clones = new  ArrayList<>();
@@ -179,7 +183,8 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
             node.sources = clonedSources;
             clones.add(cloned);
         }
-        this.group.sources.addAll(clones);
+        thisGroup.sources.addAll(clones);
+        return true;
     }
 
     @Override
