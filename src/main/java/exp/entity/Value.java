@@ -60,17 +60,17 @@ public class Value extends PanacheEntity {
         this.sources = new ArrayList<>();
     }
     public Value(Folder folder, Node node, String path){
+        this();
         this.folder = folder;
         this.node = node;
         this.path = path;
-        this.sources = new ArrayList<>();
     }
     public Value(Folder folder, Node node,String path,JsonNode data){
+        this();
         this.folder = folder;
         this.node = node;
         this.path = path;
         this.data = data;
-        this.sources = new ArrayList<>();
     }
 
 
