@@ -25,6 +25,7 @@ public class Value extends PanacheEntity {
 
     @Column(name = "data", columnDefinition = "JSON")
     @Type(JsonBinaryType.class)
+    @Basic(fetch = FetchType.LAZY)
     public JsonNode data;
 
     //not yet used but the idea is to sort multiple values based on idx to preserve node output order for next nodes input

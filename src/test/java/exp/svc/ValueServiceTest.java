@@ -11,6 +11,7 @@ import exp.entity.node.RootNode;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.*;
+import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,6 +27,31 @@ public class ValueServiceTest extends FreshDb {
 
     @Inject
     TransactionManager tm;
+
+    @Test
+    public void lazy_data() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+        tm.begin();
+        ObjectMapper objectMapper = new ObjectMapper();
+        Node rootNode = new RootNode();
+        rootNode.persist(rootNode);
+        Value rootValue01 = new Value(null,rootNode,null,objectMapper.readTree("{\"this\":{ \"is\":{\"silly\":\"yes\"}}}"));
+        rootValue01.persist();
+        tm.commit();
+
+        rootValue01 = null;
+
+        List<Value> found = valueService.getValues(rootNode);
+        assertEquals(1, found.size());
+        System.out.println(found.size());
+        for(Value v : found){
+            assertThrows(LazyInitializationException.class, () -> {
+                assertNull(v.data); // Access the lazy-loaded attribute
+            });
+        }
+
+
+    }
+
 
     @Test
     public void findMatchingFingerprint_deep_ancestry_json_value() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
