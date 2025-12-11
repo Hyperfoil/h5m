@@ -14,6 +14,9 @@ import jakarta.transaction.*;
 import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Set;
 
@@ -28,12 +31,56 @@ public class ValueServiceTest extends FreshDb {
     @Inject
     TransactionManager tm;
 
+
+    @Test
+    public void writeToFile_string() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        Node rootNode = new RootNode();
+        rootNode.persist();
+        Value rootValue = new Value(null,rootNode,"./root",new TextNode("a"));
+        rootValue.persist();
+        tm.commit();
+
+        File f = Files.createTempFile("h5m-test", ".writeToFile").toFile();
+        f.deleteOnExit();
+        valueService.writeToFile(rootValue.id,f.getAbsolutePath());
+
+        String content = Files.readString(f.toPath());
+
+        System.out.println(f.getAbsolutePath());
+        System.out.println("content: "+content);
+    }
+
+    @Test
+    public void delete_does_not_cascade_and_delete_ancestor() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        Node rootNode = new RootNode();
+        rootNode.persist();
+        Node aNode = new JqNode("a",".a");
+        aNode.sources=List.of(rootNode);
+        aNode.persist();
+        Value rootValue = new Value(null,rootNode,"./root",new TextNode("a"));
+        rootValue.persist();
+        Value aValue = new Value(null,aNode,".a",new TextNode("a"));
+        aValue.sources=List.of(rootValue);
+        aValue.persist();
+        tm.commit();
+
+        tm.begin();
+        aValue.delete();
+        tm.commit();
+
+        Value found = Value.findById(rootValue.id);
+        assertNotNull(found);
+    }
+
+
     @Test
     public void lazy_data() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
         tm.begin();
         ObjectMapper objectMapper = new ObjectMapper();
         Node rootNode = new RootNode();
-        rootNode.persist(rootNode);
+        rootNode.persist();
         Value rootValue01 = new Value(null,rootNode,null,objectMapper.readTree("{\"this\":{ \"is\":{\"silly\":\"yes\"}}}"));
         rootValue01.persist();
         tm.commit();
@@ -57,10 +104,10 @@ public class ValueServiceTest extends FreshDb {
     public void findMatchingFingerprint_deep_ancestry_json_value() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         Node rootNode = new RootNode();
-        rootNode.persist(rootNode);
+        rootNode.persist();
         Node aNode = new JqNode("a");
         aNode.sources=List.of(rootNode);
-        aNode.persist(aNode);
+        aNode.persist();
         Node abNode = new JqNode("ab");
         abNode.sources=List.of(aNode);
         abNode.persist();
@@ -292,6 +339,52 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
+    public void getDescendantValues_value_node() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        Node root = new JqNode("root");
+        root.persist();
+        Node alpha = new JqNode("alpha");
+        alpha.sources=List.of(root);
+        alpha.persist();
+        Node bravo = new JqNode("bravo");
+        bravo.sources=List.of(root);
+        bravo.persist();
+        Node bravobravo = new JqNode("bravobravo");
+        bravobravo.sources=List.of(bravo);
+        bravobravo.persist();
+
+        Value rootValue = new Value();
+        rootValue.node = root;
+        rootValue.path="./root";
+        rootValue.persist();
+
+        Value alphaValue = new Value();
+        alphaValue.node = alpha;
+        alphaValue.sources = List.of(rootValue);
+        alphaValue.path="./alpha";
+        alphaValue.persist();
+
+        Value bravoValue = new Value();
+        bravoValue.node = bravo;
+        bravoValue.sources = List.of(rootValue);
+        bravoValue.path="./bravo";
+        bravoValue.persist();
+
+        Value bravobravoValue = new Value();
+        bravobravoValue.node = bravobravo;
+        bravobravoValue.sources = List.of(bravoValue);
+        bravobravoValue.path="./bravobravo";
+        bravobravoValue.persist();
+
+        tm.commit();
+
+        List<Value> found = valueService.getDescendantValues(rootValue,bravobravo);
+
+        assertFalse(found.contains(rootValue),"descendants should not include self: "+found);
+        assertTrue(found.contains(bravobravoValue),"descendants should include value from target node: "+found);
+    }
+
+    @Test
     public void getDescendantValues_node() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         Node root = new JqNode("root");
@@ -377,6 +470,7 @@ public class ValueServiceTest extends FreshDb {
         List<Value> found = valueService.getDescendantValues(rootValue);
         assertEquals(3,found.size(),"expect to see three entries");
         assertTrue(found.contains(bravobravoValue),"missing bravobravo["+bravobravoValue.id+"]'s value: "+found);
+        assertFalse(found.contains(rootValue),"root value should not be in results: "+found);
     }
     @Test
     public void getDirectDescendantValues() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {

@@ -6,17 +6,24 @@ import exp.entity.Value;
 import exp.entity.node.RootNode;
 import exp.pasted.JsonBinaryType;
 import exp.queue.KahnDagSort;
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.hibernate.Session;
 import org.hibernate.query.NativeQuery;
 
 import java.io.*;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ValueService {
@@ -87,31 +94,6 @@ public class ValueService {
         """
            SELECT * from Value v RIGHT JOIN value_edge ve ON ve.value_id = v.id WHERE v.node_id = :nodeId AND ve.source_id = :rootId
            """
-        ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
-        return rtrn;
-    }
-
-    /**
-     * returns the values that depend on the root value somewhere up the hierarchy and come from the specified node
-     * @param root
-     * @param node
-     * @return
-     */
-    @Transactional
-    public List<Value> getDescendantValues(Value root, Node node){
-
-        List<Value> rtrn = new ArrayList<>();
-        //noinspection unchecked
-        rtrn.addAll(em.createNativeQuery(
-                """
-                WITH RECURSIVE sourceRecursive (v_id) AS (
-                    SELECT ve.value_id from value_edge ve where ve.source_id = :rootId OR ve.value_id = :rootId
-                    UNION ALL
-                    SELECT ve.value_id from value_edge ve JOIN sourceRecursive sr
-                    ON ve.source_id = sr.v_id
-                )
-                SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
-                """, Value.class
         ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
         return rtrn;
     }
@@ -215,16 +197,66 @@ public class ValueService {
         ).setParameter("nodeId",node.id).getResultList());
         return rtrn;
     }
+    /**
+     * returns the values that depend on the root value somewhere up the hierarchy and come from the specified node
+     * @param root
+     * @param node
+     * @return
+     */
+    @Transactional
+    public List<Value> getDescendantValues(Value root, Node node){
+
+        List<Value> rtrn = new ArrayList<>();
+        //noinspection unchecked
+        rtrn.addAll(em.createNativeQuery(
+                """
+                WITH RECURSIVE sourceRecursive (v_id) AS (
+                    SELECT ve.value_id from value_edge ve where ve.source_id = :rootId OR ve.value_id = :rootId
+                    UNION ALL
+                    SELECT ve.value_id from value_edge ve JOIN sourceRecursive sr
+                    ON ve.source_id = sr.v_id
+                )
+                SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
+                """, Value.class
+        ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
+        return rtrn;
+    }
 
     @Transactional
     public List<Value> getValues(Node node){
         return Value.find("node.id",node.id).list();
     }
 
+
+    //TODO concerned about writeToFile using "'s to wrap strings
+    @Transactional
+    public void writeToFile(long valueId,String filePath){
+        Session session = em.unwrap(Session.class);
+        session.doWork(conn -> {
+            try(PreparedStatement statement = conn.prepareStatement("select data from value where id=?")){
+                statement.setLong(1,valueId);
+                try(ResultSet rs = statement.executeQuery()){
+                    try (InputStream inputStream = rs.getBinaryStream(1);
+                         OutputStream outputStream = new FileOutputStream(filePath)) {
+
+                        long bytesCopied = inputStream.transferTo(outputStream);
+                        if(bytesCopied < 1){
+                            System.out.println("failed to transfer data for value="+valueId);
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
     @Transactional
     public int deleteDescendantValues(Value root,Node node){
         List<Value> descendants = getDescendantValues(root,node);
-        descendants.forEach(Value::delete);
+        descendants.forEach(PanacheEntityBase::delete);
         return descendants.size();
     }
 
