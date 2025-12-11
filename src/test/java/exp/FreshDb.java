@@ -24,6 +24,9 @@ public class FreshDb {
                 stmt.executeUpdate("DELETE from node_edge");
                 stmt.executeUpdate("DELETE from value;");
                 stmt.executeUpdate("DELETE from value_edge");
+                stmt.executeUpdate("DELETE from work");
+                stmt.executeUpdate("DELETE from work_nodes");
+                stmt.executeUpdate("DELETE from work_values");
             }
         }
     }

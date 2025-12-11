@@ -463,7 +463,7 @@ public class NodeService {
     public List<Value> calculateJqValues(JqNode node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
         List<Value> rtrn = new ArrayList<>();
         List<String> args = new ArrayList<>();
-        File tmpFilter = Files.createTempFile(".bjq." + node.name,".txt").toFile();
+        File tmpFilter = Files.createTempFile("h5m.jq." + node.name,".txt").toFile();
         tmpFilter.deleteOnExit();
         Files.write(tmpFilter.toPath(),node.operation.getBytes());
 
