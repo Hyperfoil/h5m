@@ -1,7 +1,9 @@
 package exp.command;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NumericNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import exp.entity.Node;
 import exp.entity.NodeGroup;
 import exp.entity.Value;
@@ -102,7 +104,17 @@ public class ListValue implements Callable<Integer> {
                     }
                     List<String> keyList = new ArrayList<>(keys);
                     keyList.sort(String.CASE_INSENSITIVE_ORDER);
-                    List<Function<JsonNode,Object>> accessors = keyList.stream().map(name-> (Function<JsonNode, Object>) json -> json.get(name).toString()).toList();
+                    List<Function<JsonNode,Object>> accessors = keyList.stream().map(name-> (Function<JsonNode, Object>) json -> {
+                        JsonNode found = json.get(name);
+                        if(found instanceof TextNode) {
+                            return ((TextNode) found).textValue();
+                        }else if (found instanceof NumericNode){
+                            return ((NumericNode) found).numberValue();
+                        }else{
+                            return found.toString();
+                        }
+
+                    }).toList();
                     System.out.println("Count: " + jsons.size());
                     System.out.println(ListCmd.table(80, jsons, keyList, accessors));
                 }
@@ -113,7 +125,17 @@ public class ListValue implements Callable<Integer> {
             System.out.println("Count: " + values.size());
             System.out.println(ListCmd.table(80, values,
                     List.of("id", "data", "node.id"),
-                    List.of(v -> v.id, v -> v.data, v -> v.node.id)));
+                    List.of(v -> v.id, v -> {
+                        JsonNode found = v.data;
+                        if(found instanceof TextNode) {
+                            return ((TextNode) found).textValue();
+                        }else if (found instanceof NumericNode){
+                            return ((NumericNode) found).numberValue();
+                        }else{
+                            return found.toString();
+                        }
+
+                    }, v -> v.node.id)));
         }
         return 0;
     }

@@ -156,7 +156,7 @@ public class H5mTest {
         assertTrue(result.getOutput().contains("Count: 3"));
         assertTrue(result.getOutput().contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +result.getOutput());
         assertTrue(result.getOutput().contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +result.getOutput());
-        assertTrue(result.getOutput().contains(" \"buz\" "),"result should contain .bar:" +result.getOutput());
+        assertTrue(result.getOutput().contains(" buz "),"result should contain .bar:" +result.getOutput());
     }
     @Test
     public void upload_list_values_by_node(QuarkusMainLauncher launcher) throws IOException {
@@ -287,5 +287,80 @@ public class H5mTest {
         LaunchResult result = results.getLast();
         assertTrue(result.getOutput().contains("Count: 8"));
     }
+    @Test
+    public void list_values_as_table(QuarkusMainLauncher launcher) throws IOException {
+        Path folder = Files.createTempDirectory("h5m");
+        Path filePath = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
+                """
+                {
+                  "string":"example",
+                  "version":"1.2.3.4",
+                  "double":1.3333333333333,
+                  "integer":2,
+                  "array":[ "uno", { "other":"value"}],
+                  "object": { "key" : { "to" : "value" } }
+                }
+                """
+        );
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add","folder","demo",folder.toString()},
+                new String[]{"add","jq","to","demo","str",".string"},
+                new String[]{"add","jq","to","demo","version",".version"},
+                new String[]{"add","jq","to","demo","double",".double"},
+                new String[]{"add","jq","to","demo","integer",".integer"},
+                new String[]{"add","jq","to","demo","array",".array"},
+                new String[]{"add","jq","to","demo","obj",".object"},
+                new String[]{"upload",folder.toString(),"to","demo"},
+                new String[]{"list","value","from","demo","as","table"}
+
+        );
+        results.forEach(result->{
+            assertEquals(0,result.exitCode(),result.getOutput());
+        });
+
+        LaunchResult result = results.getLast();
+        assertFalse(result.getOutput().contains("1.333"),"double should be truncated");
+        assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
+
+    }
+    @Test
+    public void list_values_as_table_group_by(QuarkusMainLauncher launcher) throws IOException {
+        Path folder = Files.createTempDirectory("h5m");
+        Path filePath = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
+                """
+                { "foo": [{
+                  "string":"example",
+                  "version":"1.2.3.4",
+                  "double":1.3333333333333,
+                  "integer":2,
+                  "array":[ "uno", { "other":"value"}],
+                  "object": { "key" : { "to" : "value" } }
+                  }]
+                }
+                """
+        );
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add","folder","demo",folder.toString()},
+                new String[]{"add","jq","to","demo","foo",".foo[]"},
+                new String[]{"add","jq","to","demo","str","{foo}:.string"},
+                new String[]{"add","jq","to","demo","version","{foo}:.version"},
+                new String[]{"add","jq","to","demo","double","{foo}:.double"},
+                new String[]{"add","jq","to","demo","integer","{foo}:.integer"},
+                new String[]{"add","jq","to","demo","array","{foo}:.array"},
+                new String[]{"add","jq","to","demo","obj","{foo}:.object"},
+                new String[]{"upload",folder.toString(),"to","demo"},
+                new String[]{"list","value","from","demo","by","foo","as","table"}
+
+        );
+        results.forEach(result->{
+            assertEquals(0,result.exitCode(),result.getOutput());
+        });
+
+        LaunchResult result = results.getLast();
+        assertFalse(result.getOutput().contains("1.333"),"double should be truncated");
+        assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
+
+    }
+
 
 }

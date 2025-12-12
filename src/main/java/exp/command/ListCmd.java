@@ -1,5 +1,9 @@
 package exp.command;
 
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.NumericNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.jayway.jsonpath.internal.filter.ValueNodes;
 import io.hyperfoil.tools.yaup.AsciiArt;
 import picocli.CommandLine;
 
@@ -293,6 +297,11 @@ public class ListCmd implements Callable<Integer> {
             List<Object> rowCells = new ArrayList<>();
             for(int a=0; a<columnCount; a++){
                 Object c = accessors.get(a).apply(value);
+                if( c instanceof TextNode){
+                    c = ((TextNode)c).textValue();
+                }else if (c instanceof NumericNode){
+                    c = ((NumericNode) c).numberValue();
+                }
                 if( c == null){
                     c = "NULL";
                 }else if( c instanceof Long || c instanceof Integer){
@@ -302,6 +311,9 @@ public class ListCmd implements Callable<Integer> {
                 }else if (c instanceof Double || c instanceof Float){
                     if(columnFormats[a]==null || columnFormats[a].equals("d")){
                         columnFormats[a] = "f";
+                    }else{
+                        //mixed value type colunn, convert to fixed width?
+                        c = String.format("%.2f", c);
                     }
                 }else{
                     columnFormats[a] = "s";
@@ -368,7 +380,7 @@ public class ListCmd implements Callable<Integer> {
                     rowFormat.append("%" + width + "d");
                     break;
                 case "f":
-                    rowFormat.append("%" + (width - 3) + ".2f");
+                    rowFormat.append("%" + (width ) + ".2f");
                     break;
                 default:
                     rowFormat.append("%-" + width + "s");
@@ -480,4 +492,5 @@ public class ListCmd implements Callable<Integer> {
 
         return rtrn.toString();
     }
+
 }
