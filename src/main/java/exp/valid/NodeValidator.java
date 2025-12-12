@@ -32,6 +32,12 @@ public class NodeValidator implements ConstraintValidator<ValidNode, Node> {
             ).addConstraintViolation();
             rtrn = false;
         }
+        if(node.name.matches("^\\d+")){
+            constraintValidatorContext.buildConstraintViolationWithTemplate(
+                    "node names cannot be numbers"
+            ).addConstraintViolation();
+            rtrn = false;
+        }
         if(node.name.contains(Node.FQDN_SEPARATOR)){
             constraintValidatorContext.buildConstraintViolationWithTemplate(
                     "node names cannot contain "+Node.FQDN_SEPARATOR+" characters"
