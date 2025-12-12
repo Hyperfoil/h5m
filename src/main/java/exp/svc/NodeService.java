@@ -78,20 +78,6 @@ public class NodeService {
         }
     }
 
-
-    public void calculate(JqNode node){}
-    public void calculate(JsNode node){}
-    public void calculate(Node node){
-
-        switch (node.type){
-            case "js":
-
-
-                break;
-
-        }
-    }
-
     /**
      * This creates the source value combinations for nodes with source nodes that create multiple values (e.g. datasets).
      * If there are multiple source nodes with multiple values then combinations are either by index (Length) or a full matrix of combinations (NxN)
@@ -305,15 +291,17 @@ public class NodeService {
         //TODO create base directory if needed
         if(data!=null) {
             Files.writeString(valuePath.toPath(), data.toString());
-        }
+            Value newValue = new Value();
+            newValue.idx = startingOrdinal+1;
+            newValue.node = node;
+            newValue.path = valuePath.toString();
+            newValue.data = data;
+            newValue.sources = node.sources.stream().map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+            return List.of(newValue);
 
-        Value newValue = new Value();
-        newValue.idx = startingOrdinal+1;
-        newValue.node = node;
-        newValue.path = valuePath.toString();
-        newValue.data = data;
-        newValue.sources = node.sources.stream().map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
-        return List.of(newValue);
+        }else {
+            return Collections.emptyList();
+        }
     }
     //io.hyperfoil.tools.horreum.exp.data.LabelReducerDao#resolvePromise
     public static org.graalvm.polyglot.Value resolvePromise(org.graalvm.polyglot.Value value) {
