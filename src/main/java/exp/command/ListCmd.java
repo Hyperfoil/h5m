@@ -310,7 +310,7 @@ public class ListCmd implements Callable<Integer> {
                     }
                 }else if (c instanceof Double || c instanceof Float){
                     if(columnFormats[a]==null || columnFormats[a].equals("d")){
-                        columnFormats[a] = "f";
+                        columnFormats[a] = "f"; // columnFormat changes to s from 'null' and leaves previos doubles un-truncated
                     }else if (columnFormats[a].equals("s")){
                         //mixed value type colunn, convert to fixed width?
                         c = String.format("%.2f", c);

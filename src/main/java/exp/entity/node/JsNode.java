@@ -15,7 +15,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 @Entity
-@DiscriminatorValue("js")
+@DiscriminatorValue("ecma")
 public class JsNode extends Node {
 
     /*
@@ -148,15 +148,15 @@ public class JsNode extends Node {
 
     public JsNode(){
         super();
-        this.type="js";
+        this.type="ecma";
     }
     public JsNode(String name,String operation){
         super(name,operation);
-        this.type="js";
+        this.type="ecma";
     }
     public JsNode(String name,String operation,List<Node> sources){
         super(name,operation,sources);
-        this.type="js";
+        this.type="ecma";
     }
 
     @Override

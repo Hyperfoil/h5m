@@ -1,5 +1,9 @@
 package exp.svc;
 
+import com.api.jsonata4java.expressions.EvaluateException;
+import com.api.jsonata4java.expressions.EvaluateRuntimeException;
+import com.api.jsonata4java.expressions.Expressions;
+import com.api.jsonata4java.expressions.ParseException;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,6 +14,7 @@ import exp.entity.Node;
 import exp.entity.Value;
 import exp.entity.node.JqNode;
 import exp.entity.node.JsNode;
+import exp.entity.node.JsonataNode;
 import exp.pasted.ProxyJacksonArray;
 import exp.pasted.ProxyJacksonObject;
 import io.hyperfoil.tools.yaup.StringUtil;
@@ -190,8 +195,9 @@ public class NodeService {
         List<Value> rtrn = new ArrayList<>();
         switch (node.type){
             //nodes that operate one root at a time
-            case "js":
+            case "ecma":
             case "jq":
+            case "nata":
                 for(int vIdx=0; vIdx<roots.size(); vIdx++){
                     Value root =  roots.get(vIdx);
                     try {
@@ -214,12 +220,44 @@ public class NodeService {
     public List<Value> calculateNodeValues(Node node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
         return switch(node.type){
             case "jq" -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
-            case "js" -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
+            case "ecma" -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
+            case "nata" -> calculateJsonataValues((JsonataNode)node,sourceValues,startingOrdinal+1);
             default -> {
                 System.err.println("Unknown node type: "+node.type);
                 yield Collections.emptyList();
             }
         };
+    }
+
+    //jsonata cannot operate on multiple inputs at once so source
+    public List<Value> calculateJsonataValues(JsonataNode node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
+        if(sourceValues.size()>1 || node.sources.size()>1){
+            System.err.println("jsonata only supports one input at a time");
+            return Collections.emptyList();
+        }
+
+        Value input = sourceValues.isEmpty() ? null : sourceValues.values().iterator().next();
+
+        List<Value> rtrn = new ArrayList<>();
+
+        try {
+            Expressions expr = Expressions.parse(node.operation);
+            JsonNode result = expr.evaluate(input.data);
+
+            Value newValue = new Value();
+            newValue.idx = startingOrdinal+1;
+            newValue.node = node;
+            newValue.data = result;
+            newValue.sources = node.sources.stream().map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+            return List.of(newValue);
+
+        } catch (ParseException e) {
+            System.err.println("failed to parse jsonata expression\n"+e.getLocalizedMessage());
+        } catch (EvaluateException | EvaluateRuntimeException e) {
+            System.err.println("failed to evaluate jsonata expression\n"+e.getLocalizedMessage());
+        }
+
+        return rtrn;
     }
     public List<Value> calculateJsValues(JsNode node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
 

@@ -159,6 +159,40 @@ public class H5mTest {
         assertTrue(result.getOutput().contains(" buz "),"result should contain .bar:" +result.getOutput());
     }
     @Test
+    public void upload_jsonata_list_values(QuarkusMainLauncher launcher) throws IOException {
+        Path folder = Files.createTempDirectory("h5m");
+        Path filePath = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
+                """
+                {
+                  "foo":{
+                     "bar": {
+                       "biz":"buz"
+                     }
+                  }
+                }
+                """
+        );
+        //filePath.toFile().deleteOnExit();
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add","folder","test"},
+                new String[]{"add","jsonata","to","test","foo","foo"},
+                new String[]{"add","jsonata","to","test","bar","{foo}:bar"},
+                new String[]{"add","jsonata","to","test","biz","{bar}:biz"},
+                new String[]{"list","test","nodes",},
+                new String[]{"upload",folder.toString(),"to","test"},
+                new String[]{"list","value","from","test"}
+        );
+        results.forEach(result->{
+            assertEquals(0,result.exitCode(),result.getOutput());
+        });
+
+        LaunchResult result = results.getLast();
+        assertTrue(result.getOutput().contains("Count: 3"));
+        assertTrue(result.getOutput().contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +result.getOutput());
+        assertTrue(result.getOutput().contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +result.getOutput());
+        assertTrue(result.getOutput().contains(" buz "),"result should contain .bar:" +result.getOutput());
+    }
+    @Test
     public void upload_list_values_by_node(QuarkusMainLauncher launcher) throws IOException {
         Path folder = Files.createTempDirectory("h5m");
         Path filePath = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
