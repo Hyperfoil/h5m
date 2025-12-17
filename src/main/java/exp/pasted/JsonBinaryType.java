@@ -3,6 +3,7 @@ package exp.pasted;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.hibernate.HibernateException;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.type.CustomType;
@@ -54,7 +55,9 @@ public class JsonBinaryType implements UserType<JsonNode> {
         try {
             return mapper.readTree(colBytes);
         } catch (final Exception ex) {
-            throw new RuntimeException("Failed to convert String to JSON: " + ex.getMessage(), ex);
+
+            //throw new RuntimeException("Failed to convert String to JSON: " + ex.getMessage(), ex);
+            return new TextNode(new String(colBytes));
         }
     }
 
