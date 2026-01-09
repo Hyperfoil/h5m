@@ -55,8 +55,8 @@ public class Value extends PanacheEntity {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="value_edge",
-            joinColumns = @JoinColumn(name = "value_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "source_id")
+            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
+            inverseJoinColumns = @JoinColumn(name = "parent_id")
     )
     @OrderColumn(name = "idx")
     public List<Value> sources;

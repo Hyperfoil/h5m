@@ -46,8 +46,8 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="node_edge",
-            joinColumns = @JoinColumn(name = "node_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "source_id")
+            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
+            inverseJoinColumns = @JoinColumn(name = "parent_id")
     )
     @OrderColumn(name = "idx")
     public List<Node> sources;

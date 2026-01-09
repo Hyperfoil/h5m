@@ -97,10 +97,10 @@ public class ValueService {
         rtrn.addAll(em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
-                    SELECT ve.value_id from value_edge ve where ve.source_id = :rootId
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
                     UNION ALL
-                    SELECT ve.value_id from value_edge ve JOIN sourceRecursive sr
-                    ON ve.source_id = sr.v_id
+                    SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr
+                    ON ve.parent_id = sr.v_id
                 )
                 SELECT * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id
                 """, Value.class
@@ -113,7 +113,7 @@ public class ValueService {
         List<Value> rtrn = new ArrayList<>();
         rtrn.addAll(em.createNativeQuery(
         """
-           SELECT * from Value v RIGHT JOIN value_edge ve ON ve.value_id = v.id WHERE v.node_id = :nodeId AND ve.source_id = :rootId
+           SELECT * from Value v RIGHT JOIN value_edge ve ON ve.child_id = v.id WHERE v.node_id = :nodeId AND ve.parent_id = :rootId
            """
         ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
         return rtrn;
@@ -133,7 +133,7 @@ public class ValueService {
                                 from value v where v.node_id = :nodeId and v.data = :data
                             union 
                             select v.id as vid 
-                                from value v join value_edge ve on v.id = ve.source_id join ancestor a on a.vid = ve.value_id
+                                from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                         ) 
                         select * from value v join ancestor a on v.id=a.vid where v.node_id=:sourceId
                         """;
@@ -144,7 +144,7 @@ public class ValueService {
                                 from value v where v.node_id = :nodeId and v.data = cast(:data as jsonb)
                             union 
                             select v.id as vid 
-                                from value v join value_edge ve on v.id = ve.source_id join ancestor a on a.vid = ve.value_id
+                                from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                         ) 
                         select * from value v join ancestor a on v.id=a.vid where v.node_id=:sourceId
                         """;
@@ -173,21 +173,21 @@ public class ValueService {
                             from value v where v.node_id = :nodeId and v.data = :data
                         union 
                         select v.id as vid 
-                            from value v join value_edge ve on v.id = ve.source_id join ancestor a on a.vid = ve.value_id
+                            from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                     ),
                     sorter(vid,sortable) as (
                         select v.id as vid,v.data as sortable 
                             from value v where v.node_id = :sortId
                         union
                         select v.id as vid, s.sortable as sortable
-                            from value v join value_edge ve on v.id = ve.source_id join sorter s on s.vid = ve.value_id
+                            from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
                     ),
                     descendant(vid,sortable) as (
                        select v.id as vid, s.sortable as sortable
                          from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root' --only the root values from ancestor with sorter
                        union
                        select v.id as vid, d.sortable as sortable
-                             from value v join value_edge ve on v.id = ve.value_id join descendant d on d.vid = ve.source_id
+                             from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                     )                        
                     select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;
                     """;
@@ -198,21 +198,21 @@ public class ValueService {
                             from value v where v.node_id = :nodeId and v.data = cast( :data as jsonb)
                         union 
                         select v.id as vid 
-                            from value v join value_edge ve on v.id = ve.source_id join ancestor a on a.vid = ve.value_id
+                            from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                     ),
                     sorter(vid,sortable) as (
                         select v.id as vid,v.data as sortable 
                             from value v where v.node_id = :sortId
                         union
                         select v.id as vid, s.sortable as sortable
-                            from value v join value_edge ve on v.id = ve.source_id join sorter s on s.vid = ve.value_id
+                            from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
                     ),
                     descendant(vid,sortable) as (
                        select v.id as vid, s.sortable as sortable
                          from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root' --only the root values from ancestor with sorter
                        union
                        select v.id as vid, d.sortable as sortable
-                             from value v join value_edge ve on v.id = ve.value_id join descendant d on d.vid = ve.source_id
+                             from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                     )                        
                     select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;                    
                     """;
@@ -238,21 +238,21 @@ public class ValueService {
                                 from value v where v.node_id = :nodeId and v.data = :data
                             union 
                             select v.id as vid 
-                                from value v join value_edge ve on v.id = ve.source_id join ancestor a on a.vid = ve.value_id
+                                from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                         ),
                         sorter(vid,sortable) as (
                             select v.id as vid,v.data as sortable 
                                 from value v where v.node_id = :sortId and v.data < :before
                             union
                             select v.id as vid, s.sortable as sortable
-                                from value v join value_edge ve on v.id = ve.source_id join sorter s on s.vid = ve.value_id
+                                from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
                         ),
                         descendant(vid,sortable) as (
                            select v.id as vid, s.sortable as sortable
                              from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root' --only the root values from ancestor with sorter
                            union
                            select v.id as vid, d.sortable as sortable
-                                 from value v join value_edge ve on v.id = ve.value_id join descendant d on d.vid = ve.source_id
+                                 from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                         )                        
                         select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable desc limit :limit;
                         """,Value.class)
@@ -285,9 +285,9 @@ public class ValueService {
                     case "sqlite" ->
                         """
                         with recursive tree(id,node_id,root_id,idx,data) as (
-                            select v.id,v.node_id,ve.source_id as root_id,v.idx,v.data from value_edge ve left join value v on ve.value_id = v.id where ve.source_id in (select id from value where node_id = :nodeId)
+                            select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data from value_edge ve left join value v on ve.child_id = v.id where ve.parent_id in (select id from value where node_id = :nodeId)
                             union
-                            select v.id,v.node_id,t.root_id,v.idx,v.data from value v join value_edge ve on v.id = ve.value_id join tree t on ve.source_id = t.id
+                            select v.id,v.node_id,t.root_id,v.idx,v.data from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
                         ), bynode as (
                             select node_id,root_id,json_group_array(json(data)) as data from tree group by node_id,root_id order by idx
                         )
@@ -296,9 +296,9 @@ public class ValueService {
                     case "postgresql" ->
                         """
                         with recursive tree(id,node_id,root_id,idx,data) as (
-                            select v.id,v.node_id,ve.source_id as root_id,v.idx,v.data from value_edge ve left join value v on ve.value_id = v.id where ve.source_id in (select id from value where node_id = :nodeId)
+                            select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data from value_edge ve left join value v on ve.child_id = v.id where ve.parent_id in (select id from value where node_id = :nodeId)
                             union
-                            select v.id,v.node_id,t.root_id,v.idx,v.data from value v join value_edge ve on v.id = ve.value_id join tree t on ve.source_id = t.id
+                            select v.id,v.node_id,t.root_id,v.idx,v.data from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
                         ), bynode as (
                             select node_id,root_id,jsonb_agg(to_jsonb(data)) as data from tree group by node_id,root_id,idx order by idx
                         )
@@ -325,9 +325,9 @@ public class ValueService {
         rtrn.addAll(em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
-                     SELECT ve.value_id from value_edge ve where ve.source_id in (select v.id from value v where v.node_id = :nodeId)
+                     SELECT ve.child_id from value_edge ve where ve.parent_id in (select v.id from value v where v.node_id = :nodeId)
                      UNION ALL
-                     SELECT ve.value_id from value_edge ve JOIN sourceRecursive sr ON ve.source_id = sr.v_id
+                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr ON ve.parent_id = sr.v_id
                 )
                 SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id
                 """, Value.class
@@ -348,10 +348,10 @@ public class ValueService {
         rtrn.addAll(em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
-                    SELECT ve.value_id from value_edge ve where ve.source_id = :rootId OR ve.value_id = :rootId
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId OR ve.child_id = :rootId
                     UNION ALL
-                    SELECT ve.value_id from value_edge ve JOIN sourceRecursive sr
-                    ON ve.source_id = sr.v_id
+                    SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr
+                    ON ve.parent_id = sr.v_id
                 )
                 SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
                 """, Value.class
