@@ -164,18 +164,42 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
         return Objects.hash(id, name, operation, List.copyOf(sources));
     }
 
-    public boolean dependsOn(Node source){
+    /*public boolean dependsOn(Node source){
         if(source == null) return false;
         Queue<Node> queue = new ArrayDeque<>(sources);
         boolean result = false;
         while(!queue.isEmpty() && !result){
             Node node = queue.poll();
-            result = node.equals(source);
+            result = Objects.equals(node.id,source.id);
             if(!result){
                 queue.addAll(node.sources);
             }
         }
         return result;
+    }*/
+
+    // Optimization: Zero Heap Allocation (Uses Stack instead of ArrayDeque)
+    public boolean dependsOn(Node source) {
+        // 1. Safety check
+        if (source == null || this.sources == null) return false;
+
+        // 2. Iterate through parents (Enhanced For-Loop allocates 0 or 1 tiny iterator)
+        for (Node parent : this.sources) {
+
+            // Step A: Check the immediate parent (Fast ID match)
+            if (Objects.equals(parent.id, source.id)) {
+                return true;
+            }
+
+            // Step B: Dig deeper (Recursion)
+            // This replaces "queue.add". The CPU pauses here and dives down.
+            if (parent.dependsOn(source)) {
+                return true;
+            }
+        }
+
+        // 3. If we checked everyone and found nothing
+        return false;
     }
 
     /**
