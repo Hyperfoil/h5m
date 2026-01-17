@@ -18,6 +18,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class JsNodeTest {
 
+    @Test
+    public void getParameterNames_empty_named_star_function(){
+        List<String> params = JsNode.getParameterNames("function* foo(){ yield [1,2,3]; yield 4;}");
+        assertNotNull(params);
+        assertTrue(params.isEmpty(),"expect to be empty:"+params);
+    }
 
     @Test
     public void getParameterNames_empty(){

@@ -27,7 +27,6 @@ import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.proxy.Proxy;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.hibernate.Session;
-import org.hibernate.query.NativeQuery;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -36,7 +35,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -200,7 +198,7 @@ public class NodeService {
     /**
      *
      * @param node
-     * @param root
+     * @param roots
      * @return
      * @throws IOException
      */
@@ -214,6 +212,7 @@ public class NodeService {
             case "nata":
             case "sql":
             case "sqlall":
+            case "split":
                 for(int vIdx=0; vIdx<roots.size(); vIdx++){
                     Value root =  roots.get(vIdx);
                     try {
@@ -234,7 +233,6 @@ public class NodeService {
         return rtrn;
     }
 
-
     public List<Value> calculateNodeValues(Node node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
         return switch(node.type){
             case "jq" -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
@@ -242,12 +240,14 @@ public class NodeService {
             case "nata" -> calculateJsonataValues((JsonataNode)node,sourceValues,startingOrdinal+1);
             case "sql" -> calculateSqlJsonpathValues((SqlJsonpathNode)node,sourceValues,startingOrdinal+1);
             case "sqlall" -> calculateSqlAllJsonpathValues((SqlJsonpathAllNode)node, sourceValues, startingOrdinal+1);
+            case "split" -> calculateSplitValues((SplitNode)node,sourceValues,startingOrdinal+1);
             default -> {
                 System.err.println("Unknown node type: "+node.type);
                 yield Collections.emptyList();
             }
         };
     }
+
     @Transactional
     public List<Value> calculateSqlJsonpathValues(SqlJsonpathNode node, Map<String,Value> sourceValues, int startingOrdinal) throws IOException {
         return calculateSqlJsonpathValuesFirstOrAll(node,sourceValues,startingOrdinal,"jsonb_path_query_first");
@@ -305,6 +305,40 @@ public class NodeService {
         });
         return rtrn;
     }
+    @Transactional
+    public List<Value> calculateSplitValues(SplitNode node, Map<String,Value> sourceValues, int startingOrdinal) throws IOException {
+        List<Value> rtrn = new ArrayList<>();
+
+        if(sourceValues.isEmpty()){
+            return rtrn;
+        }
+        if(sourceValues.size()>1 || node.sources.size()>1){
+            System.err.println("split only supports one input node at a time");
+        }
+        //this will naively do the split with entities but using json_each would be good
+        //TODO should this be done in db with json_each?
+        Value v = sourceValues.get(node.sources.getFirst().name);
+        if(v!=null){
+            if(v.data.isArray()){
+                ArrayNode arrayNode = (ArrayNode) v.data;
+                for(int i=0;i<arrayNode.size();i++){
+                    JsonNode entry = arrayNode.get(i);
+                    Value newValue = new Value(null,node,entry);
+                    newValue.idx=i;
+                    newValue.sources = List.of(v);
+                    rtrn.add(newValue);
+                }
+            }else{
+                Value newValue = new Value(null,node,v.data);
+                newValue.idx=0;
+                newValue.sources = List.of(v);
+                rtrn.add(newValue);
+            }
+        }
+        return rtrn;
+    }
+
+
     //jsonata cannot operate on multiple inputs at once so source
     public List<Value> calculateJsonataValues(JsonataNode node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
         if(sourceValues.size()>1 || node.sources.size()>1){
@@ -336,7 +370,7 @@ public class NodeService {
         return rtrn;
     }
     public List<Value> calculateJsValues(JsNode node,Map<String,Value> sourceValues,int startingOrdinal) throws IOException {
-
+        List<Value> rtrn = new ArrayList<>();
         List<String> params = JsNode.getParameterNames(node.operation);
         if(params == null){
             System.err.println("Error occurred reading parameters from js function\n"+node.operation);
@@ -374,51 +408,52 @@ public class NodeService {
             jsCode.append(");");
             try{
                 org.graalvm.polyglot.Value value = context.eval("js", jsCode);
-                value = resolvePromise(value);
-                result = convert(value);
+                List<org.graalvm.polyglot.Value> resolvedValues = resolvePromiseOrGenerator(value);
 
+                for(org.graalvm.polyglot.Value resolvedValue : resolvedValues) {
+                    try{
+                        result = convert(resolvedValue);
+
+                        JsonNode data = null;
+                        if(result==null){
+                            //data stays null
+                        }else if (result instanceof JsonNode){
+                            //TODO do we support splitting an array into multiple Values?
+                            data = (JsonNode) result;
+                        }else{//scalar
+                            ObjectMapper mapper = new ObjectMapper();
+                            try {
+                                data = mapper.readTree(result.toString());
+                            } catch (JsonProcessingException e) {
+                                System.err.println("failed to convert "+result+" to a javascript object");
+                            }
+                        }
+
+                        //File valuePath = JqNode.outputPath().resolve(node.name + "." + (startingOrdinal+1)+".jq").toFile();
+                        if(data!=null) {
+                            Value newValue = new Value();
+                            newValue.idx = startingOrdinal+rtrn.size()+1;
+                            newValue.node = node;
+                            newValue.data = data;
+                            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+                            rtrn.add(newValue);
+                        }
+                    }catch (PolyglotException pe){
+                        System.err.println("exception jsNode "+node.name+"\n"+pe.getMessage());
+                    }
+                }
             }catch(PolyglotException e){
                 System.err.println("exception jsNode "+node.name+"\n"+e.getMessage());
             } finally {
                 context.leave();
             }
         }
-
-
-
-        JsonNode data = null;
-        if(result==null){
-            //data stays null
-        }else if (result instanceof JsonNode){
-            //TODO do we support splitting an array into multiple Values?
-            data = (JsonNode) result;
-        }else{//scalar
-            ObjectMapper mapper = new ObjectMapper();
-            try {
-                data = mapper.readTree(result.toString());
-            } catch (JsonProcessingException e) {
-                System.err.println("failed to convert "+result+" to a javascript object");
-            }
-        }
-
-        //File valuePath = JqNode.outputPath().resolve(node.name + "." + (startingOrdinal+1)+".jq").toFile();
-        //TODO create base directory if needed
-        if(data!=null) {
-            //Files.writeString(valuePath.toPath(), data.toString());
-            Value newValue = new Value();
-            newValue.idx = startingOrdinal+1;
-            newValue.node = node;
-            newValue.data = data;
-            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
-            return List.of(newValue);
-
-        }else {
-            return Collections.emptyList();
-        }
+        return rtrn;
     }
     //io.hyperfoil.tools.horreum.exp.data.LabelReducerDao#resolvePromise
-    public static org.graalvm.polyglot.Value resolvePromise(org.graalvm.polyglot.Value value) {
-        if (value.getMetaObject().getMetaSimpleName().equals("Promise") && value.hasMember("then")
+    public static List<org.graalvm.polyglot.Value> resolvePromiseOrGenerator(org.graalvm.polyglot.Value value) {
+        List<org.graalvm.polyglot.Value> rtrn = new  ArrayList<>();
+        if (value.getMetaObject()!=null && value.getMetaObject().getMetaSimpleName().equals("Promise") && value.hasMember("then")
                 && value.canInvokeMember("then")) {
             List<org.graalvm.polyglot.Value> resolved = new ArrayList<>();
             List<org.graalvm.polyglot.Value> rejected = new ArrayList<>();
@@ -443,7 +478,18 @@ public class NodeService {
                 //log.message("resolved promise size="+resolved.size()+", expected 1 for promise = "+value);
             }
         }
-        return value;
+        if(value.hasMember("next") && value.canInvokeMember("next")){
+            org.graalvm.polyglot.Value target = null;
+            List<org.graalvm.polyglot.Value> found = new  ArrayList<>();
+            while( (target = value.invokeMember("next"))!=null && !target.getMember("done").asBoolean() ) {
+                //target = value.invokeMember("next");
+                org.graalvm.polyglot.Value v = target.getMember("value");
+                rtrn.add(v);
+            }
+        }else{
+            rtrn.add(value);
+        }
+        return rtrn;
     }
     //copied from io.hyperfoil.tools.horreum.exp.pasted.ExpUtil#convert but changed to return JsonNode
     public static JsonNode convert(org.graalvm.polyglot.Value value) throws JsonProcessingException {

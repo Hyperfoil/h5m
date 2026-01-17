@@ -2,6 +2,8 @@ package exp.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import exp.FreshDb;
 import exp.entity.Node;
@@ -14,6 +16,7 @@ import exp.entity.node.SqlJsonpathNode;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.*;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -72,7 +75,25 @@ public class NodeServiceTest extends FreshDb {
 
 
     }
+    @Test
+    public void calculateJsValue_yield() throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        JsNode jsNode = new JsNode("js","function* foo(){ yield 1; yield 'foo'; }");
+        List<Value> result = nodeService.calculateJsValues(jsNode, Collections.EMPTY_MAP,0);
 
+        assertEquals(2,result.size());
+        Value value = result.get(0);
+        assertNotNull(value);
+        JsonNode data = value.data;
+        assertNotNull(data);
+        assertEquals(new LongNode(1),data);
+        value = result.get(1);
+        assertNotNull(value);
+        data = value.data;
+        assertNotNull(data);
+        assertEquals(new TextNode("foo"),data);
+        System.out.println(data);
+    }
 
 
     @Test
