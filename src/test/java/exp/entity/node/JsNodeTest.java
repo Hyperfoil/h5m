@@ -24,6 +24,24 @@ public class JsNodeTest {
         assertNotNull(params);
         assertTrue(params.isEmpty(),"expect to be empty:"+params);
     }
+    @Test
+    public void getParameterNames_named_star_function_no_space(){
+        List<String> params = JsNode.getParameterNames("function* dataset({foo,  bar, biz}){\nyield foo;\nyield bar;\nyield biz;}");
+        assertNotNull(params);
+        assertEquals(3, params.size(),"expect 3 entries");
+        assertEquals("foo",params.get(0));
+        assertEquals("bar",params.get(1));
+        assertEquals("biz",params.get(2));
+    }
+    @Test
+    public void getParameterNames_named_star_function_multiline(){
+        List<String> params = JsNode.getParameterNames("function* dataset({foo,\n  bar,\n biz}){\nyield foo;\nyield bar;\nyield biz;}");
+        assertNotNull(params);
+        assertEquals(3, params.size(),"expect 3 entries");
+        assertEquals("foo",params.get(0));
+        assertEquals("bar",params.get(1));
+        assertEquals("biz",params.get(2));
+    }
 
     @Test
     public void getParameterNames_empty(){
