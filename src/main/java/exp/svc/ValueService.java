@@ -325,7 +325,7 @@ public class ValueService {
                              from value v join ancestor a on v.id = a.vid
                              where v.node_id = :groupById --limit descendants to values from the grouping node
                            union
-                           select v.id as vid, d.sortable as sortable
+                           select v.id as vid
                                  from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                         )                        
                         select * from value v join descendant d on v.id=d.vid
