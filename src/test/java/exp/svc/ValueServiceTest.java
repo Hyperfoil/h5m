@@ -1,7 +1,9 @@
 package exp.svc;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import exp.FreshDb;
 import exp.entity.Node;
@@ -150,10 +152,59 @@ public class ValueServiceTest extends FreshDb {
         assertNotNull(found);
         assertEquals(1, found.size());
         assertTrue(found.contains(aValue01));
-
-
     }
 
+    @Test
+    public void getGroupedValues() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        Node rootNode = new RootNode();
+        rootNode.persist();
+        Node aNode = new JqNode("a");
+        aNode.sources=List.of(rootNode);
+        aNode.persist();
+
+        Node bNode = new JqNode("b");
+        bNode.sources=List.of(rootNode);
+        bNode.persist();
+
+        Value rootValue01 = new Value(null,rootNode,new TextNode("root01"));
+        rootValue01.persist();
+        Value rootValue02 = new Value(null,rootNode,new TextNode("root02"));
+        rootValue02.persist();
+
+        Value aValue01 = new Value(null,aNode,new TextNode("a01"));
+        aValue01.sources=List.of(rootValue01);
+        aValue01.persist();
+        Value aValue02 = new Value(null,aNode,new TextNode("a02"));
+        aValue02.sources=List.of(rootValue02);
+        aValue02.persist();
+
+        Value bValue01 = new Value(null,bNode,new TextNode("b01"));
+        bValue01.sources=List.of(rootValue01);
+        bValue01.persist();
+        Value bValue02 = new Value(null,bNode,new TextNode("b02"));
+        bValue02.sources=List.of(rootValue02);
+        bValue02.persist();
+
+        List<JsonNode> jsons = valueService.getGroupedValues(rootNode);
+
+        assertEquals(2,jsons.size(),"expect to find two entries: "+jsons);
+
+        JsonNode entry = jsons.get(0);
+        assertNotNull(entry);
+        assertInstanceOf(ObjectNode.class,entry);
+        ObjectNode obj =  (ObjectNode) entry;
+        assertTrue(obj.has("a"),"first entry should have a field: "+obj.toString());
+        assertTrue(obj.has("b"),"first entry should have b field: "+obj.toString());
+        entry = jsons.get(1);
+        assertNotNull(entry);
+        assertInstanceOf(ObjectNode.class,entry);
+        obj =  (ObjectNode) entry;
+        assertTrue(obj.has("a"),"second entry should have a field: "+obj.toString());
+        assertTrue(obj.has("b"),"second entry should have b field: "+obj.toString());
+
+        tm.commit();
+    }
 
     @Test
     public void findMatchingFingerprint_deep_ancestry_json_value() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
