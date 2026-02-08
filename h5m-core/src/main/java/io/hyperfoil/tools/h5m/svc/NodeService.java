@@ -98,9 +98,6 @@ public class NodeService {
         return node.id;
     }
 
-
-
-
     @Transactional
     public List<Node> getDependentNodes(Node n){
         List<Node> rtrn = Node.list("SELECT DISTINCT n FROM Node n JOIN n.sources s WHERE s.id = ?1",n.id);
@@ -563,19 +560,19 @@ public class NodeService {
         return rtrn;
     }
 
-    private int preceedingNonSpace(int idx,String input){
+    private static int preceedingNonSpace(int idx,String input){
         do{
             idx--;
         }while(idx >= 0 && " \t\n".contains(input.substring(idx,idx+1)));
         return idx;
     }
-    private int followingNonSpace(int idx,String input){
+    private static int followingNonSpace(int idx,String input){
         while(idx < input.length() && " \t\n".contains(input.substring(idx,idx+1))){
             idx++;
         }
         return idx;
     }
-    public String renameParameters(String function,Map<String,String> renames){
+    public static String renameParameters(String function,Map<String,String> renames){
         for(String key:renames.keySet()){
             Matcher m = Pattern.compile(key).matcher(function);
             while(m.find()){
