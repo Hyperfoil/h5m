@@ -103,5 +103,37 @@ public class NodeTest {
         assertTrue(n1.isCircular(),"n1 should be circular");
     }
 
+    @Test
+    public void dependsOn_deep_dag(){
+        Node first = new JqNode("n0",".");
+        Node prev = first;
+        for(int i = 1; i < 100; i++){
+            Node next = new JqNode("n"+i,".",prev);
+            prev = next;
+        }
+        Node last = prev;
+        assertTrue(last.dependsOn(first),"last node in a 100-deep chain should depend on first");
+        assertFalse(first.dependsOn(last),"first node should not depend on last");
+    }
+
+    @Test
+    public void dependsOn_diamond(){
+        Node a = new JqNode("a",".");
+        Node b = new JqNode("b",".",a);
+        Node c = new JqNode("c",".",a);
+        Node d = new JqNode("d",".",b,c);
+
+        assertTrue(d.dependsOn(a),"d should depend on a through both b and c");
+        assertTrue(d.dependsOn(b),"d should depend on b");
+        assertTrue(d.dependsOn(c),"d should depend on c");
+        assertFalse(a.dependsOn(d),"a should not depend on d");
+        assertFalse(b.dependsOn(c),"b should not depend on c");
+    }
+
+    @Test
+    public void dependsOn_null_source(){
+        Node n1 = new JqNode("n1",".");
+        assertFalse(n1.dependsOn(null),"dependsOn(null) should return false");
+    }
 
 }

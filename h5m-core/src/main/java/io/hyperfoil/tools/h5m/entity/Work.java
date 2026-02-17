@@ -4,7 +4,6 @@ import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.BatchSize;
-import org.hibernate.annotations.Immutable;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -16,7 +15,6 @@ import java.util.stream.IntStream;
 )
 @DiscriminatorColumn(name = "type")
 @DiscriminatorValue("node")
-@Immutable
 //cross test comparison could use sourceNodes and not have an activeNode?
 //custom post nodegroup actions could have sourceNodes without activeNode
 
@@ -83,6 +81,8 @@ public class Work  extends PanacheEntity implements Comparable<Work>{
             return false;
         }
         boolean activeNode = this.activeNode !=null && this.activeNode.dependsOn(work.activeNode);
+        // sameValue intentionally over-blocks: any shared source value forces ordering for safety.
+        // This may block unrelated work that happens to share a value — revisit if it causes bottlenecks.
         boolean sameValue = sourceValues.stream().anyMatch(v->work.sourceValues.contains(v));
         boolean dependentValue = sourceValues.stream().anyMatch(sourceValue ->
                 sourceValue.node.dependsOn(work.activeNode) && work.sourceValues.stream().anyMatch(sourceValue::dependsOn)) ;

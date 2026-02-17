@@ -47,8 +47,9 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="node_edge",
-            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "parent_id")
+            joinColumns = @JoinColumn(name = "child_id"),
+            inverseJoinColumns = @JoinColumn(name = "parent_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
     )
     @OrderColumn(name = "idx")
     public List<Node> sources;
@@ -162,44 +163,24 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
 
     @Override
     public int hashCode(){
-        return Objects.hash(id, name, operation, List.copyOf(sources));
+        return Objects.hash(id, name, operation);
     }
 
-    /*public boolean dependsOn(Node source){
-        if(source == null) return false;
+    public boolean dependsOn(Node source) {
+        if (source == null || this.sources == null) return false;
         Queue<Node> queue = new ArrayDeque<>(sources);
-        boolean result = false;
-        while(!queue.isEmpty() && !result){
+        Set<Long> visitedById = new HashSet<>();
+        Set<Node> visitedByIdentity = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (!queue.isEmpty()) {
             Node node = queue.poll();
-            result = Objects.equals(node.id,source.id);
-            if(!result){
+            if (node.equals(source)) {
+                return true;
+            }
+            boolean firstVisit = node.id != null ? visitedById.add(node.id) : visitedByIdentity.add(node);
+            if (firstVisit) {
                 queue.addAll(node.sources);
             }
         }
-        return result;
-    }*/
-
-    // Optimization: Zero Heap Allocation (Uses Stack instead of ArrayDeque)
-    public boolean dependsOn(Node source) {
-        // 1. Safety check
-        if (source == null || this.sources == null) return false;
-
-        // 2. Iterate through parents (Enhanced For-Loop allocates 0 or 1 tiny iterator)
-        for (Node parent : this.sources) {
-
-            // Step A: Check the immediate parent (Fast ID match)
-            if (Objects.equals(parent.id, source.id)) {
-                return true;
-            }
-
-            // Step B: Dig deeper (Recursion)
-            // This replaces "queue.add". The CPU pauses here and dives down.
-            if (parent.dependsOn(source)) {
-                return true;
-            }
-        }
-
-        // 3. If we checked everyone and found nothing
         return false;
     }
 

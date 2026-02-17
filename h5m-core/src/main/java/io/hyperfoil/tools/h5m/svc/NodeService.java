@@ -101,7 +101,7 @@ public class NodeService {
     @Transactional
     public List<Node> getDependentNodes(Node n){
         List<Node> rtrn = Node.list("SELECT DISTINCT n FROM Node n JOIN n.sources s WHERE s.id = ?1",n.id);
-        rtrn.forEach(r->r.hashCode());//lazy hack
+        rtrn.forEach(r->r.sources.size()); // force lazy initialization of sources
         return rtrn;
     }
 

@@ -483,7 +483,7 @@ public class ValueService {
     @Transactional
     public Map<String,Value> getDescendantValueByPath(Value root,Node node){
         List<Value> found = getDescendantValues(root,node);
-        found.forEach(v->{v.hashCode();});//lazy hack
+        found.forEach(v->{ v.sources.size(); }); // force lazy initialization of sources
         return found.stream().collect(Collectors.toMap(Value::getPath,v->v));
     }
 

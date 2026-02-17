@@ -1,9 +1,9 @@
 package io.hyperfoil.tools.h5m.queue;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 //based on https://github.com/williamfiset/Algorithms/blob/master/src/main/java/com/williamfiset/algorithms/graphtheory/Kahns.java
 public class KahnDagSort {
@@ -55,35 +55,32 @@ public class KahnDagSort {
         }
         int sum = inDegrees.values().stream().map(AtomicInteger::get).reduce(Integer::sum).orElse(0);
         if(sum > 0){
-            //this means there are loops!!
-            //using reversed to preserve order
-            list.reversed().forEach(n->{
-                if(inDegrees.get(n).get() > 0){
-                    rtrn.add(0,n);//they will then go to the back
-                }
-            });
+            List<T> cyclic = list.stream().filter(n -> inDegrees.get(n).get() > 0).collect(Collectors.toList());
+            throw new IllegalArgumentException("Cycle detected among: " + cyclic);
         }
         Collections.reverse(rtrn);
-        return new CopyOnWriteArrayList<>(rtrn);
+        return new ArrayList<>(rtrn);
     }
 
     public static <T> boolean isCircular(T item,Function<T,List<T>> getDependencies){
         if(item == null){
             return false;
         }
-        List<T> dependenices = getDependencies.apply(item);
-        if(dependenices.isEmpty()){
+        List<T> dependencies = getDependencies.apply(item);
+        if(dependencies.isEmpty()){
             return false;
         }
-        Queue<T> q = new PriorityQueue<>(dependenices);
+        Queue<T> q = new ArrayDeque<>(dependencies);
+        Set<T> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         T target;
-        boolean ok = true;
-        while(ok && (target=q.poll())!=null){
+        while((target=q.poll())!=null){
             if(item.equals(target)){
-                ok = false;
+                return true;
             }
-            q.addAll(getDependencies.apply(target));
+            if(visited.add(target)){
+                q.addAll(getDependencies.apply(target));
+            }
         }
-        return !ok;
+        return false;
     }
 }

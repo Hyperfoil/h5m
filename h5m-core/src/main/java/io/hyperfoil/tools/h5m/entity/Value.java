@@ -59,8 +59,9 @@ public class Value extends PanacheEntity {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="value_edge",
-            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "parent_id")
+            joinColumns = @JoinColumn(name = "child_id"),
+            inverseJoinColumns = @JoinColumn(name = "parent_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
     )
     @OrderColumn(name = "idx")
     public List<Value> sources;
@@ -124,14 +125,18 @@ public class Value extends PanacheEntity {
     public boolean dependsOn(Value source){
         if(source == null) return false;
         Queue<Value> queue = new ArrayDeque<>(sources);
-        boolean result = false;
-        while(!queue.isEmpty() && !result){
+        Set<Long> visitedById = new HashSet<>();
+        Set<Value> visitedByIdentity = Collections.newSetFromMap(new IdentityHashMap<>());
+        while(!queue.isEmpty()){
             Value value = queue.poll();
-            result = value.equals(source);
-            if(!result){
+            if(value.equals(source)){
+                return true;
+            }
+            boolean firstVisit = value.id != null ? visitedById.add(value.id) : visitedByIdentity.add(value);
+            if(firstVisit){
                 queue.addAll(value.sources);
             }
         }
-        return result;
+        return false;
     }
 }

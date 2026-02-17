@@ -6,8 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class KahnDagSortTest {
 
@@ -50,6 +49,26 @@ public class KahnDagSortTest {
         assertTrue(sorted.indexOf(c) < sorted.indexOf(a),"c should be before a to preserve add order: "+sorted);
         assertTrue(sorted.indexOf(c) < sorted.indexOf(b),"c should be before b to preserve add order: "+sorted);
         assertTrue(sorted.indexOf(b) < sorted.indexOf(a),"b should be before a to preserve add order: "+sorted);
+    }
+
+    @Test
+    public void sort_throws_on_cycle(){
+        Item a = new Item("a");
+        Item b = new Item("b");
+        a.dependencies = new ArrayList<>(List.of(b));
+        b.dependencies = new ArrayList<>(List.of(a));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                KahnDagSort.sort(List.of(a, b), Item::getDependencies));
+    }
+
+    @Test
+    public void sort_throws_on_self_cycle(){
+        Item a = new Item("a");
+        a.dependencies = new ArrayList<>(List.of(a));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                KahnDagSort.sort(List.of(a), Item::getDependencies));
     }
 }
 
