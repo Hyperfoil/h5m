@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -59,10 +60,12 @@ public class Value extends PanacheEntity {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="value_edge",
-            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "parent_id")
+            joinColumns = @JoinColumn(name = "child_id"),
+            inverseJoinColumns = @JoinColumn(name = "parent_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
     )
     @OrderColumn(name = "idx")
+    @BatchSize(size = 25)
     public List<Value> sources;
 
     public Value(){

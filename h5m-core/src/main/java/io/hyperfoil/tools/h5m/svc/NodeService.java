@@ -100,9 +100,10 @@ public class NodeService {
 
     @Transactional
     public List<Node> getDependentNodes(Node n){
-        List<Node> rtrn = Node.list("SELECT DISTINCT n FROM Node n JOIN n.sources s WHERE s.id = ?1",n.id);
-        rtrn.forEach(r->r.hashCode());//lazy hack
-        return rtrn;
+        return em.createQuery(
+                "SELECT DISTINCT n FROM Node n LEFT JOIN FETCH n.sources JOIN n.sources s WHERE s.id = :sourceId",
+                Node.class
+        ).setParameter("sourceId", n.id).getResultList();
     }
 
 
@@ -126,15 +127,17 @@ public class NodeService {
     @Transactional
     public List<Map<String,Value>> calculateSourceValuePermutations(Node node, Value root) {
         List<Map<String,Value>> rtrn = new ArrayList<>();
-        Map<String,List<Value>> nodeValues = node.sources.stream()
-                .collect(Collectors.toMap(n->n.name, n -> {
-                    List<Value> found = valueService.getDescendantValues(root, n);
-                    if (found.isEmpty() && n.sources.isEmpty()) {
-                        found = List.of(root);
-                    }
-                    return found;
-                }
-                ));
+        // Batch-fetch descendant values for all source nodes in a single query instead of N separate queries
+        Map<Long, List<Value>> descendantsByNode = valueService.getDescendantValuesByNodes(root, node.sources);
+        Map<String,List<Value>> nodeValues = new HashMap<>();
+        for (int i = 0, size = node.sources.size(); i < size; i++) {
+            Node source = node.sources.get(i);
+            List<Value> found = descendantsByNode.getOrDefault(source.getId(), List.of());
+            if (found.isEmpty() && source.sources.isEmpty()) {
+                found = List.of(root);
+            }
+            nodeValues.put(source.name, found);
+        }
 
         int maxNodeValuesLength = nodeValues.values().stream().map(Collection::size).max(Integer::compareTo).orElse(0);
 

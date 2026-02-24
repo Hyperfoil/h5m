@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -43,18 +42,18 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     private ValueService valueService;
 
     public WorkQueue(NodeService nodeService, ValueService valueService, WorkService workService) {
-        //counters.setCallback("onComplete",this::onComplete);
-
         this.nodeService = nodeService;
         this.valueService = valueService;
         this.workService = workService;
-
-        //replace with a better performant option
-        this.runnables = new CopyOnWriteArrayList<>();
     }
 
     public boolean isIdle(){
-        return activeWork.isEmpty() && runnables.isEmpty();
+        takeLock.lock();
+        try {
+            return activeWork.isEmpty() && runnables.isEmpty();
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     void decrement(Work work){
@@ -91,15 +90,17 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     private int getScore(int index){
         Runnable runnable = runnables.get(index);
-        if(runnable instanceof WorkRunner){
-            WorkRunner workRunner = (WorkRunner) runnable;
-            boolean blockedByActiveWork = activeWork.stream().anyMatch(w->workRunner.work.dependsOn(w));
-            boolean blockedByPending = runnables.stream()
-                    .filter(v->v instanceof WorkRunner)
-                    .map(w->((WorkRunner) w).work)
-                    .anyMatch(w->workRunner.work.dependsOn(w));
-            if(blockedByActiveWork || blockedByPending){
-                return 1;
+        if(runnable instanceof WorkRunner workRunner){
+            for (Work w : activeWork) {
+                if (workRunner.work.dependsOn(w)) {
+                    return 1;
+                }
+            }
+            for (int i = 0, size = runnables.size(); i < size; i++) {
+                Runnable r = runnables.get(i);
+                if (r instanceof WorkRunner wr && workRunner.work.dependsOn(wr.work)) {
+                    return 1;
+                }
             }
             //TODO this implementation will block work for different values using the same node
             return 0;
@@ -142,10 +143,15 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         }finally {
             fullyUnlock();
         }
-        if(runnables.isEmpty()){
-            synchronized (this) {
-                this.notify();
+        takeLock.lock();
+        try {
+            if(runnables.isEmpty()){
+                synchronized (this) {
+                    this.notify();
+                }
             }
+        } finally {
+            takeLock.unlock();
         }
         return found;
     }
@@ -156,17 +162,21 @@ public class WorkQueue implements BlockingQueue<Runnable> {
      * @return
      */
     public List<Runnable> getRequiredPrecedingRunnables(Runnable runnable){
-        int index = runnables.indexOf(runnable);
-        if(runnable instanceof WorkRunner){
-            WorkRunner workRunner = (WorkRunner) runnable;
-            return runnables.stream().filter(v->
-                    v instanceof WorkRunner && workRunner.work.dependsOn(((WorkRunner) v).work)
-            ).toList();
-        }else if(index > 0){
-                return List.of(runnables.get(index-1));
-        }else{
-            return Collections.emptyList();
+        if(runnable instanceof WorkRunner workRunner){
+            List<Runnable> result = new ArrayList<>();
+            for (int i = 0, size = runnables.size(); i < size; i++) {
+                Runnable r = runnables.get(i);
+                if (r instanceof WorkRunner wr && workRunner.work.dependsOn(wr.work)) {
+                    result.add(r);
+                }
+            }
+            return result;
         }
+        int index = runnables.indexOf(runnable);
+        if(index > 0){
+            return List.of(runnables.get(index-1));
+        }
+        return Collections.emptyList();
     }
     private void sort(){
         runnables = KahnDagSort.sort(runnables,this::getRequiredPrecedingRunnables);
@@ -263,9 +273,6 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     @Override
     public Runnable poll() {
-        if(runnables.size()==0){
-            return null;
-        }
         takeLock.lock();
         try{
             if(runnables.isEmpty()){
@@ -296,9 +303,6 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     @Override
     public Runnable peek() {
-        if(runnables.isEmpty()){
-            return null;
-        }
         takeLock.lock();
         try{
             return !runnables.isEmpty() ? runnables.getFirst() : null;
@@ -418,7 +422,12 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     @Override
     public boolean containsAll(Collection<?> c) {
-        return runnables.containsAll(c);
+        takeLock.lock();
+        try {
+            return runnables.containsAll(c);
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
@@ -472,32 +481,62 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     @Override
     public int size() {
-        return runnables.size();
+        takeLock.lock();
+        try {
+            return runnables.size();
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
     public boolean isEmpty() {
-        return runnables.isEmpty();
+        takeLock.lock();
+        try {
+            return runnables.isEmpty();
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
     public boolean contains(Object o) {
-        return runnables.contains(o);
+        takeLock.lock();
+        try {
+            return runnables.contains(o);
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
     public Iterator<Runnable> iterator() {
-        return runnables.iterator();
+        takeLock.lock();
+        try {
+            return List.copyOf(runnables).iterator();
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
     public Object[] toArray() {
-        return runnables.toArray();
+        takeLock.lock();
+        try {
+            return runnables.toArray();
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override
     public <T> T[] toArray(T[] a) {
-        return runnables.toArray(a);
+        takeLock.lock();
+        try {
+            return runnables.toArray(a);
+        } finally {
+            takeLock.unlock();
+        }
     }
 
     @Override

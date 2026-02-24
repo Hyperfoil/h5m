@@ -5,6 +5,7 @@ import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,13 +48,19 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
     @JoinTable(
             name="node_edge",
-            joinColumns = @JoinColumn(name = "child_id"), // Custom join column referencing the Student entity
-            inverseJoinColumns = @JoinColumn(name = "parent_id")
+            joinColumns = @JoinColumn(name = "child_id"),
+            inverseJoinColumns = @JoinColumn(name = "parent_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
     )
     @OrderColumn(name = "idx")
+    @BatchSize(size = 25)
     public List<Node> sources;
 
     public List<Node> getSources() {return sources;}
+
+    @Transient
+    @JsonIgnore
+    private transient Set<Long> ancestorCache;
 
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -149,8 +156,7 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
         if(o instanceof Node){
             Node n = (Node)o;
             if(id == null && n.id == null){
-                //TODO use sources in equality check?
-                return Objects.equals(name,n.name) && Objects.equals(operation,n.operation);
+                return Objects.equals(name,n.name) && Objects.equals(operation,n.operation) && sources.size() == n.sources.size();
             } else if (id != null && n.id != null){
                 return n.id.equals(id);
             } else { //one is persisted and the other is not
@@ -162,45 +168,43 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
 
     @Override
     public int hashCode(){
-        return Objects.hash(id, name, operation, List.copyOf(sources));
+        if(id != null){
+            return Objects.hash(id, name, operation);
+        }
+        return Objects.hash(id, name, operation, sources.size());
     }
 
-    /*public boolean dependsOn(Node source){
-        if(source == null) return false;
+    public boolean dependsOn(Node source) {
+        if (source == null || this.sources == null) return false;
+        if (source.id != null) {
+            if (ancestorCache == null) {
+                ancestorCache = computeAncestorIds();
+            }
+            return ancestorCache.contains(source.id);
+        }
+        // fallback for unpersisted nodes (no id)
         Queue<Node> queue = new ArrayDeque<>(sources);
-        boolean result = false;
-        while(!queue.isEmpty() && !result){
+        Set<Node> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (!queue.isEmpty()) {
             Node node = queue.poll();
-            result = Objects.equals(node.id,source.id);
-            if(!result){
+            if (node.equals(source)) return true;
+            if (visited.add(node)) {
                 queue.addAll(node.sources);
             }
         }
-        return result;
-    }*/
+        return false;
+    }
 
-    // Optimization: Zero Heap Allocation (Uses Stack instead of ArrayDeque)
-    public boolean dependsOn(Node source) {
-        // 1. Safety check
-        if (source == null || this.sources == null) return false;
-
-        // 2. Iterate through parents (Enhanced For-Loop allocates 0 or 1 tiny iterator)
-        for (Node parent : this.sources) {
-
-            // Step A: Check the immediate parent (Fast ID match)
-            if (Objects.equals(parent.id, source.id)) {
-                return true;
-            }
-
-            // Step B: Dig deeper (Recursion)
-            // This replaces "queue.add". The CPU pauses here and dives down.
-            if (parent.dependsOn(source)) {
-                return true;
+    private Set<Long> computeAncestorIds() {
+        Set<Long> ancestors = new HashSet<>();
+        Queue<Node> queue = new ArrayDeque<>(sources);
+        while (!queue.isEmpty()) {
+            Node node = queue.poll();
+            if (node.id != null && ancestors.add(node.id)) {
+                queue.addAll(node.sources);
             }
         }
-
-        // 3. If we checked everyone and found nothing
-        return false;
+        return ancestors;
     }
 
     /**

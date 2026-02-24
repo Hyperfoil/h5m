@@ -483,8 +483,47 @@ public class ValueService {
     @Transactional
     public Map<String,Value> getDescendantValueByPath(Value root,Node node){
         List<Value> found = getDescendantValues(root,node);
-        found.forEach(v->{v.hashCode();});//lazy hack
+        if (!found.isEmpty()) {
+            // Re-fetch with sources eagerly loaded in a single query instead of N+1 lazy inits
+            found = em.createQuery(
+                    "SELECT DISTINCT v FROM Value v LEFT JOIN FETCH v.sources WHERE v IN :values",
+                    Value.class
+            ).setParameter("values", found).getResultList();
+        }
         return found.stream().collect(Collectors.toMap(Value::getPath,v->v));
+    }
+
+    /**
+     * Batch-fetch descendant values for multiple nodes in a single recursive CTE query.
+     * Replaces N separate getDescendantValues(root, node) calls with one query.
+     */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Map<Long, List<Value>> getDescendantValuesByNodes(Value root, List<Node> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Long> nodeIds = new ArrayList<>(nodes.size());
+        for (int i = 0, size = nodes.size(); i < size; i++) {
+            nodeIds.add(nodes.get(i).getId());
+        }
+        List<Value> all = em.createNativeQuery("""
+                WITH RECURSIVE sourceRecursive (v_id) AS (
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId OR ve.child_id = :rootId
+                    UNION ALL
+                    SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr ON ve.parent_id = sr.v_id
+                )
+                SELECT distinct v.* FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id IN (:nodeIds)
+                """, Value.class)
+                .setParameter("rootId", root.id)
+                .setParameter("nodeIds", nodeIds)
+                .getResultList();
+        Map<Long, List<Value>> result = new HashMap<>();
+        for (int i = 0, size = all.size(); i < size; i++) {
+            Value v = all.get(i);
+            result.computeIfAbsent(v.node.getId(), k -> new ArrayList<>()).add(v);
+        }
+        return result;
     }
 
     @Transactional
