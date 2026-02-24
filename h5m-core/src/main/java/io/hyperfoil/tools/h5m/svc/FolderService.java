@@ -118,7 +118,10 @@ public class FolderService {
      */
     @Transactional
     public void recalculate(Folder folder){
-        folder = Folder.findById(folder.id); // deal with detached entity
+        folder = em.createQuery(
+                "SELECT f FROM Folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :folderId",
+                Folder.class
+        ).setParameter("folderId", folder.id).getSingleResult();
         Node root = folder.group.root;
         List<Value> rootValues = valueService.getValues(root);
         rootValues.forEach(Value::getPath); // this fixes the LazyException, por que?
@@ -134,8 +137,10 @@ public class FolderService {
     }
     @Transactional
     public void upload(Folder folder,String path,JsonNode data){
-        folder = Folder.findById(folder.id); // deal with detached entity
-        folder.group.sources.size();//deal with lazy init
+        folder = em.createQuery(
+                "SELECT f FROM Folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :folderId",
+                Folder.class
+        ).setParameter("folderId", folder.id).getSingleResult();
         Value newValue = new Value(folder,folder.group.root,data);
         valueService.create(newValue);
         WorkQueue workQueue = workExecutor.getWorkQueue();

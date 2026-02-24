@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.h5m.queue;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -16,74 +15,73 @@ public class KahnDagSort {
      * @param <T>
      */
     public static <T> List<T> sort(List<T> list, Function<T,List<T>> getDependencies){
-        Map<T, AtomicInteger> inDegrees = new HashMap<>();
         if(list == null || list.isEmpty()){
             return list;
         }
-        list.forEach(t -> {
-            inDegrees.put(t, new AtomicInteger(0));
-
-        });
-        list.forEach(t->{
-            getDependencies.apply(t)
-                    .forEach(s->{
-                        if(inDegrees.containsKey(s)){
-                            inDegrees.get(s).incrementAndGet();
-                        }
-                    });
-        });
-        Queue<T> q = new ArrayDeque<>();
-        //using reveresed to preserve order
-        list.reversed().forEach(t -> {
-            if(inDegrees.get(t).intValue() == 0){
-                q.offer(t);
+        Map<T, AtomicInteger> inDegrees = new HashMap<>(list.size() * 2);
+        for (int i = 0, size = list.size(); i < size; i++) {
+            inDegrees.put(list.get(i), new AtomicInteger(0));
+        }
+        for (int i = 0, size = list.size(); i < size; i++) {
+            List<T> deps = getDependencies.apply(list.get(i));
+            for (int j = 0, dSize = deps.size(); j < dSize; j++) {
+                AtomicInteger degree = inDegrees.get(deps.get(j));
+                if (degree != null) {
+                    degree.incrementAndGet();
+                }
             }
-        });
-        List<T> rtrn = new ArrayList<>();
+        }
+        Queue<T> q = new ArrayDeque<>();
+        //using reversed to preserve order
+        for (int i = list.size() - 1; i >= 0; i--) {
+            if (inDegrees.get(list.get(i)).intValue() == 0) {
+                q.offer(list.get(i));
+            }
+        }
+        List<T> rtrn = new ArrayList<>(list.size());
         while(!q.isEmpty()){
             T t = q.poll();
             rtrn.add(t);
-            getDependencies.apply(t)
-                .forEach(s->{
-                    if(inDegrees.containsKey(s)){
-                        int newDegree = inDegrees.get(s).decrementAndGet();
-                        if(newDegree == 0){
-                            q.offer(s);
-                        }
-                    }
-                });
-        }
-        int sum = inDegrees.values().stream().map(AtomicInteger::get).reduce(Integer::sum).orElse(0);
-        if(sum > 0){
-            //this means there are loops!!
-            //using reversed to preserve order
-            list.reversed().forEach(n->{
-                if(inDegrees.get(n).get() > 0){
-                    rtrn.add(0,n);//they will then go to the back
+            List<T> deps = getDependencies.apply(t);
+            for (int i = 0, dSize = deps.size(); i < dSize; i++) {
+                AtomicInteger degree = inDegrees.get(deps.get(i));
+                if (degree != null && degree.decrementAndGet() == 0) {
+                    q.offer(deps.get(i));
                 }
-            });
+            }
+        }
+        if (rtrn.size() != list.size()) {
+            StringBuilder sb = new StringBuilder("Cycle detected in DAG involving: ");
+            boolean first = true;
+            for (int i = 0, size = list.size(); i < size; i++) {
+                if (inDegrees.get(list.get(i)).get() > 0) {
+                    if (!first) sb.append(", ");
+                    sb.append(list.get(i));
+                    first = false;
+                }
+            }
+            throw new IllegalArgumentException(sb.toString());
         }
         Collections.reverse(rtrn);
-        return new CopyOnWriteArrayList<>(rtrn);
+        return rtrn;
     }
 
     public static <T> boolean isCircular(T item,Function<T,List<T>> getDependencies){
         if(item == null){
             return false;
         }
-        List<T> dependenices = getDependencies.apply(item);
-        if(dependenices.isEmpty()){
+        List<T> dependencies = getDependencies.apply(item);
+        if(dependencies.isEmpty()){
             return false;
         }
-        Queue<T> q = new PriorityQueue<>(dependenices);
+        Queue<T> q = new ArrayDeque<>(dependencies);
         T target;
-        boolean ok = true;
-        while(ok && (target=q.poll())!=null){
+        while((target=q.poll())!=null){
             if(item.equals(target)){
-                ok = false;
+                return true;
             }
             q.addAll(getDependencies.apply(target));
         }
-        return !ok;
+        return false;
     }
 }

@@ -4,11 +4,10 @@ import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.BatchSize;
-import org.hibernate.annotations.Immutable;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+
 
 @Entity
 @Table(
@@ -16,7 +15,6 @@ import java.util.stream.IntStream;
 )
 @DiscriminatorColumn(name = "type")
 @DiscriminatorValue("node")
-@Immutable
 //cross test comparison could use sourceNodes and not have an activeNode?
 //custom post nodegroup actions could have sourceNodes without activeNode
 
@@ -82,14 +80,28 @@ public class Work  extends PanacheEntity implements Comparable<Work>{
         if(work == null || work.activeNode == null){
             return false;
         }
-        boolean activeNode = this.activeNode !=null && this.activeNode.dependsOn(work.activeNode);
-        boolean sameValue = sourceValues.stream().anyMatch(v->work.sourceValues.contains(v));
-        boolean dependentValue = sourceValues.stream().anyMatch(sourceValue ->
-                sourceValue.node.dependsOn(work.activeNode) && work.sourceValues.stream().anyMatch(sourceValue::dependsOn)) ;
-        boolean foundNode = sourceNodes.stream().anyMatch(sourceNode ->
-                sourceNode.dependsOn(work.activeNode));
-
-        return dependentValue || (activeNode && (sameValue || cumulative || sourceValues.isEmpty()));
+        for (int i = 0, size = sourceValues.size(); i < size; i++) {
+            Value sourceValue = sourceValues.get(i);
+            if (sourceValue.node.dependsOn(work.activeNode)) {
+                for (int j = 0, wSize = work.sourceValues.size(); j < wSize; j++) {
+                    if (sourceValue.dependsOn(work.sourceValues.get(j))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (this.activeNode == null || !this.activeNode.dependsOn(work.activeNode)) {
+            return false;
+        }
+        if (cumulative || sourceValues.isEmpty()) {
+            return true;
+        }
+        for (int i = 0, size = sourceValues.size(); i < size; i++) {
+            if (work.sourceValues.contains(sourceValues.get(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -98,7 +110,12 @@ public class Work  extends PanacheEntity implements Comparable<Work>{
      * @return
      */
     public List<Work> getAncestorWorks(List<Work> works){
-        List<Work> rtrn = works.stream().filter(this::dependsOn).toList();
+        List<Work> rtrn = new ArrayList<>();
+        for (Work w : works) {
+            if (this.dependsOn(w)) {
+                rtrn.add(w);
+            }
+        }
         return rtrn;
     }
 
@@ -111,20 +128,28 @@ public class Work  extends PanacheEntity implements Comparable<Work>{
             if(!sameNode){
                 return false;
             }
-            boolean sameSources = activeNode!=null ||
-                (this.sourceNodes.size()==work.sourceNodes.size() &&
-                    IntStream.range(0,sourceNodes.size()).allMatch(i->sourceNodes.get(i).equals(work.sourceNodes.get(i)))
-                );
-            if(!sameSources){
-                return false;
+            if (activeNode == null) {
+                if (this.sourceNodes.size() != work.sourceNodes.size()) {
+                    return false;
+                }
+                for (int i = 0; i < sourceNodes.size(); i++) {
+                    if (!sourceNodes.get(i).equals(work.sourceNodes.get(i))) {
+                        return false;
+                    }
+                }
             }
             if(cumulative){
                 return true;
             }
-            boolean sameValues = this.sourceValues.size()==work.sourceValues.size() && (
-                    IntStream.range(0,sourceValues.size()).allMatch(i->sourceValues.get(i).equals(work.sourceValues.get(i)))
-                    );
-            return sameValues;
+            if (this.sourceValues.size() != work.sourceValues.size()) {
+                return false;
+            }
+            for (int i = 0; i < sourceValues.size(); i++) {
+                if (!sourceValues.get(i).equals(work.sourceValues.get(i))) {
+                    return false;
+                }
+            }
+            return true;
         }
         return false;
     }
