@@ -156,7 +156,18 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
         if(o instanceof Node){
             Node n = (Node)o;
             if(id == null && n.id == null){
-                return Objects.equals(name,n.name) && Objects.equals(operation,n.operation) && sources.size() == n.sources.size();
+                if(!Objects.equals(name,n.name) || !Objects.equals(operation,n.operation) || sources.size() != n.sources.size()){
+                    return false;
+                }
+                // compare sources by id (one level deep, no recursion)
+                for(int i = 0, size = sources.size(); i < size; i++){
+                    Node s1 = sources.get(i);
+                    Node s2 = n.sources.get(i);
+                    if(!Objects.equals(s1.id, s2.id)){
+                        return false;
+                    }
+                }
+                return true;
             } else if (id != null && n.id != null){
                 return n.id.equals(id);
             } else { //one is persisted and the other is not
@@ -171,7 +182,13 @@ public abstract class Node extends PanacheEntity implements Comparable<Node> {
         if(id != null){
             return Objects.hash(id, name, operation);
         }
-        return Objects.hash(id, name, operation, sources.size());
+        // hash source ids one level deep to avoid recursion on deep graphs
+        int sourcesHash = 1;
+        for(int i = 0, size = sources.size(); i < size; i++){
+            Long sourceId = sources.get(i).id;
+            sourcesHash = 31 * sourcesHash + (sourceId != null ? Long.hashCode(sourceId) : 0);
+        }
+        return Objects.hash(name, operation, sourcesHash);
     }
 
     public boolean dependsOn(Node source) {
