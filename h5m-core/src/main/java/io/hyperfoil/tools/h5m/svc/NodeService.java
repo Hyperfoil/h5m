@@ -16,7 +16,7 @@ import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonArray;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonObject;
 import io.hyperfoil.tools.yaup.hash.HashFactory;
-import io.roastedroot.jq4j.JqReactor;
+import io.roastedroot.jq4j.JqReactorPool;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -55,8 +55,8 @@ public class NodeService {
     @Inject
     FolderService folderService;
 
-    private static final ThreadLocal<JqReactor.Builder> jqLocal =
-            ThreadLocal.withInitial(JqReactor::build);
+    private static final JqReactorPool jqPool = JqReactorPool.create(
+            Runtime.getRuntime().availableProcessors());
 
     @Transactional
     public Node create(Node node){
@@ -869,26 +869,27 @@ public class NodeService {
             stdinBuf.write('\n');
         }
 
-        // Build jq arguments
-        JqReactor.Builder jq = jqLocal.get();
-        if (JqNode.isNullInput(node.operation)){
-            jq.withNullInput();
-        } else if(node.sources.size()>1 || sourceValues.size() >1){
-            jq.withSlurp();
-        }
-        jq.withCompactOutput();
-        jq.withFilter(node.operation);
-        jq.withInput(stdinBuf.toByteArray());
-
         byte[] result = null;
-        try {
-            result = jq.run();
-        } catch (Exception ex) {
-            System.err.println("Error processing "+node.id+" "+node.name+"\n  values: "+sourceValues.entrySet().stream().map(e->e.getKey()+"="+e.getValue().id).collect(Collectors.joining(", "))+"\n");
-            // on error re-instantiate jq for this thread
-            jq.close();
-            jqLocal.set(JqReactor.build());
-            return rtrn;
+        try (var loan = jqPool.borrow()) {
+            var jq = loan.jq();
+            if (JqNode.isNullInput(node.operation)){
+                jq.withNullInput();
+            } else if(node.sources.size()>1 || sourceValues.size() >1){
+                jq.withSlurp();
+            }
+            jq.withCompactOutput();
+            jq.withFilter(node.operation);
+            jq.withInput(stdinBuf.toByteArray());
+
+            try {
+                result = jq.run();
+            } catch (RuntimeException ex) {
+                System.err.println("Error processing "+node.id+" "+node.name+"\n  values: "+sourceValues.entrySet().stream().map(e->e.getKey()+"="+e.getValue().id).collect(Collectors.joining(", "))+"\n");
+                loan.discard();
+                return rtrn;
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         // Parse each JSON root from stdout
