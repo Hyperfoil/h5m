@@ -1,4 +1,4 @@
 states:
-  H5M_PATH: #full path for sqlite db (defaults to ~/h5m.db if not set)
-  asprof_dir: #e.g. /tmp/async-profiler-4.2.1-872be63-linux-x64/
-  h5m_folder: #path to the base git folder for h5m
+  asprof_dir: /home/stalep/git/async-profiler/build/
+  h5m_folder: /home/stalep/git/h5m
+  H5M_PATH: /home/stalep/h5m.db
