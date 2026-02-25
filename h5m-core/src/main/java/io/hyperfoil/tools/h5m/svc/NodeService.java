@@ -13,10 +13,10 @@ import com.fasterxml.jackson.databind.node.*;
 import io.hyperfoil.tools.h5m.entity.Node;
 import io.hyperfoil.tools.h5m.entity.Value;
 import io.hyperfoil.tools.h5m.entity.node.*;
-import io.roastedroot.jq4j.Jq;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonArray;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonObject;
 import io.hyperfoil.tools.yaup.hash.HashFactory;
+import io.roastedroot.jq4j.JqReactor;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -31,12 +31,7 @@ import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.hibernate.Session;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.PreparedStatement;
 import java.util.*;
 import java.util.function.DoubleBinaryOperator;
@@ -60,6 +55,8 @@ public class NodeService {
     @Inject
     FolderService folderService;
 
+    private static final ThreadLocal<JqReactor.Builder> jqLocal =
+            ThreadLocal.withInitial(JqReactor::build);
 
     @Transactional
     public Node create(Node node){
@@ -873,30 +870,31 @@ public class NodeService {
         }
 
         // Build jq arguments
-        List<String> jqArgs = new ArrayList<>();
-        jqArgs.add("-M");
+        JqReactor.Builder jq = jqLocal.get();
         if (JqNode.isNullInput(node.operation)){
-            jqArgs.add("--null-input");
+            jq.withNullInput();
         } else if(node.sources.size()>1 || sourceValues.size() >1){
-            jqArgs.add("--slurp");
+            jq.withSlurp();
         }
-        jqArgs.add("--compact-output");
-        jqArgs.add(node.operation);
+        jq.withCompactOutput();
+        jq.withFilter(node.operation);
+        jq.withInput(stdinBuf.toByteArray());
 
-        var result = Jq.builder()
-                .withStdin(stdinBuf.toByteArray())
-                .withArgs(jqArgs.toArray(String[]::new))
-                .run();
-
-        if (result.failure()) {
-            System.err.println("Error processing "+node.id+" "+node.name+"\n  values: "+sourceValues.entrySet().stream().map(e->e.getKey()+"="+e.getValue().id).collect(Collectors.joining(", "))+"\n"+new String(result.stderr(), StandardCharsets.UTF_8));
+        byte[] result = null;
+        try {
+            result = jq.run();
+        } catch (Exception ex) {
+            System.err.println("Error processing "+node.id+" "+node.name+"\n  values: "+sourceValues.entrySet().stream().map(e->e.getKey()+"="+e.getValue().id).collect(Collectors.joining(", "))+"\n");
+            // on error re-instantiate jq for this thread
+            jq.close();
+            jqLocal.set(JqReactor.build());
             return rtrn;
         }
 
         // Parse each JSON root from stdout
         int order = startingOrdinal;
         JsonFactory jf = new JsonFactory();
-        JsonParser jp = jf.createParser(result.stdout());
+        JsonParser jp = jf.createParser(result);
         jp.setCodec(mapper);
         jp.nextToken();
         while (jp.hasCurrentToken()) {
