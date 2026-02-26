@@ -4,12 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.yaup.json.Json;
 
+import java.util.List;
 import java.util.Map;
 
 /**
  * Service interface for managing Folders.
  */
 public interface FolderServiceInterface {
+
+    /**
+     * Retrieves all the folders;
+     *
+     * @return A list of all the folders.
+     */
+    List<Folder> list();
 
     /**
      * Retrieves a folder by its name.

@@ -11,6 +11,8 @@ import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.svc.*;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
+import io.quarkus.runtime.Quarkus;
+import io.quarkus.runtime.configuration.ConfigUtils;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.enterprise.inject.spi.CDI;
@@ -136,6 +138,10 @@ public class H5m implements QuarkusApplication {
         this.nodeService = CDI.current().select(NodeService.class).get();
         this.valueService = CDI.current().select(ValueService.class).get();
         this.workService = CDI.current().select(WorkService.class).get();
+        if (!ConfigUtils.getProfiles().contains("cli")) {
+            Quarkus.waitForExit();
+            return 0;
+        }
         System.setProperty("polyglotimpl.DisableClassPathIsolation", "true");
         CommandLine cmd = new CommandLine(this,factory);
         CommandLine gen = cmd.getSubcommands().get("generate-completion");

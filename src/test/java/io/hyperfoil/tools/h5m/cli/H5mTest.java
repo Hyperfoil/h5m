@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.provided.DatasourceConfiguration;
+import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.main.LaunchResult;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
@@ -18,6 +19,7 @@ import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusMainTest
+@TestProfile(CliProfile.class)
 public class H5mTest {
     public static List<LaunchResult> run(QuarkusMainLauncher launcher,String[]... args){
         return Arrays.stream(args).map(arg->{

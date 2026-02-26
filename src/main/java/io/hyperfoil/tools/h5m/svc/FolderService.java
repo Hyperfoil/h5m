@@ -76,8 +76,8 @@ public class FolderService implements FolderServiceInterface {
     }
 
     @Transactional
-    public List<FolderEntity> list(){
-        return FolderEntity.listAll();
+    public List<Folder> list(){
+        return FolderEntity.<FolderEntity>streamAll().map(apiMapper::toFolder).toList();
     }
 
     @Override
