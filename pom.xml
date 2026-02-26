@@ -75,6 +75,7 @@
         <!-- quarkiverse -->
         <quarkiverse.jdbc-sqlite>3.0.11</quarkiverse.jdbc-sqlite>
         <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
+        <quarkiverse.quinoa>2.8.1</quarkiverse.quinoa>
 
         <!-- quarkus (quarkus.platform.version defined in .mvn/maven.config) -->
         <quarkus.graalvm.version>25.0.2</quarkus.graalvm.version>
@@ -129,6 +130,11 @@
             <groupId>io.quarkiverse.mapstruct</groupId>
             <artifactId>quarkus-mapstruct</artifactId>
             <version>${quarkiverse.mapstruct}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkiverse.quinoa</groupId>
+            <artifactId>quarkus-quinoa</artifactId>
+            <version>${quarkiverse.quinoa}</version>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>

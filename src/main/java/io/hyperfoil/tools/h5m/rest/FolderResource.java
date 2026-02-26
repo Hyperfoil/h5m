@@ -7,12 +7,14 @@ import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
+import java.util.List;
 import java.util.Map;
 
 @Path("/api/folder")
@@ -25,6 +27,13 @@ public class FolderResource {
     FolderServiceInterface folderService;
 
     @GET
+    @PermitAll
+    @Operation(description = "Retrieve the list of all the folders")
+    public @NotNull List<Folder> listFolders() {
+        return folderService.list();
+    }
+
+    @GET
     @Path("{name}")
     @PermitAll
     @Operation(description = "Retrieve a folder by its name")
@@ -33,6 +42,7 @@ public class FolderResource {
     }
 
     @GET
+    @Path("count")
     @PermitAll
     @Operation(description = "Get the upload count for all folders")
     public Map<String, Integer> getFolderUploadCount() {

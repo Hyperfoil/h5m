@@ -1,0 +1,34 @@
+@use '@carbon/react' as carbon;
+@use '@carbon/react/scss/themes';
+
+[data-carbon-theme='white'] {
+  @include carbon.theme(themes.$white);
+
+  background-color: carbon.$background;
+  color: carbon.$text-primary;
+  min-height: 100vh;
+}
+
+[data-carbon-theme='g10'] {
+  @include carbon.theme(themes.$g10);
+
+  background-color: carbon.$background;
+  color: carbon.$text-primary;
+  min-height: 100vh;
+}
+
+[data-carbon-theme='g90'] {
+  @include carbon.theme(themes.$g90);
+
+  background-color: carbon.$background;
+  color: carbon.$text-primary;
+  min-height: 100vh;
+}
+
+[data-carbon-theme='g100'] {
+  @include carbon.theme(themes.$g100);
+
+  background-color: carbon.$background;
+  color: carbon.$text-primary;
+  min-height: 100vh;
+}

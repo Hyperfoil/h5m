@@ -93,9 +93,30 @@ public class RestEndpointTest extends FreshDb {
     }
 
     @Test
-    public void folder_get_upload_count_empty() {
+    public void folder_list_empty() {
         given()
                 .when().get("/api/folder")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(0));
+    }
+
+    @Test
+    public void folder_list_with_folder() {
+        createFolder("list-test");
+
+        given()
+                .when().get("/api/folder")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(1))
+                .body("name", hasItem("list-test"));
+    }
+
+    @Test
+    public void folder_get_upload_count_empty() {
+        given()
+                .when().get("/api/folder/count")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(0));
@@ -106,7 +127,7 @@ public class RestEndpointTest extends FreshDb {
         createFolder("count-test");
 
         given()
-                .when().get("/api/folder")
+                .when().get("/api/folder/count")
                 .then()
                 .statusCode(200)
                 .body("'count-test'", equalTo(0));
