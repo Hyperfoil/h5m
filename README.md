@@ -14,28 +14,28 @@ Other changes:
 
 
 ## Getting started
-### 1. Build the project
+### 1. Build the project (CLI mode) 
 ```shell
-mvn clean package -Pnative
+mvn clean package -Pcli
 ```
 or you can just build a jar 
 ```shell
-mvn clean package
+mvn clean package -Pcli -Dh5m.cli.native=false 
 ```
-and substitute `java -jar /target/h5m.jar` wherever you see `target/h5m` in the following steps
+and substitute `java -jar /target/cli/h5m.jar` wherever you see `target/cli/h5m` in the following steps
 
 ### 2. Create a Folder
 ```shell
 TEMP_DIR=$(mktemp -d)
-target/h5m add folder test
+target/cli/h5m add folder test
 ```
 
 ### 3. create jq nodes for the test
 ```shell
-target/h5m add jq to test foo .foo[]
-target/h5m add jq to test name {foo}:.name
-target/h5m add jq to test bar {foo}:.bar
-target/h5m add jq to test biz '{bar}:.biz[] + "-it"'
+target/cli/h5m add jq to test foo .foo[]
+target/cli/h5m add jq to test name {foo}:.name
+target/cli/h5m add jq to test bar {foo}:.bar
+target/cli/h5m add jq to test biz '{bar}:.biz[] + "-it"'
 ```
 The `foo` node's operation is a `jq` filter. The `name`,`bar`,`biz` nodes' operations are `jq` filters with a prefix 
 to indicate the node gets input from another node. The `{name}:` prefix creates the edges that connect nodes in the 
@@ -43,7 +43,7 @@ computation graph.
 
 ### 4. List the nodes 
 ```shell
-target/h5m list test nodes
+target/cli/h5m list test nodes
 ┌──────┬──────┬───────────┬────────────────┬───────────────────────────┐
 │ name │ type │   fqdn    │   operation    │         encoding          │
 ├──────┼──────┼───────────┼────────────────┼───────────────────────────┤
@@ -60,11 +60,11 @@ can cause duplicates so we are considering a "fully qualified name" as a way to 
 ### 5. Create and upload sample run
 ```shell
 echo '{"foo":[{"name":"primero","bar":{"biz":["one","first"]}},{"name":"segundo","bar":{"biz":["two","second"]}}]}' > $TEMP_DIR/first.json
-target/h5m upload $TEMP_DIR to test
+target/cli/h5m upload $TEMP_DIR to test
 ```
 ### 6. List the values
 ```shell
-target/h5m list test values
+target/cli/h5m list test values
 Count: 10
 ┌────┬───────────────────────────────────────────────────┬─────────┐
 │ id │                       data                        │ node.id │
@@ -88,7 +88,7 @@ h5m sees the separate result as a separate values similar to how a schema transf
 The values can also be grouped into json based on a "source node." This acts like getting the label values for datasets.
 
 ```shell
-target/h5m list test values by foo
+target/cli/h5m list test values by foo
 ┌────────────────────────────────────────────────────────────────────────────────┐
 │                                      data                                      │
 ├────────────────────────────────────────────────────────────────────────────────┤
@@ -98,7 +98,7 @@ target/h5m list test values by foo
 ```
 or separate each node as a separate column with `as table`
 ```shell
-target/h5m list test values by foo as table
+target/cli/h5m list test values by foo as table
 ┌──────────────────────────┬────────────────────────┬───────────┐
 │           bar            │          biz           │   name    │
 ├──────────────────────────┼────────────────────────┼───────────┤
@@ -109,7 +109,7 @@ target/h5m list test values by foo as table
 
 That sums up most of what exists in the h5m cli. You can further explore with
 ```shell
-target/h5m help
+target/cli/h5m help
 ```
 The database will default to ~/h5m.db (plus associated -shm and -wal files) but the location can be controlled with `H5M_PATH` environment variable.
 
@@ -171,6 +171,3 @@ and associated ExecutorService.
 * Work is removed from the database when it successfully completes.
 * Work is added back into the queue if an error occurs while processing it. (retry limit?)
 * Observability can be achieved with [quarkus observability](https://quarkus.io/guides/observability)
-
-
- 
