@@ -1,9 +1,12 @@
 *.settings
-*/target
+**/target
 *.classpath
 *.project
 *.idea
+*.iml
 dependency-reduced-pom.xml
 .env
-.mvn/
+.mvn/wrapper
 perf_test/states.yaml
+perf_test/qDup.jar
+jmh-result.*
