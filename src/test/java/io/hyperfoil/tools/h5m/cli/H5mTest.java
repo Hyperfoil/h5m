@@ -605,6 +605,56 @@ public class H5mTest {
         assertTrue(result.getOutput().contains("Count: 8"));
     }
     @Test
+    public void calculate_fixedthreshold_node(QuarkusMainLauncher launcher) throws IOException {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        Path folder = Files.createTempDirectory("h5m");
+        // value 5.0 is below min=10
+        Path filePath01 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "y": 5.0, "fp1": "alpha"
+                }
+                """
+        );
+        // value 50.0 is within [10, 100]
+        Path filePath02 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "y": 50.0, "fp1": "alpha"
+                }
+                """
+        );
+        // value 150.0 is above max=100
+        Path filePath03 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "y": 150.0, "fp1": "alpha"
+                }
+                """
+        );
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "rangeNode", ".y"},
+                new String[]{"add", "jq", "to", testName, "fp1", ".fp1"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName, "range", "rangeNode", "fingerprint", "fp1", "min", "10", "max", "100"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", folder.toString(), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+        // 3 rangeNode values + 3 fp1 values + 3 _fp-ftNode values + 2 fixedthreshold violations = 11
+        assertTrue(last.getOutput().contains("Count: 11"), "expect 11 values from test\n" + last.getOutput());
+    }
+
+    @Test
     public void list_values_as_table(QuarkusMainLauncher launcher) throws IOException {
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
