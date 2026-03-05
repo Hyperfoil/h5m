@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.h5m.queue.WorkQueue;
@@ -39,26 +38,19 @@ public class WorkService {
     //resumes unfinished work from previous execution
     @Transactional
     void onStart(@Observes StartupEvent ev) {
-        List<Work> all = loadAll();
-        workExecutor.getWorkQueue().addWorks(all);
+        workExecutor.getWorkQueue().addWorks(Work.listAll());
     }
-
-
     @Transactional
-    public long create(Work work){
-        if(!work.isPersistent()){
-            work.id = null;
-            Work merged = em.merge(work);
-            em.flush();
-            work.id = merged.id;
-            return merged.id;
-        }
-        return work.id;
-    }
-
-    @Transactional
-    public List<Work> loadAll(){
-        return Work.listAll();
+    public void create(List<Work> works){
+        works.forEach(work -> {
+            if (!work.isPersistent()) {
+                work.id = null;
+                Work merged = em.merge(work);
+                em.flush();
+                work.id = merged.id;
+            }
+        });
+        workExecutor.getWorkQueue().addWorks(works);
     }
 
     @Transactional
@@ -120,13 +112,7 @@ public class WorkService {
             //we need to trigger more calculations? perhaps for a recalculation we do?
             if(!newOrUpdated.isEmpty()){
                 if(work.activeNode!=null){
-                    List<NodeEntity> dependentNodes = nodeService.getDependentNodes(work.activeNode);
-
-                    dependentNodes.forEach(node->{
-                        Work newWork = new Work(node,node.sources,work.sourceValues);
-                        create(newWork);
-                        workQueue.addWorks(List.of(newWork));
-                    });
+                    create(nodeService.getDependentNodes(work.activeNode).stream().map(node -> new Work(node, node.sources, work.sourceValues)).toList());
                 }
             }
             //not in the finally so that it only happens if the work succeeds
