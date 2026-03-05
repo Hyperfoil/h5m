@@ -1028,4 +1028,243 @@ public class NodeServiceTest extends FreshDb {
         assertTrue(armWithX86Filter.isEmpty(),
             "arm root with x86 filter should produce no results but found " + armWithX86Filter.size());
     }
+
+    @Test
+    public void calculateFixedThreshold_basic_violations() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fingerprint", rootNode);
+        fingerprintNode.persist();
+
+        // Create 3 root values with range values [5.0, 50.0, 150.0]
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("root1"));
+        root1.persist();
+        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("root2"));
+        root2.persist();
+        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("root3"));
+        root3.persist();
+
+        ValueEntity range1 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(5.0));
+        range1.sources = List.of(root1);
+        range1.persist();
+        ValueEntity range2 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(50.0));
+        range2.sources = List.of(root2);
+        range2.persist();
+        ValueEntity range3 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(150.0));
+        range3.sources = List.of(root3);
+        range3.persist();
+
+        // Fingerprint values
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode fpData = mapper.createObjectNode();
+        fpData.put("env", "test");
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, fpData);
+        fp1.sources = List.of(root1);
+        fp1.persist();
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, fpData);
+        fp2.sources = List.of(root2);
+        fp2.persist();
+        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, fpData);
+        fp3.sources = List.of(root3);
+        fp3.persist();
+        tm.commit();
+
+        // Create FixedThreshold with min=10, max=100, minInclusive=true, maxInclusive=true
+        FixedThreshold ft = new FixedThreshold();
+        ft.setMin(10);
+        ft.setMax(100);
+        ft.setMinInclusive(true);
+        ft.setMaxInclusive(true);
+        ft.setNodes(fingerprintNode, rootNode, rangeNode);
+
+        // Each root is processed independently (non-cumulative)
+        List<ValueEntity> found1 = nodeService.calculateFixedThresholdValues(ft, root1, 0);
+        List<ValueEntity> found2 = nodeService.calculateFixedThresholdValues(ft, root2, 0);
+        List<ValueEntity> found3 = nodeService.calculateFixedThresholdValues(ft, root3, 0);
+
+        // 5.0 below min=10 → violation
+        assertEquals(1, found1.size(), "root1 (5.0) should produce 1 violation (below min)");
+        assertEquals("below", found1.getFirst().data.get("direction").asText());
+        assertEquals(5.0, found1.getFirst().data.get("value").asDouble());
+        assertEquals(10.0, found1.getFirst().data.get("bound").asDouble());
+
+        // 50.0 in range → no violation
+        assertEquals(0, found2.size(), "root2 (50.0) should produce no violations");
+
+        // 150.0 above max=100 → violation
+        assertEquals(1, found3.size(), "root3 (150.0) should produce 1 violation (above max)");
+        assertEquals("above", found3.getFirst().data.get("direction").asText());
+        assertEquals(150.0, found3.getFirst().data.get("value").asDouble());
+        assertEquals(100.0, found3.getFirst().data.get("bound").asDouble());
+
+        // Verify violation data fields
+        for (ValueEntity v : List.of(found1.getFirst(), found3.getFirst())) {
+            assertTrue(v.data.has("value"), "result should contain value field");
+            assertTrue(v.data.has("bound"), "result should contain bound field");
+            assertTrue(v.data.has("direction"), "result should contain direction field");
+            assertTrue(v.data.has("fingerprint"), "result should contain fingerprint field");
+        }
+    }
+
+    @Test
+    public void calculateFixedThreshold_with_qvss_data() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Load multiple qvss JSON files
+        File qvssDir = new File(getClass().getClassLoader().getResource("qvss").getFile());
+        List<File> qvssFiles;
+        try (Stream<java.nio.file.Path> paths = Files.list(qvssDir.toPath())) {
+            qvssFiles = paths.map(java.nio.file.Path::toFile)
+                    .filter(f -> f.getName().endsWith(".json"))
+                    .sorted()
+                    .limit(10)
+                    .toList();
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.name = "upload";
+        rootNode.persist();
+        JqNode throughputNode = new JqNode("throughput", ".results.\"quarkus3-jvm\".load.avThroughput", rootNode);
+        throughputNode.persist();
+        JqNode versionNode = new JqNode("version", ".config.QUARKUS_VERSION", rootNode);
+        versionNode.persist();
+
+        // Persist fingerprint node and compute fp values per root
+        FingerprintNode fpNode = new FingerprintNode("fp", "fp", List.of(versionNode));
+        fpNode.persist();
+        tm.commit();
+
+        // Load each qvss file, create root + jq values + fingerprint values
+        List<ValueEntity> allRootValues = new ArrayList<>();
+        int throughputCount = 0;
+        for (File f : qvssFiles) {
+            JsonNode qvssData = mapper.readTree(f);
+            tm.begin();
+            ValueEntity rootValue = new ValueEntity(null, rootNode, qvssData);
+            rootValue.persist();
+            tm.commit();
+            allRootValues.add(rootValue);
+
+            Map<String, ValueEntity> sourceValues = Map.of("upload", rootValue);
+            tm.begin();
+            List<ValueEntity> tpValues = nodeService.calculateJqValues(throughputNode, sourceValues, 0);
+            tpValues.forEach(ValueEntity.getEntityManager()::merge);
+            List<ValueEntity> verValues = nodeService.calculateJqValues(versionNode, sourceValues, 0);
+            verValues.forEach(ValueEntity.getEntityManager()::merge);
+            // compute fingerprint values
+            if (!verValues.isEmpty()) {
+                Map<String, ValueEntity> fpSourceValues = new HashMap<>();
+                fpSourceValues.put("version", verValues.getFirst());
+                List<ValueEntity> fpValues = nodeService.calculateFpValues(fpNode, fpSourceValues, 0);
+                fpValues.forEach(ValueEntity.getEntityManager()::merge);
+            }
+            tm.commit();
+
+            if (!tpValues.isEmpty()) {
+                throughputCount++;
+            }
+        }
+        assertTrue(throughputCount > 0, "should have at least one file with quarkus3-jvm throughput data");
+
+        // Create FixedThreshold with min=10000, max=15000
+        FixedThreshold ft = new FixedThreshold();
+        ft.setMin(10000);
+        ft.setMax(15000);
+        ft.setMinInclusive(true);
+        ft.setMaxInclusive(true);
+        ft.setNodes(fpNode, rootNode, throughputNode);
+
+        int totalViolations = 0;
+        for (ValueEntity rootValue : allRootValues) {
+            List<ValueEntity> violations = nodeService.calculateFixedThresholdValues(ft, rootValue, 0);
+            totalViolations += violations.size();
+            for (ValueEntity v : violations) {
+                double val = v.data.get("value").asDouble();
+                String dir = v.data.get("direction").asText();
+                if ("above".equals(dir)) {
+                    assertTrue(val > 15000, "above violation should have value > 15000 but was " + val);
+                } else if ("below".equals(dir)) {
+                    assertTrue(val < 10000, "below violation should have value < 10000 but was " + val);
+                }
+            }
+        }
+        assertTrue(totalViolations > 0, "should detect at least one threshold violation across qvss data");
+    }
+
+    @Test
+    public void calculateFixedThreshold_inclusive_vs_exclusive() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fingerprint", rootNode);
+        fingerprintNode.persist();
+
+        // Range values exactly at boundaries [10.0, 100.0]
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("root1"));
+        root1.persist();
+        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("root2"));
+        root2.persist();
+
+        ValueEntity range1 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(10.0));
+        range1.sources = List.of(root1);
+        range1.persist();
+        ValueEntity range2 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(100.0));
+        range2.sources = List.of(root2);
+        range2.persist();
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode fpData = mapper.createObjectNode();
+        fpData.put("env", "test");
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, fpData);
+        fp1.sources = List.of(root1);
+        fp1.persist();
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, fpData);
+        fp2.sources = List.of(root2);
+        fp2.persist();
+        tm.commit();
+
+        // both inclusive → no violations (10 >= 10, 100 <= 100)
+        FixedThreshold ftInclusive = new FixedThreshold();
+        ftInclusive.setMin(10);
+        ftInclusive.setMax(100);
+        ftInclusive.setMinInclusive(true);
+        ftInclusive.setMaxInclusive(true);
+        ftInclusive.setNodes(fingerprintNode, rootNode, rangeNode);
+
+        List<ValueEntity> inclusiveR1 = nodeService.calculateFixedThresholdValues(ftInclusive, root1, 0);
+        List<ValueEntity> inclusiveR2 = nodeService.calculateFixedThresholdValues(ftInclusive, root2, 0);
+        assertEquals(0, inclusiveR1.size(), "minInclusive=true: value 10 should NOT violate min=10");
+        assertEquals(0, inclusiveR2.size(), "maxInclusive=true: value 100 should NOT violate max=100");
+
+        // both exclusive → both violate (10 <= 10, 100 >= 100)
+        FixedThreshold ftExclusive = new FixedThreshold();
+        ftExclusive.setMin(10);
+        ftExclusive.setMax(100);
+        ftExclusive.setMinInclusive(false);
+        ftExclusive.setMaxInclusive(false);
+        ftExclusive.setNodes(fingerprintNode, rootNode, rangeNode);
+
+        List<ValueEntity> exclusiveR1 = nodeService.calculateFixedThresholdValues(ftExclusive, root1, 0);
+        List<ValueEntity> exclusiveR2 = nodeService.calculateFixedThresholdValues(ftExclusive, root2, 0);
+        assertEquals(1, exclusiveR1.size(), "minInclusive=false: value 10 should violate min=10");
+        assertEquals(1, exclusiveR2.size(), "maxInclusive=false: value 100 should violate max=100");
+
+        // mixed: minInclusive=false, maxInclusive=true → only min boundary violates
+        FixedThreshold ftMixed = new FixedThreshold();
+        ftMixed.setMin(10);
+        ftMixed.setMax(100);
+        ftMixed.setMinInclusive(false);
+        ftMixed.setMaxInclusive(true);
+        ftMixed.setNodes(fingerprintNode, rootNode, rangeNode);
+
+        List<ValueEntity> mixedR1 = nodeService.calculateFixedThresholdValues(ftMixed, root1, 0);
+        List<ValueEntity> mixedR2 = nodeService.calculateFixedThresholdValues(ftMixed, root2, 0);
+        assertEquals(1, mixedR1.size(), "minInclusive=false: value 10 should violate min=10");
+        assertEquals(0, mixedR2.size(), "maxInclusive=true: value 100 should NOT violate max=100");
+    }
 }
