@@ -8,18 +8,11 @@ public class WorkQueueExecutor extends ThreadPoolExecutor {
 
     private static final AtomicInteger atomicInteger = new AtomicInteger(0);
 
-    private final WorkQueue workQueue;
-
-    public WorkQueueExecutor() {
-        this(1, 50, 1, TimeUnit.SECONDS, new WorkQueue());
-    }
-
     public WorkQueueExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, WorkQueue workQueue) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, r -> new Thread(r, "work-queue-runner-" + atomicInteger.getAndIncrement()));
-        this.workQueue = workQueue;
+        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, r -> new Thread(r, "h5m-work-queue-runner-" + atomicInteger.getAndIncrement()));
     }
 
     public WorkQueue getWorkQueue() {
-        return workQueue;
+        return (WorkQueue) getQueue();
     }
 }

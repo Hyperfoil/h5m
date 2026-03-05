@@ -8,7 +8,6 @@ import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
@@ -16,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class WorkService {
@@ -32,7 +32,6 @@ public class WorkService {
     ValueService valueService;
 
     @Inject
-    @Named("workExecutor")
     WorkQueueExecutor workExecutor;
 
     //resumes unfinished work from previous execution
@@ -58,6 +57,11 @@ public class WorkService {
         if(work.id!=null){
             Work.deleteById(work.id);
         }
+    }
+
+    public boolean terminate(long timeout, TimeUnit unit) throws InterruptedException {
+        workExecutor.shutdown();
+        return workExecutor.awaitTermination(timeout, unit);
     }
 
     @Transactional
