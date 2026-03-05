@@ -282,6 +282,13 @@ public class NodeService {
                     rtrn.addAll(found);
                 }
                 break;
+            case "ft":
+                FixedThreshold ft = (FixedThreshold) node;
+                for(int rIdx=0; rIdx<roots.size(); rIdx++){
+                    ValueEntity root =  roots.get(rIdx);
+                    rtrn.addAll(calculateFixedThresholdValues(ft,root,rtrn.size()));
+                }
+                break;
             default:
                 System.err.println("calculateValues unknown node type: " + node.type);
         }
@@ -451,6 +458,79 @@ public class NodeService {
                 }
             }
         }catch (Exception e){
+            e.printStackTrace();
+        }
+        return rtrn;
+    }
+
+    @Transactional
+    public List<ValueEntity> calculateFixedThresholdValues(FixedThreshold ft, ValueEntity root, int startingOrdinal) throws IOException {
+        List<ValueEntity> rtrn = new ArrayList<>();
+        try {
+            NodeEntity groupBy = NodeEntity.findById(ft.getGroupByNode().getId());
+            List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root, ft.getFingerprintNode());
+            String fpFilter = ft.getFingerprintFilter();
+
+            // Check fingerprint filter — if all fingerprints are filtered out, skip this root
+            JsonNode fingerprintData = null;
+            for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
+                ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                    continue;
+                }
+                fingerprintData = fingerprintValue.data;
+                break;
+            }
+            if (fingerprintData == null) {
+                return rtrn;
+            }
+
+            // Get range values scoped to this root only
+            List<ValueEntity> rangeValues = valueService.getDescendantValues(root, ft.getRangeNode());
+            for (int rIdx = 0; rIdx < rangeValues.size(); rIdx++) {
+                ValueEntity rangeValue = rangeValues.get(rIdx);
+                Double numericValue;
+                if (rangeValue.data instanceof NumericNode numericNode) {
+                    numericValue = numericNode.asDouble();
+                } else if (rangeValue.data.toString().matches("[0-9]+\\.?[0-9]*")) {
+                    numericValue = Double.parseDouble(rangeValue.data.toString());
+                } else {
+                    continue;
+                }
+
+                FixedThreshold.ViolationType violationType = null;
+                double bound = Double.NaN;
+
+                if (ft.isMinEnabled()) {
+                    if (ft.isMinInclusive() ? numericValue < ft.getMin() : numericValue <= ft.getMin()) {
+                        violationType = FixedThreshold.ViolationType.BELOW;
+                        bound = ft.getMin();
+                    }
+                }
+                if (violationType == null && ft.isMaxEnabled()) {
+                    if (ft.isMaxInclusive() ? numericValue > ft.getMax() : numericValue >= ft.getMax()) {
+                        violationType = FixedThreshold.ViolationType.ABOVE;
+                        bound = ft.getMax();
+                    }
+                }
+
+                if (violationType != null) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    ObjectNode data = mapper.createObjectNode();
+                    data.set("value", new DoubleNode(numericValue));
+                    data.set("bound", new DoubleNode(bound));
+                    data.put("direction", violationType.label());
+                    data.set("fingerprint", fingerprintData);
+                    ValueEntity changeValue = new ValueEntity(root.folder, ft, data);
+                    changeValue.idx = startingOrdinal;
+                    List<ValueEntity> foundParents = valueService.getAncestor(root, groupBy);
+                    if (foundParents.size() == 1) {
+                        changeValue.sources = foundParents;
+                    }
+                    rtrn.add(changeValue);
+                }
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return rtrn;
