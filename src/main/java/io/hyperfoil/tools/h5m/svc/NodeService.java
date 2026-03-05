@@ -293,6 +293,13 @@ public class NodeService {
                     rtrn.addAll(found);
                 }
                 break;
+            case "ft":
+                FixedThreshold ft = (FixedThreshold) node;
+                for(int rIdx=0; rIdx<roots.size(); rIdx++){
+                    Value root =  roots.get(rIdx);
+                    rtrn.addAll(calculateFixedThresholdValues(ft,root,rtrn.size()));
+                }
+                break;
             default:
                 System.err.println("calculateValues unknown node type: " + node.type);
         }
@@ -462,6 +469,79 @@ public class NodeService {
                 }
             }
         }catch (Exception e){
+            e.printStackTrace();
+        }
+        return rtrn;
+    }
+
+    @Transactional
+    public List<Value> calculateFixedThresholdValues(FixedThreshold ft, Value root, int startingOrdinal) throws IOException {
+        List<Value> rtrn = new ArrayList<>();
+        try {
+            Node groupBy = Node.findById(ft.getGroupByNode().getId());
+            List<Value> fingerprintValues = valueService.getDescendantValues(root, ft.getFingerprintNode());
+            String fpFilter = ft.getFingerprintFilter();
+
+            // Check fingerprint filter — if all fingerprints are filtered out, skip this root
+            JsonNode fingerprintData = null;
+            for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
+                Value fingerprintValue = fingerprintValues.get(fIdx);
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                    continue;
+                }
+                fingerprintData = fingerprintValue.data;
+                break;
+            }
+            if (fingerprintData == null) {
+                return rtrn;
+            }
+
+            // Get range values scoped to this root only
+            List<Value> rangeValues = valueService.getDescendantValues(root, ft.getRangeNode());
+            for (int rIdx = 0; rIdx < rangeValues.size(); rIdx++) {
+                Value rangeValue = rangeValues.get(rIdx);
+                Double numericValue;
+                if (rangeValue.data instanceof NumericNode numericNode) {
+                    numericValue = numericNode.asDouble();
+                } else if (rangeValue.data.toString().matches("[0-9]+\\.?[0-9]*")) {
+                    numericValue = Double.parseDouble(rangeValue.data.toString());
+                } else {
+                    continue;
+                }
+
+                FixedThreshold.ViolationType violationType = null;
+                double bound = Double.NaN;
+
+                if (ft.isMinEnabled()) {
+                    if (ft.isInclusive() ? numericValue < ft.getMin() : numericValue <= ft.getMin()) {
+                        violationType = FixedThreshold.ViolationType.BELOW;
+                        bound = ft.getMin();
+                    }
+                }
+                if (violationType == null && ft.isMaxEnabled()) {
+                    if (ft.isInclusive() ? numericValue > ft.getMax() : numericValue >= ft.getMax()) {
+                        violationType = FixedThreshold.ViolationType.ABOVE;
+                        bound = ft.getMax();
+                    }
+                }
+
+                if (violationType != null) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    ObjectNode data = mapper.createObjectNode();
+                    data.set("value", new DoubleNode(numericValue));
+                    data.set("bound", new DoubleNode(bound));
+                    data.put("direction", violationType.label());
+                    data.set("fingerprint", fingerprintData);
+                    Value changeValue = new Value(root.folder, ft, data);
+                    changeValue.idx = startingOrdinal;
+                    List<Value> foundParents = valueService.getAncestor(root, groupBy);
+                    if (foundParents.size() == 1) {
+                        changeValue.sources = foundParents;
+                    }
+                    rtrn.add(changeValue);
+                }
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return rtrn;
