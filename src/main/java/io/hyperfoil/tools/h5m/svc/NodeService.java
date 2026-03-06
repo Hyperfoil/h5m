@@ -408,7 +408,7 @@ public class NodeService {
                                     .reduce(op)
                                     .getAsDouble();
                             if(relDiff.getFilter().equals("mean")){
-                                value = value / converted.size();
+                                value = value / (converted.size() - minPrevious);
                             }
                             double ratio = value / previousStats.getMean();
                             if( ratio < 1 - relDiff.getThreshold() || ratio > 1 + relDiff.getThreshold() ){
