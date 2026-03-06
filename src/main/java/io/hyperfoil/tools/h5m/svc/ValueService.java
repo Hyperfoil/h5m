@@ -11,7 +11,6 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.hibernate.Hibernate;
 import org.hibernate.Session;
 import org.hibernate.query.NativeQuery;
 
@@ -487,10 +486,6 @@ public class ValueService {
                     "SELECT DISTINCT v FROM value v LEFT JOIN FETCH v.sources WHERE v IN :values",
                     ValueEntity.class
             ).setParameter("values", found).getResultList();
-            // Initialize lazy data field while session is still open
-            for (int i = 0; i < found.size(); i++) {
-                Hibernate.initialize(found.get(i).data);
-            }
         }
         return found.stream().collect(Collectors.toMap(ValueEntity::getPath,v->v));
     }
