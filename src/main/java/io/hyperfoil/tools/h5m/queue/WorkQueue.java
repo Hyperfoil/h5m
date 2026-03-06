@@ -170,24 +170,23 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     private void sort(){
         runnables = KahnDagSort.sort(runnables,this::getRequiredPrecedingRunnables);
     }
-    public void addWorks(Collection<Work> works){
+    public Collection<Work> addWorks(Collection<Work> works){
 //        putLock.lock();
         takeLock.lock();
         try {
-            int c = runnables.size();
-            works.forEach(w->{
-                if(!isPending(w)){
-                    pendingWork.add(w);
-                    runnables.add(w);
-                    assert isPending(w);
-                }else{
-                    w.delete(); // remove rejected
+            boolean wasEmpty = runnables.isEmpty();
+            List<Work> acceptedWork = works.stream().filter(w -> !isPending(w)).peek(w-> {
+                pendingWork.add(w);
+                runnables.add(w);
+                assert isPending(w);
+            }).toList();
+            if (!acceptedWork.isEmpty()) {
+                sort();
+                if (wasEmpty) {
+                    signalNotEmpty();
                 }
-            });
-            sort();
-            if(c == 0){
-                signalNotEmpty();
             }
+            return acceptedWork;
         } finally {
 //            putLock.unlock();
             takeLock.unlock();
