@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;
@@ -47,7 +48,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
-public class NodeService {
+public class NodeService implements NodeServiceInterface {
 
     private static final Scope JQ_SCOPE;
     private static final ConcurrentHashMap<String, JsonQuery> JQ_CACHE = new ConcurrentHashMap<>();

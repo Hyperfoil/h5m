@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -18,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @ApplicationScoped
-public class FolderService {
+public class FolderService implements FolderServiceInterface {
 
     @Inject
     EntityManager em;

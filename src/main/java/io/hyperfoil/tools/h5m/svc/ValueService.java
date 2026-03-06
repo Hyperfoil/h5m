@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
@@ -22,7 +23,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
-public class ValueService {
+public class ValueService implements ValueServiceInterface {
 
     @Inject
     EntityManager em;
