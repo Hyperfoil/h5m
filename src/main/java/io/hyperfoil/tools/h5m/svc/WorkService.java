@@ -40,16 +40,14 @@ public class WorkService {
         workExecutor.getWorkQueue().addWorks(Work.listAll());
     }
     @Transactional
-    public void create(List<Work> works){
-        works.forEach(work -> {
+    public void create(List<Work> works) {
+        workExecutor.getWorkQueue().addWorks(works).forEach(work -> {
             if (!work.isPersistent()) {
                 work.id = null;
-                Work merged = em.merge(work);
+                em.merge(work);
                 em.flush();
-                work.id = merged.id;
             }
         });
-        workExecutor.getWorkQueue().addWorks(works);
     }
 
     @Transactional
