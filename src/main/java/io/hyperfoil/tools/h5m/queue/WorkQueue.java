@@ -1,9 +1,6 @@
 package io.hyperfoil.tools.h5m.queue;
 
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.hyperfoil.tools.h5m.svc.NodeService;
-import io.hyperfoil.tools.h5m.svc.ValueService;
-import io.hyperfoil.tools.h5m.svc.WorkService;
 import io.vertx.core.impl.ConcurrentHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,15 +33,7 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     private List<Runnable> runnables = new  ArrayList<>();
 
-
-    private NodeService nodeService;
-    private WorkService workService;
-    private ValueService valueService;
-
-    public WorkQueue(NodeService nodeService, ValueService valueService, WorkService workService) {
-        this.nodeService = nodeService;
-        this.valueService = valueService;
-        this.workService = workService;
+    public WorkQueue() {
     }
 
     public boolean isIdle(){
@@ -56,7 +45,7 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         }
     }
 
-    void decrement(Work work){
+    public void decrement(Work work){
         fullyLock();
         try {
             activeWork.remove(work); // will be re-added to the queue if needed
@@ -90,15 +79,15 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     private int getScore(int index){
         Runnable runnable = runnables.get(index);
-        if(runnable instanceof WorkRunner workRunner){
+        if(runnable instanceof Work work){
             for (Work w : activeWork) {
-                if (workRunner.work.dependsOn(w)) {
+                if (work.dependsOn(w)) {
                     return 1;
                 }
             }
             for (int i = 0, size = runnables.size(); i < size; i++) {
                 Runnable r = runnables.get(i);
-                if (r instanceof WorkRunner wr && workRunner.work.dependsOn(wr.work)) {
+                if (r instanceof Work wr && work.dependsOn(wr)) {
                     return 1;
                 }
             }
@@ -135,9 +124,9 @@ public class WorkQueue implements BlockingQueue<Runnable> {
             if (found != null) {
                 Runnable removed = runnables.remove(idx - 1); //index of found
                 assert !runnables.contains(found);
-                if(found instanceof WorkRunner workRunner){
-                    activeWork.add(workRunner.work);
-                    pendingWork.remove(workRunner.work);
+                if(found instanceof Work work){
+                    activeWork.add(work);
+                    pendingWork.remove(work);
                 }
             }
         }finally {
@@ -162,11 +151,11 @@ public class WorkQueue implements BlockingQueue<Runnable> {
      * @return
      */
     public List<Runnable> getRequiredPrecedingRunnables(Runnable runnable){
-        if(runnable instanceof WorkRunner workRunner){
+        if(runnable instanceof Work work){
             List<Runnable> result = new ArrayList<>();
             for (int i = 0, size = runnables.size(); i < size; i++) {
                 Runnable r = runnables.get(i);
-                if (r instanceof WorkRunner wr && workRunner.work.dependsOn(wr.work)) {
+                if (r instanceof Work wr && work.dependsOn(wr)) {
                     result.add(r);
                 }
             }
@@ -181,31 +170,27 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     private void sort(){
         runnables = KahnDagSort.sort(runnables,this::getRequiredPrecedingRunnables);
     }
-    public void addWorks(Collection<Work> works){
+    public Collection<Work> addWorks(Collection<Work> works){
 //        putLock.lock();
         takeLock.lock();
         try {
-            int c = runnables.size();
-            works.forEach(w->{
-                if(!isPending(w)){
-                    pendingWork.add(w);
-                    runnables.add(new WorkRunner(w, this, nodeService, valueService, workService));
-                    assert isPending(w);
-                }else{
-                    workService.delete(w); // remove rejected
+            boolean wasEmpty = runnables.isEmpty();
+            List<Work> acceptedWork = works.stream().filter(w -> !isPending(w)).peek(w-> {
+                pendingWork.add(w);
+                runnables.add(w);
+                assert isPending(w);
+            }).toList();
+            if (!acceptedWork.isEmpty()) {
+                sort();
+                if (wasEmpty) {
+                    signalNotEmpty();
                 }
-            });
-            sort();
-            if(c == 0){
-                signalNotEmpty();
             }
+            return acceptedWork;
         } finally {
 //            putLock.unlock();
             takeLock.unlock();
         }
-    }
-    public boolean addWork(Work work) {
-        return add(new WorkRunner(work,this,nodeService,valueService,workService));
     }
     public boolean hasWork(Work work){
         return isPending(work) || isActive(work);
@@ -227,13 +212,13 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 
     @Override
     public boolean add(Runnable runnable) {
-        if(runnable instanceof WorkRunner workRunner){
+        if(runnable instanceof Work work){
             //reject new work that is already pending
             //do NOT reject new work if it matches an active work because it could be a retry re-queue
-            if(isPending(workRunner.work)){
+            if(isPending(work)){
                 return false;//reject new work that is already pending
             }else {
-                pendingWork.add(workRunner.work);
+                pendingWork.add(work);
             }
         }
 //        putLock.lock();
@@ -241,7 +226,7 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         try {
             int c = runnables.size();
             runnables.add(runnable);
-            if(runnable instanceof WorkRunner){
+            if(runnable instanceof Work){
                 sort();
             }
             if(c == 0){
@@ -316,11 +301,11 @@ public class WorkQueue implements BlockingQueue<Runnable> {
 //        putLock.lock();
         takeLock.lock();
         try{
-            if(runnable instanceof WorkRunner workRunner){
-                if(isPending(workRunner.work)){
+            if(runnable instanceof Work work){
+                if(isPending(work)){
                     return;
                 }else {
-                    pendingWork.add(workRunner.work);
+                    pendingWork.add(work);
                 }
             }
             int c = runnables.size();
@@ -406,8 +391,8 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         boolean rtrn = false;
         fullyLock();
         try{
-            if(o instanceof WorkRunner workRunner){
-                pendingWork.remove(workRunner.work);
+            if(o instanceof Work work){
+                pendingWork.remove(work);
             }
             rtrn = runnables.remove(o);
             int c = runnables.size();
@@ -435,11 +420,11 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         fullyLock();
         try {
             for(Runnable r : runnables){
-                if( r instanceof WorkRunner workRunner && isPending(workRunner.work)){
+                if( r instanceof Work work && isPending(work)){
                     //do not add something already in queue
                 }else{
-                    if( r instanceof WorkRunner workRunner){
-                        pendingWork.add(workRunner.work);
+                    if( r instanceof Work work){
+                        pendingWork.add(work);
                     }
                     runnables.add(r);
                 }

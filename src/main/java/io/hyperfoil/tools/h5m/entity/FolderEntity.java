@@ -24,6 +24,19 @@ public class FolderEntity extends PanacheEntity {
     }
 
     @Override
+    public final boolean equals(Object o) {
+        if (!(o instanceof FolderEntity that)) {
+            return false;
+        }
+        return name.equals(that.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return name.hashCode();
+    }
+
+    @Override
     public String toString() {
         return "FolderEntity<"+id+">[ name="+name+" ]";
 

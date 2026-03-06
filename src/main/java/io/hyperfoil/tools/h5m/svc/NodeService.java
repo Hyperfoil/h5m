@@ -249,18 +249,6 @@ public class NodeService {
      */
     @Transactional
     public List<ValueEntity> calculateValues(NodeEntity node, List<ValueEntity> roots) throws IOException {
-        // Re-attach any detached root values to the current persistence context
-        // so that lazy fields (e.g. Value.data) can be loaded within this session
-        List<ValueEntity> managedRoots = new ArrayList<>(roots.size());
-        for (int i = 0; i < roots.size(); i++) {
-            ValueEntity root = roots.get(i);
-            if (root.id != null && !em.contains(root)) {
-                managedRoots.add(em.find(ValueEntity.class, root.id));
-            } else {
-                managedRoots.add(root);
-            }
-        }
-        roots = managedRoots;
         List<ValueEntity> rtrn = new ArrayList<>();
 
         switch (node.type){
@@ -420,7 +408,7 @@ public class NodeService {
                                     .reduce(op)
                                     .getAsDouble();
                             if(relDiff.getFilter().equals("mean")){
-                                value = value / converted.size();
+                                value = value / (converted.size() - minPrevious);
                             }
                             double ratio = value / previousStats.getMean();
                             if( ratio < 1 - relDiff.getThreshold() || ratio > 1 + relDiff.getThreshold() ){

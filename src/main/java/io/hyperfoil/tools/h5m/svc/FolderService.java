@@ -5,12 +5,9 @@ import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.hyperfoil.tools.h5m.queue.WorkQueue;
-import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.hibernate.query.NativeQuery;
@@ -27,11 +24,6 @@ public class FolderService {
     EntityManager em;
     @Inject
     ValueService valueService;
-
-    @Inject
-    @Named("workExecutor")
-    WorkQueueExecutor workExecutor;
-
     @Inject
     WorkService workService;
 
@@ -128,12 +120,10 @@ public class FolderService {
         List<Work> newWorks = new ArrayList<>();
         for(ValueEntity rootValue: rootValues){
             for(NodeEntity source : List.copyOf(folder.group.sources)){
-                Work newWork = new Work(source,new ArrayList<>(source.sources),List.of(rootValue));
-                workService.create(newWork);
-                newWorks.add(newWork);
+                newWorks.add(new Work(source,new ArrayList<>(source.sources),List.of(rootValue)));
             }
         }
-        workExecutor.getWorkQueue().addWorks(newWorks);
+        workService.create(newWorks);
     }
     @Transactional
     public void upload(FolderEntity folder,String path,JsonNode data){
@@ -143,7 +133,6 @@ public class FolderService {
         ).setParameter("folderId", folder.id).getSingleResult();
         ValueEntity newValue = new ValueEntity(folder,folder.group.root,data);
         valueService.create(newValue);
-        WorkQueue workQueue = workExecutor.getWorkQueue();
 
         //do we only queue the top level and let new values queue the remaining?
         //that would match the re-calculation workflow
@@ -156,11 +145,13 @@ public class FolderService {
         });
 */
         //List.copyOf is a hack to get around ConcurrentModificationException that is likely due to using entity list and panache setSources
-        List<Work> toQueue = List.copyOf(folder.group.sources).stream().map(source -> {
-            Work newWork = new Work(source,new ArrayList<>(source.sources),List.of(newValue));
-            workService.create(newWork);
-            return newWork;
-        }).toList();
-        workQueue.addWorks(toQueue);
+//        List<Work> toQueue = List.copyOf(folder.group.sources).stream().map(source -> {
+//            Work newWork = new Work(source,new ArrayList<>(source.sources),List.of(newValue));
+//            workService.create(newWork);
+//            return newWork;
+//        }).toList();
+//        workQueue.addWorks(toQueue);
+
+        workService.create(List.copyOf(folder.group.sources).stream().map(source -> new Work(source, new ArrayList<>(source.sources), List.of(newValue))).toList());
     }
 }

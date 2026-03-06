@@ -29,29 +29,36 @@ public class WorkQueueTest extends FreshDb {
 
 
     @Test
-    public void reject_relativedifference_as_duplicate(){
+    public void reject_relativedifference_as_duplicate() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
         NodeEntity rootNode = new JqNode("root",".root");
+        rootNode.persist();
         NodeEntity relativeDifference = new RelativeDifference();
+        relativeDifference.persist();
+
         ValueEntity rootValue1 = new ValueEntity(null,rootNode,new TextNode("text1"));
         ValueEntity rootValue2 = new ValueEntity(null,rootNode,new TextNode("text2"));
 
         Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1));
+        work1.persist();
         Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2));
+        work2.persist();
 
         assertEquals(work1.hashCode(),work2.hashCode(),"both worth should have the same hashcode despite different values");
 
-        WorkQueue q = new WorkQueue(null,null,null);
+        WorkQueue q = new WorkQueue();
 
-        boolean added = q.addWork(work1);
-        assertTrue(added,"first work should be added");
-        added = q.addWork(work2);
+        q.addWorks(List.of(work1));
+        assertEquals(1,q.size(),"first work should be added");
+        q.addWorks(List.of(work2));
         assertTrue(q.isPending(work2),"work 2 should be pending since it matches work1");
-        assertFalse(added,"seconds work should not be added because it should have the same hash");
+        assertEquals(1,q.size(),"seconds work should not be added because it should have the same hash");
+        tm.commit();
     }
 
     @Test
     public void reject_duplicates() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        WorkQueue q = new WorkQueue(null,null,null);
+        WorkQueue q = new WorkQueue();
         tm.begin();
         RootNode root = new RootNode();
         root.persist();
@@ -67,16 +74,15 @@ public class WorkQueueTest extends FreshDb {
         second.persist();
 
         assertEquals(first.hashCode(),second.hashCode(),"work with different id but same scope should have the same hash");
-        q.addWork(first);
-        boolean added = q.addWork(second);
-        assertFalse(added,"second should not be added to the queue");
+        q.addWorks(List.of(first, second));
+        assertEquals(1,q.size(),"second should not be added to the queue");
 
         tm.commit();
     }
 
     @Test
     public void poll_null_until_source_completes() throws InterruptedException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        WorkQueue q = new WorkQueue(null,null,null);
+        WorkQueue q = new WorkQueue();
 
         tm.begin();
         NodeEntity aNode = new JqNode("a");
@@ -91,8 +97,8 @@ public class WorkQueueTest extends FreshDb {
         bWork.persist();
         tm.commit();
 
-        q.addWork(bWork);
-        q.addWork(aWork);
+        q.addWorks(List.of(bWork));
+        q.addWorks(List.of(aWork));
         Runnable firstRunnable = q.take();
 
         assertNotNull(firstRunnable);
@@ -112,7 +118,7 @@ public class WorkQueueTest extends FreshDb {
 
     @Test
     public void poll_return_first_non_blocked() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        WorkQueue q = new WorkQueue(null,null,null);
+        WorkQueue q = new WorkQueue();
 
         tm.begin();
         NodeEntity aNode = new JqNode("a");
@@ -131,9 +137,7 @@ public class WorkQueueTest extends FreshDb {
         cWork.persist();
         tm.commit();
 
-        q.addWork(aWork);
-        q.addWork(bWork);
-        q.addWork(cWork);
+        q.addWorks(List.of(aWork, bWork, cWork));
 
         Runnable firstRunnable = q.poll();
         assertFalse(q.isPending(aWork),"a should be removed from the q");

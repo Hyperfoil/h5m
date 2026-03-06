@@ -41,10 +41,6 @@ public class H5m implements QuarkusApplication {
     //@Inject
     WorkService workService;
 
-    //@Inject
-    @Named("workExecutor")
-    WorkQueueExecutor workExecutor;
-
     public static boolean consoleAttached(){
         return System.console() != null;
     }
@@ -131,14 +127,12 @@ public class H5m implements QuarkusApplication {
         this.nodeService = CDI.current().select(NodeService.class).get();
         this.valueService = CDI.current().select(ValueService.class).get();
         this.workService = CDI.current().select(WorkService.class).get();
-        this.workExecutor = CDI.current().select(WorkQueueExecutor.class).get();
         System.setProperty("polyglotimpl.DisableClassPathIsolation", "true");
         CommandLine cmd = new CommandLine(this,factory);
         CommandLine gen = cmd.getSubcommands().get("generate-completion");
         gen.getCommandSpec().usageMessage().hidden(true);
         int returnCode = cmd.execute(args);
-        workExecutor.shutdown();
-        workExecutor.awaitTermination(1,TimeUnit.HOURS);
+        workService.terminate(1,TimeUnit.HOURS);
         return returnCode;
     }
 

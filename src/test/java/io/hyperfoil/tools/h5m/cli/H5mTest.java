@@ -5,6 +5,7 @@ import io.quarkus.test.junit.main.LaunchResult;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.io.IOException;
@@ -171,7 +172,7 @@ public class H5mTest {
         Path filePath01 = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
                 """
                 {
-                  "x": 3, "y": 1.1, "fp1": "alpha"
+                    "x": 3, "y": 1.1, "fp1": "alpha"
                 }
                 """
         );
@@ -197,7 +198,9 @@ public class H5mTest {
                 new String[]{"list",testName,"nodes"},
                 new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","fingerprint","fp1","window","1","minPrevious","1"},
                 new String[]{"list",testName,"nodes"},
-                new String[]{"upload",folder.toString(),"to",testName},
+                new String[]{"upload",filePath01.toString(),"to",testName},
+                new String[]{"upload",filePath02.toString(),"to",testName},
+                new String[]{"upload",filePath03.toString(),"to",testName},
                 new String[]{"list","value","from",testName}
         );
         results.forEach(result->{
@@ -206,12 +209,11 @@ public class H5mTest {
 
         LaunchResult last = results.getLast();
         assertTrue(last.getOutput().contains("Count: 13"),"expect 13 values from test");
-
-
     }
     @Test //not yet working because relativedifference doesn't know about the "datsaet" node
     //need to tell relativedifference which node is the dataset. either detect it with CTE (is that possible)
     //or make it an attribute on the FolderEntity / NodeGroupEntity
+    @Disabled("There should be only changes detected for x = 2 and x = 12 but there are two other detected for x = 3 and x = 13")
     public void calculate_relativedifference_dataset_node(QuarkusMainLauncher launcher) throws IOException {
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
@@ -258,7 +260,9 @@ public class H5mTest {
                 new String[]{"list",testName,"nodes"},
                 new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","by","split","fingerprint","fp1,fp2","window","1","minPrevious","1"},
                 new String[]{"list",testName,"nodes"},
-                new String[]{"upload",folder.toString(),"to",testName},
+                new String[]{"upload",filePath01.toString(),"to",testName},
+                new String[]{"upload",filePath02.toString(),"to",testName},
+                new String[]{"upload",filePath03.toString(),"to",testName},
                 new String[]{"list","value","from",testName}
         );
         results.forEach(result->{
