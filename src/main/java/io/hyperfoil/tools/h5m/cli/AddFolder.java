@@ -1,8 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeGroupService;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
@@ -14,7 +13,7 @@ import java.util.concurrent.Callable;
 public class AddFolder implements Callable<Integer> {
 
     @Inject
-    FolderService folderService;
+    FolderServiceInterface folderService;
 
     @Inject
     NodeGroupService nodeGroupService;
@@ -34,8 +33,7 @@ public class AddFolder implements Callable<Integer> {
             System.err.println(name+" conflicts with an existing node group");
             return 1;
         }
-        FolderEntity newFolder = new FolderEntity(name);
-        folderService.create(newFolder);
+        folderService.create(name);
         return 0;
     }
 }

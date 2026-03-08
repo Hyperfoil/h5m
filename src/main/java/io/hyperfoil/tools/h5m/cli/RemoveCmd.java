@@ -1,5 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
@@ -17,7 +19,7 @@ import java.util.concurrent.Callable;
 public class RemoveCmd implements Callable<Integer> {
 
     @Inject
-    FolderService folderService;
+    FolderServiceInterface folderService;
     @Inject
     NodeGroupService nodeGroupService;
     @Inject
@@ -33,18 +35,18 @@ public class RemoveCmd implements Callable<Integer> {
             cmd.usage(System.out);
             return 0;
         }
-        FolderEntity folder = folderService.byName(name);
+        Folder folder = folderService.byName(name);
         NodeGroupEntity nodeGroup = nodeGroupService.byName(name);
         List<NodeEntity> nodes = nodeService.findNodeByFqdn(name);
 
         if (folder != null) {
             if(!nodes.isEmpty()) {
                 System.err.println("Cannot delete, matched folder and nodes");
-                System.err.println("  folder = "+folder.name);
+                System.err.println("  folder = "+name);
                 nodes.forEach(n-> System.err.println("  node = "+n.getFqdn()));
             }else{
                 System.out.println("deleting "+name+" folder");
-                folderService.delete(folder);
+                folderService.delete(name);
             }
         } else if (nodeGroup != null) {
             if(!nodes.isEmpty()) {

@@ -1,4 +1,6 @@
 package io.hyperfoil.tools.h5m.api;
 
-public record Folder() {
+import jakarta.validation.constraints.NotEmpty;
+
+public record Folder(Long id, @NotEmpty String name) {
 }
