@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.NumericNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.h5m.api.Value;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -32,7 +34,7 @@ public class ListValue implements Callable<Integer> {
     NodeGroupService nodeGroupService;
 
     @Inject
-    ValueService valueService;
+    ValueServiceInterface valueService;
 
     public enum Format { raw, table }
 
@@ -80,7 +82,7 @@ public class ListValue implements Callable<Integer> {
                 return 1;
             }else{
                 NodeEntity foundNode = foundNodes.get(0);
-                List<JsonNode> jsons = valueService.getGroupedValues(foundNode);
+                List<JsonNode> jsons = valueService.getGroupedValues(foundNode.id);
                 if(Format.raw.equals(format)){
                     System.out.println("Count: " + jsons.size());
                     System.out.println(ListCmd.table(80, jsons,
@@ -120,12 +122,12 @@ public class ListValue implements Callable<Integer> {
 
             }
         }else {
-            List<ValueEntity> values = valueService.getDescendantValues(nodeGroup.root);
+            List<Value> values = valueService.getNodeDescendantValues(nodeGroup.root.id);
             System.out.println("Count: " + values.size());
             System.out.println(ListCmd.table(80, values,
                     List.of("id", "data", "node.id"),
-                    List.of(v -> v.id, v -> {
-                        JsonNode found = v.data;
+                    List.of(v -> v.id(), v -> {
+                        JsonNode found = v.data();
                         if(found == null){
                             return "null";
                         }else if(found instanceof TextNode) {
@@ -136,7 +138,7 @@ public class ListValue implements Callable<Integer> {
                             return found.toString();
                         }
 
-                    }, v -> v.node.getId())));
+                    }, v -> v.node().id())));
         }
         return 0;
     }

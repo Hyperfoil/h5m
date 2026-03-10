@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
 import io.hyperfoil.tools.h5m.svc.*;
 import io.hyperfoil.tools.yaup.json.Json;
@@ -38,7 +39,7 @@ public class H5m implements QuarkusApplication {
     NodeGroupService nodeGroupService;
 
     //@Inject
-    ValueService valueService;
+    ValueServiceInterface valueService;
 
     //@Inject
     WorkService workService;
