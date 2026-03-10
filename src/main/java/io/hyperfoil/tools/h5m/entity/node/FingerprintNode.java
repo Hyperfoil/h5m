@@ -28,4 +28,9 @@ public class FingerprintNode extends NodeEntity {
     protected NodeEntity shallowCopy() {
         return new FingerprintNode(name,operation);
     }
+
+    @Override
+    public Type type() {
+        return Type.FINGERPRINT;
+    }
 }

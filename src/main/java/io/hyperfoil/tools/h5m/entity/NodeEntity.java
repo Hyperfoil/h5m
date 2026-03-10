@@ -16,15 +16,36 @@ import java.util.stream.Collectors;
 @DiscriminatorColumn(name = "type", discriminatorType =  DiscriminatorType.STRING)
 public abstract class NodeEntity extends PanacheEntity implements Comparable<NodeEntity> {
 
+    public enum Type {
+        FINGERPRINT("fp"),
+        FIXED_THRESHOLD("ft"),
+        JQ("jq"),
+        JS("js"),
+        JSONATA("nata"),
+        RELATIVE_DIFFERENCE("rd"),
+        ROOT("root"),
+        SPLIT("split"),
+        SQL_JSONPATH_ALL_NODE("sql-all"),
+        SQL_JSONPATH_NODE("sql"),
+        USER_INPUT("user");
+
+        private final String display;
+
+        Type(String display) {
+            this.display = display;
+        }
+
+        public String display() {
+            return display;
+        }
+    }
+
     public static String FQDN_SEPARATOR = ":";
     public static String NAME_SEPARATOR = "=";
 
     public static enum MultiIterationType { Length, NxN}
     public static enum ScalarVariableMethod { First, All}
 
-    @Column(insertable=false, updatable=false)
-    @JsonIgnore
-    public String type; //maybe we want access to the type?
     public String name;
 
     @Column(columnDefinition = "TEXT")
@@ -132,8 +153,10 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     protected abstract NodeEntity shallowCopy();
 
+    public abstract Type type();
+
     public boolean hasNonRootSource(){
-        return sources.stream().anyMatch(s->!s.type.equals("root"));
+        return sources.stream().anyMatch(s-> s.type() != Type.ROOT);
     }
 
     public NodeEntity copy(){

@@ -67,6 +67,10 @@ public class JsonataNode extends NodeEntity {
         return rtrn;
     }
 
+    @Override
+    public Type type() {
+        return Type.JSONATA;
+    }
 
     @Override
     protected NodeEntity shallowCopy() {

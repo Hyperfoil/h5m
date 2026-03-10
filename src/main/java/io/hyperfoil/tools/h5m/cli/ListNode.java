@@ -38,7 +38,7 @@ public class ListNode implements Callable<Integer> {
         System.out.println(
             ListCmd.table(80,nodeGroup.sources,List.of("name","type","fqdn","operation"),
                 List.of(n->n.name,
-                n->n.type,
+                n->n.type().display(),
                 NodeEntity::getFqdn,
                 n->n.operation
                 )
