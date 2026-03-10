@@ -60,11 +60,14 @@ public class SqlJsonpathNode extends NodeEntity {
 
     public SqlJsonpathNode(){
         super();
-        this.type = "sql";
     }
     public SqlJsonpathNode(String name, String operation,List<NodeEntity> sources){
         super(name,operation,sources);
-        this.type = "sql";
+    }
+
+    @Override
+    public Type type() {
+        return Type.SQL_JSONPATH_NODE;
     }
 
     @Override

@@ -152,15 +152,17 @@ public class JsNode extends NodeEntity {
 
     public JsNode(){
         super();
-        this.type="ecma";
     }
     public JsNode(String name,String operation){
         super(name,operation);
-        this.type="ecma";
     }
     public JsNode(String name,String operation,List<NodeEntity> sources){
         super(name,operation,sources);
-        this.type="ecma";
+    }
+
+    @Override
+    public Type type() {
+        return Type.JS;
     }
 
     @Override

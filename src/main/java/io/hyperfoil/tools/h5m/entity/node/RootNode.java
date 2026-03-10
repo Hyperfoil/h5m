@@ -10,8 +10,13 @@ public class RootNode extends NodeEntity {
 
     public RootNode() {
         super();
-        this.type="root";
     }
+
+    @Override
+    public Type type() {
+        return Type.ROOT;
+    }
+
     //The root node does not shallow copy
     @Override
     protected NodeEntity shallowCopy() {

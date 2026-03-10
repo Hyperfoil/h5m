@@ -251,15 +251,15 @@ public class NodeService {
     public List<ValueEntity> calculateValues(NodeEntity node, List<ValueEntity> roots) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
 
-        switch (node.type){
+        switch (node.type()){
             //nodes that operate one root at a time
-            case "ecma":
-            case "jq":
-            case "nata":
-            case "sql":
-            case "sqlall":
-            case "split":
-            case "fp":
+            case JS:
+            case JQ:
+            case JSONATA:
+            case SQL_JSONPATH_ALL_NODE:
+            case SQL_JSONPATH_NODE:
+            case SPLIT:
+            case FINGERPRINT:
                 for(int vIdx=0; vIdx<roots.size(); vIdx++){
                     ValueEntity root =  roots.get(vIdx);
                     try {
@@ -274,7 +274,7 @@ public class NodeService {
                     }
                 }
                 break;
-            case "rd":
+            case RELATIVE_DIFFERENCE:
                 RelativeDifference relDiff = (RelativeDifference) node;
                 for(int rIdx=0; rIdx<roots.size(); rIdx++){
                     ValueEntity root =  roots.get(rIdx);
@@ -282,7 +282,7 @@ public class NodeService {
                     rtrn.addAll(found);
                 }
                 break;
-            case "ft":
+            case FIXED_THRESHOLD:
                 FixedThreshold ft = (FixedThreshold) node;
                 for(int rIdx=0; rIdx<roots.size(); rIdx++){
                     ValueEntity root =  roots.get(rIdx);
@@ -290,7 +290,7 @@ public class NodeService {
                 }
                 break;
             default:
-                System.err.println("calculateValues unknown node type: " + node.type);
+                System.err.println("calculateValues unknown node type: " + node.type());
         }
         rtrn.forEach(ValueEntity::getPath);//forcing entities to be loaded is so dirty
         return rtrn;
@@ -298,16 +298,16 @@ public class NodeService {
 
     @Transactional
     public List<ValueEntity> calculateNodeValues(NodeEntity node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
-        return switch(node.type){
-            case "jq" -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
-            case "ecma" -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
-            case "nata" -> calculateJsonataValues((JsonataNode)node,sourceValues,startingOrdinal+1);
-            case "sql" -> calculateSqlJsonpathValues((SqlJsonpathNode)node,sourceValues,startingOrdinal+1);
-            case "sqlall" -> calculateSqlAllJsonpathValues((SqlJsonpathAllNode)node, sourceValues, startingOrdinal+1);
-            case "split" -> calculateSplitValues((SplitNode)node,sourceValues,startingOrdinal+1);
-            case "fp" -> calculateFpValues((FingerprintNode)node,sourceValues,startingOrdinal+1);
+        return switch(node.type()){
+            case JQ -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
+            case JS -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
+            case JSONATA -> calculateJsonataValues((JsonataNode)node,sourceValues,startingOrdinal+1);
+            case SQL_JSONPATH_NODE -> calculateSqlJsonpathValues((SqlJsonpathNode)node,sourceValues,startingOrdinal+1);
+            case SQL_JSONPATH_ALL_NODE -> calculateSqlAllJsonpathValues((SqlJsonpathAllNode)node, sourceValues, startingOrdinal+1);
+            case SPLIT -> calculateSplitValues((SplitNode)node,sourceValues,startingOrdinal+1);
+            case FINGERPRINT -> calculateFpValues((FingerprintNode)node,sourceValues,startingOrdinal+1);
             default -> {
-                System.err.println("Unknown node type: "+node.type);
+                System.err.println("Unknown node type: "+node.type());
                 yield Collections.emptyList();
             }
         };

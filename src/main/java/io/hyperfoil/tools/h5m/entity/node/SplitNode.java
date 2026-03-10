@@ -15,16 +15,19 @@ import static io.hyperfoil.tools.h5m.entity.node.JqNode.*;
 public class SplitNode extends NodeEntity {
 
     public SplitNode() {
-        this.type = "split";
+        super();
     }
 
     public SplitNode(String name){
         super(name);
-        this.type = "split";
     }
     public SplitNode(String name, String operation, List<NodeEntity> sources){
         super(name, operation, sources);
-        this.type = "split";
+    }
+
+    @Override
+    public Type type() {
+        return Type.SPLIT;
     }
 
     @Override

@@ -14,6 +14,11 @@ public class UserInputNode extends NodeEntity {
     }
 
     @Override
+    public Type type() {
+        return Type.USER_INPUT;
+    }
+
+    @Override
     protected NodeEntity shallowCopy() {
         return new UserInputNode(name,operation);
     }

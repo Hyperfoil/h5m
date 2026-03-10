@@ -150,6 +150,11 @@ public class FixedThreshold extends NodeEntity {
     }
 
     @Override
+    public Type type() {
+        return Type.FIXED_THRESHOLD;
+    }
+
+    @Override
     protected NodeEntity shallowCopy() {
         return new FixedThreshold(name, operation);
     }

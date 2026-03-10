@@ -36,6 +36,11 @@ public class RelativeDifference extends NodeEntity {
         config = new Json();
     }
 
+    @Override
+    public Type type() {
+        return Type.RELATIVE_DIFFERENCE;
+    }
+
     @PostLoad
     public void loadConfig(){
         if(this.config == null || this.config.isEmpty()){

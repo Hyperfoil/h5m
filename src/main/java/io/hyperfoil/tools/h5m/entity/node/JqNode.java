@@ -59,25 +59,24 @@ public class JqNode extends NodeEntity {
 
     public JqNode(){
         super();
-        this.type="jq";//setting type because detached entities might not have this field
     }
     public JqNode(String name){
         super(name);
-        this.type = "jq";
     }
     public JqNode(String name,String operation){
         super(name,operation);
-        this.type = "jq";
     }
     public JqNode(String name,String operation,List<NodeEntity> sources){
         super(name,operation,sources);
-        this.type = "jq";
     }
     public JqNode(String name,String operation, NodeEntity...sources){
         super(name,operation,List.of(sources));
-        this.type = "jq";
     }
 
+    @Override
+    public Type type() {
+        return Type.JQ;
+    }
 
     public static String getCwd(){
         Path currentRelativePath = Paths.get("");
