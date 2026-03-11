@@ -56,8 +56,8 @@
 
         <!-- dependencies -->
         <lib.duckdb>1.4.4.0</lib.duckdb>
-        <lib.jackson-jq>1.6.0</lib.jackson-jq>
         <lib.jdbi>3.41.3</lib.jdbi>
+        <lib.jjq>0.1.1</lib.jjq>
         <lib.jmh>1.37</lib.jmh>
         <lib.jsonata>2.6.2</lib.jsonata>
         <lib.mapstruct>1.6.3</lib.mapstruct>
@@ -111,6 +111,11 @@
         </dependency>
         <dependency>
             <groupId>io.hyperfoil.tools</groupId>
+            <artifactId>jjq-jackson</artifactId>
+            <version>${lib.jjq}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.hyperfoil.tools</groupId>
             <artifactId>yaup-core</artifactId>
             <version>${lib.yaup}</version>
         </dependency>
@@ -155,11 +160,6 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-picocli</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>net.thisptr</groupId>
-            <artifactId>jackson-jq</artifactId>
-            <version>${lib.jackson-jq}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -290,6 +290,7 @@
                     <release>${maven.compiler.release}</release>
                     <compilerArgs>
                         <arg>-parameters</arg>
+                        <arg>--enable-preview</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
@@ -361,7 +362,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${build.maven-surefire-plugin}</version>
                 <configuration>
-                    <argLine>@{argLine}</argLine>
+                    <argLine>@{argLine} --enable-preview</argLine>
                     <excludes>**/*IT.java</excludes>
                     <excludes>%regex[.*IT.class]</excludes>
                     <systemPropertyVariables>
