@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.entity.node;
 
 import com.api.jsonata4java.expressions.Expressions;
 import com.api.jsonata4java.expressions.ParseException;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -68,8 +69,8 @@ public class JsonataNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.JSONATA;
+    public NodeType type() {
+        return NodeType.JSONATA;
     }
 
     @Override

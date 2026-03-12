@@ -1,7 +1,10 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -12,6 +15,9 @@ public class NodeGroupService implements NodeGroupServiceInterface {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    ApiMapper apiMapper;
 
     @Transactional
     public long create(NodeGroupEntity group){
@@ -28,9 +34,10 @@ public class NodeGroupService implements NodeGroupServiceInterface {
         return NodeGroupEntity.findById(id);
     }
 
+    @Override
     @Transactional
-    public NodeGroupEntity byName(String name){
-        return (NodeGroupEntity) NodeGroupEntity.find("name",name).firstResult();
+    public NodeGroup byName(String name){
+        return apiMapper.toNodeGroup(NodeGroupEntity.find("name",name).firstResult(), new CycleAvoidingContext());
     }
 
     @Transactional
@@ -42,11 +49,11 @@ public class NodeGroupService implements NodeGroupServiceInterface {
         }
         return group.id;
     }
-
+    @Override
     @Transactional
-    public void delete(NodeGroupEntity group){
-        if(group.id != null){
-            group.delete();
+    public void delete(Long groupId){
+        if(groupId != null){
+            NodeGroupEntity.deleteById(groupId);
         }
     }
 }

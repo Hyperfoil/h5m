@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.persistence.DiscriminatorValue;
@@ -37,8 +38,8 @@ public class RelativeDifference extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.RELATIVE_DIFFERENCE;
+    public NodeType type() {
+        return NodeType.RELATIVE_DIFFERENCE;
     }
 
     @PostLoad

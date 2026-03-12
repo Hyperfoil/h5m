@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -16,7 +16,7 @@ public class AddFolder implements Callable<Integer> {
     FolderServiceInterface folderService;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @CommandLine.Parameters(index="0",arity="0..1")
     public String name;
@@ -28,7 +28,7 @@ public class AddFolder implements Callable<Integer> {
             System.out.printf("Enter name: ");
             name = sc.nextLine();
         }
-        NodeGroupEntity existingGroup =  nodeGroupService.byName(name);
+        NodeGroup existingGroup =  nodeGroupService.byName(name);
         if(existingGroup != null){
             System.err.println(name+" conflicts with an existing node group");
             return 1;

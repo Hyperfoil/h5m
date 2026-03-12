@@ -1,11 +1,12 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.node.FingerprintNode;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.RelativeDifferenceConfig;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -43,10 +44,10 @@ public class AddRelativeDifference implements Callable<Integer> {
     @CommandLine.Parameters(index="0",arity="1",description = "node name") String name;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @Override
     public Integer call() throws Exception {
@@ -58,98 +59,79 @@ public class AddRelativeDifference implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroupEntity foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if(foundGroup==null){
             System.err.println("node group with name "+groupName+" does not exist");
             return 1;
         }
 
-        List<NodeEntity> foundNodes = nodeService.findNodeByFqdn(name,foundGroup.id);
+        List<Node> foundNodes = nodeService.findNodeByFqdn(name,foundGroup.id());
         if(!foundNodes.isEmpty()){
-            System.err.println(groupName+" already has "+name+" node(s)\n  "+foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+            System.err.println(groupName+" already has "+name+" node(s)\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
         }
 
         if(rangeName==null || rangeName.isEmpty()){
             System.err.println("Missing range");
             return 1;
         }
-        foundNodes = nodeService.findNodeByFqdn(rangeName,foundGroup.id);
+        foundNodes = nodeService.findNodeByFqdn(rangeName,foundGroup.id());
         if(foundNodes.isEmpty()){
             System.err.println("could not find matching range node by name "+rangeName);
             return 1;
         }else if (foundNodes.size()>1){
-            System.err.println("found more than one matching range node by name "+rangeName+"\n  "+foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+            System.err.println("found more than one matching range node by name "+rangeName+"\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
             return 1;
         }
-        NodeEntity rangeNode = foundNodes.getFirst();
+        Node rangeNode = foundNodes.getFirst();
 
-        NodeEntity domainNode = null;
+        Node domainNode = null;
         if(domainName!=null && !domainName.isEmpty()){
-            foundNodes = nodeService.findNodeByFqdn(domainName, foundGroup.id);
+            foundNodes = nodeService.findNodeByFqdn(domainName, foundGroup.id());
             if(foundNodes.isEmpty()){
                 System.err.println("could not find matching domain node by name "+domainName);
                 return 1;
             }else if (foundNodes.size()>1){
-                System.err.println("found more than one matching domain node by name "+domainName+"\n  "+foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+                System.err.println("found more than one matching domain node by name "+domainName+"\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
                 return 1;
             }
             domainNode = foundNodes.getFirst();
         }
 
-        NodeEntity groupByNode = null;
+        Node groupByNode = null;
         if(groupBy!=null && !groupBy.isEmpty()){
-            foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id);
+            foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id());
             if(foundNodes.isEmpty()){
                 System.err.println("could not find matching group by node with name"+groupBy);
                 return 1;
             }else if (foundNodes.size()>1){
-                System.err.println("found more than one matching group by node for name "+groupBy+"\n  "+foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+                System.err.println("found more than one matching group by node for name "+groupBy+"\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
                 return 1;
             }
             groupByNode = foundNodes.getFirst();
         }
         if(groupByNode==null){
-            groupByNode = foundGroup.root;
+            groupByNode = foundGroup.root();
         }
 
-        List<NodeEntity> fingerprintNodes = new ArrayList<>();
+        List<Long> fingerprintNodes = new ArrayList<>();
         if(fingerprints!=null && !fingerprints.isEmpty()){
             List<String> fingerprintNames = fingerprints.stream().flatMap(fp->Arrays.stream(fp.split(","))).map(String::trim).filter(v->!v.isBlank()).toList();
             for(String fingeprintName : fingerprintNames){
-                foundNodes = nodeService.findNodeByFqdn(fingeprintName,foundGroup.id);
+                foundNodes = nodeService.findNodeByFqdn(fingeprintName,foundGroup.id());
                 if(foundNodes.isEmpty()){
                     System.err.println("could not find matching fingerprint node by name "+fingeprintName);
                     return 1;
                 }else if (foundNodes.size()>1){
-                    System.err.println("found more than one matching fingerprint node by name "+fingeprintName+"\n  "+foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+                    System.err.println("found more than one matching fingerprint node by name "+fingeprintName+"\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
                     return 1;
                 }
-                fingerprintNodes.add(foundNodes.getFirst());
+                fingerprintNodes.add(foundNodes.getFirst().id());
             }
         }
-        FingerprintNode fingerprintNode = new FingerprintNode("_fp-"+name,"",fingerprintNodes);
-        fingerprintNode.group=foundGroup;
-        RelativeDifference relDifference = new RelativeDifference();
 
-        relDifference.name=name;
-        relDifference.group=foundGroup;
-        List<NodeEntity> sources = new ArrayList<>();
-        sources.add(fingerprintNode);
-        sources.add(groupByNode);
-        sources.add(rangeNode);
-        if(domainNode!=null){
-            sources.add(domainNode);
-        }
-        relDifference.sources=sources;
-        relDifference.setFilter(filter);
-        relDifference.setThreshold(threshold);
-        relDifference.setWindow(window);
-        relDifference.setMinPrevious(minPrevious);
-        if (fingerprintFilter != null && !fingerprintFilter.isBlank()) {
-            relDifference.setFingerprintFilter(fingerprintFilter);
-        }
-
-        NodeEntity created = nodeService.create(relDifference);
+        Long fingerprintId = nodeService.create("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        List<Long> sources = domainNode == null ? List.of(fingerprintId, groupByNode.id(), rangeNode.id()) : List.of(fingerprintId, groupByNode.id(), rangeNode.id(), domainNode.id());
+        nodeService.create(name, foundGroup.id(), NodeType.RELATIVE_DIFFERENCE, sources, new RelativeDifferenceConfig(filter, threshold, window, minPrevious, fingerprintFilter));
 
         return 0;
     }

@@ -1,11 +1,11 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.node.FingerprintNode;
-import io.hyperfoil.tools.h5m.entity.node.FixedThreshold;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
+import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -47,10 +47,10 @@ public class AddFixedThreshold implements Callable<Integer> {
     @CommandLine.Parameters(index = "0", arity = "1", description = "node name") String name;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @Override
     public Integer call() throws Exception {
@@ -62,88 +62,65 @@ public class AddFixedThreshold implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroupEntity foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if (foundGroup == null) {
             System.err.println("node group with name " + groupName + " does not exist");
             return 1;
         }
 
-        List<NodeEntity> foundNodes = nodeService.findNodeByFqdn(name, foundGroup.id);
+        List<Node> foundNodes = nodeService.findNodeByFqdn(name, foundGroup.id());
         if (!foundNodes.isEmpty()) {
-            System.err.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+            System.err.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
         }
 
         if (rangeName == null || rangeName.isEmpty()) {
             System.err.println("Missing range");
             return 1;
         }
-        foundNodes = nodeService.findNodeByFqdn(rangeName, foundGroup.id);
+        foundNodes = nodeService.findNodeByFqdn(rangeName, foundGroup.id());
         if (foundNodes.isEmpty()) {
             System.err.println("could not find matching range node by name " + rangeName);
             return 1;
         } else if (foundNodes.size() > 1) {
-            System.err.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+            System.err.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
             return 1;
         }
-        NodeEntity rangeNode = foundNodes.getFirst();
+        Node rangeNode = foundNodes.getFirst();
 
-        NodeEntity groupByNode = null;
+        Node groupByNode = null;
         if (groupBy != null && !groupBy.isEmpty()) {
-            foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id);
+            foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id());
             if (foundNodes.isEmpty()) {
                 System.err.println("could not find matching group by node with name" + groupBy);
                 return 1;
             } else if (foundNodes.size() > 1) {
-                System.err.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+                System.err.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
                 return 1;
             }
             groupByNode = foundNodes.getFirst();
         }
         if (groupByNode == null) {
-            groupByNode = foundGroup.root;
+            groupByNode = foundGroup.root();
         }
 
-        List<NodeEntity> fingerprintNodes = new ArrayList<>();
+        List<Long> fingerprintNodes = new ArrayList<>();
         if (fingerprints != null && !fingerprints.isEmpty()) {
             List<String> fingerprintNames = fingerprints.stream().flatMap(fp -> Arrays.stream(fp.split(","))).map(String::trim).filter(v -> !v.isBlank()).toList();
             for (String fingerprintName : fingerprintNames) {
-                foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id);
+                foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id());
                 if (foundNodes.isEmpty()) {
                     System.err.println("could not find matching fingerprint node by name " + fingerprintName);
                     return 1;
                 } else if (foundNodes.size() > 1) {
-                    System.err.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(NodeEntity::getFqdn).collect(Collectors.joining("\n  ")));
+                    System.err.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
                     return 1;
                 }
-                fingerprintNodes.add(foundNodes.getFirst());
+                fingerprintNodes.add(foundNodes.getFirst().id());
             }
         }
-        FingerprintNode fingerprintNode = new FingerprintNode("_fp-" + name, "", fingerprintNodes);
-        fingerprintNode.group = foundGroup;
 
-        FixedThreshold fixedThreshold = new FixedThreshold();
-        fixedThreshold.name = name;
-        fixedThreshold.group = foundGroup;
-        List<NodeEntity> sources = new ArrayList<>();
-        sources.add(fingerprintNode);
-        sources.add(groupByNode);
-        sources.add(rangeNode);
-        fixedThreshold.sources = sources;
-
-        if (min != null) {
-            fixedThreshold.setMin(min);
-        }
-        if (max != null) {
-            fixedThreshold.setMax(max);
-        }
-        fixedThreshold.setMinInclusive(minInclusive);
-        fixedThreshold.setMaxInclusive(maxInclusive);
-
-        if (fingerprintFilter != null && !fingerprintFilter.isBlank()) {
-            fixedThreshold.setFingerprintFilter(fingerprintFilter);
-        }
-
-        NodeEntity created = nodeService.create(fixedThreshold);
+        Long fingerprintId = nodeService.create("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        nodeService.create(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
 
         return 0;
     }

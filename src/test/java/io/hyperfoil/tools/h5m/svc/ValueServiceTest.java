@@ -11,6 +11,7 @@ import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.quarkus.test.junit.QuarkusTest;
@@ -808,7 +809,7 @@ public class ValueServiceTest extends FreshDb {
         List<Value> found = valueService.getNodeDescendantValues(root.id);
 
         assertEquals(3,found.size(),"expect to see three entries");
-        assertTrue(found.contains(apiMapper.toValue(bravobravoValue)),"missing bravobravo["+bravobravoValue.id+"]'s value: "+found);
+        assertTrue(found.contains(apiMapper.toValue(bravobravoValue, new CycleAvoidingContext())), "missing bravobravo[" + bravobravoValue.id + "]'s value: " + found);
     }
 
     @Test

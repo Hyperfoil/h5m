@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -14,8 +15,8 @@ public class UserInputNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.USER_INPUT;
+    public NodeType type() {
+        return NodeType.USER_INPUT;
     }
 
     @Override

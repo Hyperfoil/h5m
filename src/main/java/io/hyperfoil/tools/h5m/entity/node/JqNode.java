@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -74,8 +75,8 @@ public class JqNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.JQ;
+    public NodeType type() {
+        return NodeType.JQ;
     }
 
     public static String getCwd(){

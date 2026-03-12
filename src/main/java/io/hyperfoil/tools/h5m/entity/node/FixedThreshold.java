@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.persistence.DiscriminatorValue;
@@ -150,8 +151,8 @@ public class FixedThreshold extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.FIXED_THRESHOLD;
+    public NodeType type() {
+        return NodeType.FIXED_THRESHOLD;
     }
 
     @Override

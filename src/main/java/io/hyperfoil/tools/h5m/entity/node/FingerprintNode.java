@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -30,7 +31,7 @@ public class FingerprintNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.FINGERPRINT;
+    public NodeType type() {
+        return NodeType.FINGERPRINT;
     }
 }

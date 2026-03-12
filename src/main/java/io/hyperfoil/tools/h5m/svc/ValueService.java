@@ -6,6 +6,7 @@ import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
@@ -446,6 +447,7 @@ public class ValueService implements ValueServiceInterface {
      */
     @Transactional
     public List<Value> getNodeDescendantValues(Long nodeId){
+        CycleAvoidingContext cycleContext = new CycleAvoidingContext();
         return em.unwrap(Session.class).createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
@@ -455,7 +457,7 @@ public class ValueService implements ValueServiceInterface {
                 )
                 SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id
                 """, ValueEntity.class
-        ).setParameter("nodeId",nodeId).getResultStream().map(apiMapper::toValue).toList();
+        ).setParameter("nodeId",nodeId).getResultStream().map(entity -> apiMapper.toValue(entity, cycleContext)).toList();
     }
     /**
      * returns the values that depend on the root value somewhere up the hierarchy and come from the specified node

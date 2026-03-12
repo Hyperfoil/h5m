@@ -1,13 +1,11 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.svc.FolderService;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -21,9 +19,9 @@ public class RemoveCmd implements Callable<Integer> {
     @Inject
     FolderServiceInterface folderService;
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @CommandLine.Parameters(index="0",arity="0..1")
     public String name;
@@ -36,14 +34,14 @@ public class RemoveCmd implements Callable<Integer> {
             return 0;
         }
         Folder folder = folderService.byName(name);
-        NodeGroupEntity nodeGroup = nodeGroupService.byName(name);
-        List<NodeEntity> nodes = nodeService.findNodeByFqdn(name);
+        NodeGroup nodeGroup = nodeGroupService.byName(name);
+        List<Node> nodes = nodeService.findNodeByFqdn(name);
 
         if (folder != null) {
             if(!nodes.isEmpty()) {
                 System.err.println("Cannot delete, matched folder and nodes");
                 System.err.println("  folder = "+name);
-                nodes.forEach(n-> System.err.println("  node = "+n.getFqdn()));
+                nodes.forEach(n-> System.err.println("  node = "+n.fqdn()));
             }else{
                 System.out.println("deleting "+name+" folder");
                 folderService.delete(name);
@@ -51,19 +49,19 @@ public class RemoveCmd implements Callable<Integer> {
         } else if (nodeGroup != null) {
             if(!nodes.isEmpty()) {
                 System.err.println("Cannot delete, matched node group and nodes");
-                System.err.println("  group = "+nodeGroup.name);
-                nodes.forEach(n-> System.err.println("  node = "+n.getFqdn()));
+                System.err.println("  group = "+nodeGroup.name());
+                nodes.forEach(n-> System.err.println("  node = "+n.fqdn()));
             }else{
                 System.out.println("deleted "+name+" node group");
-                nodeGroupService.delete(nodeGroup);
+                nodeGroupService.delete(nodeGroup.id());
             }
         } else if (!nodes.isEmpty()) {
             if(nodes.size() != 1){
                 System.err.println("Cannot delete, matched multiple and nodes");
-                nodes.forEach(n-> System.out.println("  node = "+n.getFqdn()));
+                nodes.forEach(n-> System.out.println("  node = "+n.fqdn()));
             }else{
-                System.out.println("deleting "+nodes.get(0).getFqdn()+" node");
-                nodeService.delete(nodes.get(0));
+                System.out.println("deleting " + nodes.getFirst().fqdn() + " node");
+                nodeService.delete(nodes.getFirst().id());
             }
         } else {
             System.err.println("failed to match folder, nodegroup, or node with name "+name);
