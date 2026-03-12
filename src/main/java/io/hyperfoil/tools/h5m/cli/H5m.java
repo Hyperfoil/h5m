@@ -7,7 +7,7 @@ import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
-import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
+import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.svc.*;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
@@ -15,7 +15,6 @@ import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.persistence.NoResultException;
 import picocli.AutoComplete;
 import picocli.CommandLine;
@@ -44,7 +43,7 @@ public class H5m implements QuarkusApplication {
     ValueServiceInterface valueService;
 
     //@Inject
-    WorkService workService;
+    WorkServiceInterface workService;
 
     public static boolean consoleAttached(){
         return System.console() != null;

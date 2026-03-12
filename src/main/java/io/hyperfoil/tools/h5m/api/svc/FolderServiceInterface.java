@@ -3,7 +3,6 @@ package io.hyperfoil.tools.h5m.api.svc;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.yaup.json.Json;
-import jakarta.transaction.Transactional;
 
 import java.util.Map;
 
