@@ -6,9 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.quarkus.test.junit.QuarkusTest;
@@ -30,6 +33,9 @@ public class ValueServiceTest extends FreshDb {
 
     @Inject
     ValueService valueService;
+
+    @Inject
+    ApiMapper apiMapper;
 
     @Inject
     TransactionManager tm;
@@ -164,7 +170,7 @@ public class ValueServiceTest extends FreshDb {
         bValue02.sources=List.of(rootValue02);
         bValue02.persist();
 
-        List<JsonNode> jsons = valueService.getGroupedValues(rootNode);
+        List<JsonNode> jsons = valueService.getGroupedValues(rootNode.id);
 
         assertEquals(2,jsons.size(),"expect to find two entries: "+jsons);
 
@@ -800,10 +806,10 @@ public class ValueServiceTest extends FreshDb {
 
         tm.commit();
 
-        List<ValueEntity> found = valueService.getDescendantValues(root);
+        List<Value> found = valueService.getNodeDescendantValues(root.id);
 
         assertEquals(3,found.size(),"expect to see three entries");
-        assertTrue(found.contains(bravobravoValue),"missing bravobravo["+bravobravoValue.id+"]'s value: "+found);
+        assertTrue(found.contains(apiMapper.toValue(bravobravoValue, new CycleAvoidingContext())), "missing bravobravo[" + bravobravoValue.id + "]'s value: " + found);
     }
 
     @Test

@@ -1,9 +1,13 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -18,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 @ApplicationScoped
-public class FolderService {
+public class FolderService implements FolderServiceInterface {
 
     @Inject
     EntityManager em;
@@ -27,12 +31,17 @@ public class FolderService {
     @Inject
     WorkService workService;
 
+    @Inject
+    ApiMapper apiMapper;
+
+    @Override
     @Transactional
-    public long create(FolderEntity folder){
-        if(!folder.isPersistent()){
-            FolderEntity.persist(folder);
-        }
-        return folder.id;
+    public long create(String name){
+        FolderEntity entity = new FolderEntity();
+        entity.name = name;
+        entity.group = new NodeGroupEntity(name); //TODO do we auto-create a nodeGroup?
+        FolderEntity.persist(entity);
+        return entity.id;
     }
 
     @Transactional
@@ -40,9 +49,10 @@ public class FolderService {
         return FolderEntity.findById(id);
     }
 
+    @Override
     @Transactional
-    public FolderEntity byName(String name){
-        return (FolderEntity) FolderEntity.find("name",name).firstResult();
+    public Folder byName(String name){
+        return FolderEntity.find("name",name).project(Folder.class).firstResult();
     }
     @Transactional
     public FolderEntity byPath(String path){
@@ -54,6 +64,7 @@ public class FolderService {
         return FolderEntity.listAll();
     }
 
+    @Override
     @Transactional
     public Map<String,Integer> getFolderUploadCount(){
         Map<String,Integer> rtrn = new HashMap<>();
@@ -76,23 +87,27 @@ public class FolderService {
         return rtrn;
     }
 
-
     @Transactional
     public long update(FolderEntity folder){
         FolderEntity.persist(folder);
         return folder.id;
     }
 
+    @Override
     @Transactional
-    public void delete(FolderEntity folder){
-        folder.delete();
+    public long delete(String name){
+        return FolderEntity.delete("name", name);
     }
 
-
+    @Override
     @Transactional
-    public Json structure(FolderEntity folder) {
+    public Json structure(String name) {
+        FolderEntity folder = em.createQuery(
+                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+                FolderEntity.class
+        ).setParameter("name", name).getSingleResult();
+
         Json fullStructure = Json.typeStructure(new Json(false));
-        folder = FolderEntity.findById(folder.id); // deal with detached entity
         NodeEntity root = folder.group.root;
         List<ValueEntity> uploads = valueService.getValues(root);
         for(ValueEntity upload : uploads){
@@ -108,12 +123,13 @@ public class FolderService {
      * At the moment that means replacing all calculated values (no equality checking).
      * @param folder
      */
+    @Override
     @Transactional
-    public void recalculate(FolderEntity folder){
-        folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :folderId",
+    public void recalculate(String name){
+        FolderEntity folder = em.createQuery(
+                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
                 FolderEntity.class
-        ).setParameter("folderId", folder.id).getSingleResult();
+        ).setParameter("name", name).getSingleResult();
         NodeEntity root = folder.group.root;
         List<ValueEntity> rootValues = valueService.getValues(root);
         rootValues.forEach(ValueEntity::getPath); // this fixes the LazyException, por que?
@@ -125,12 +141,14 @@ public class FolderService {
         }
         workService.create(newWorks);
     }
+
+    @Override
     @Transactional
-    public void upload(FolderEntity folder,String path,JsonNode data){
-        folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :folderId",
+    public void upload(String name, String path, JsonNode data){
+        FolderEntity folder = em.createQuery(
+                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
                 FolderEntity.class
-        ).setParameter("folderId", folder.id).getSingleResult();
+        ).setParameter("name", name).getSingleResult();
         ValueEntity newValue = new ValueEntity(folder,folder.group.root,data);
         valueService.create(newValue);
 

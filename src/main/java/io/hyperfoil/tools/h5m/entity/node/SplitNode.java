@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -26,8 +27,8 @@ public class SplitNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.SPLIT;
+    public NodeType type() {
+        return NodeType.SPLIT;
     }
 
     @Override

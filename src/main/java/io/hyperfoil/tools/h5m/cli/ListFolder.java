@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
@@ -15,7 +16,7 @@ public class ListFolder implements Runnable {
     ListCmd listCmd;
 
     @Inject
-    FolderService folderService;
+    FolderServiceInterface folderService;
 
     @Override
     public void run() {

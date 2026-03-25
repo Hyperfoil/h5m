@@ -1,10 +1,9 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.node.JsonataNode;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -21,10 +20,10 @@ public class AddJsonata implements Callable<Integer> {
     @CommandLine.Parameters(index="1",arity="1",description = "jq filter") String jsonata;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @Override
     public Integer call() throws IOException {
@@ -61,22 +60,14 @@ public class AddJsonata implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroupEntity foundGroup =  nodeGroupService.byName(groupName);
+        NodeGroup foundGroup =  nodeGroupService.byName(groupName);
         if(foundGroup == null){
             System.err.println("group not found");
             return 1;
         }
 
-        NodeEntity node = JsonataNode.parse(name,jsonata, n->nodeService.findNodeByFqdn(n, foundGroup.id));
-        if(node == null){
-            System.err.println("cannot create node from jsonata\n"+jsonata);
-            return 1;
-        }
-        node.group = foundGroup;
-        if(node.sources.isEmpty()){
-            node.sources.add(foundGroup.root);
-        }
-        nodeService.create(node);
+        nodeService.create(name, foundGroup.id(), NodeType.JSONATA, jsonata);
+
         return 0;
     }
 

@@ -1,10 +1,11 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.node.JsNode;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -16,10 +17,10 @@ import java.util.concurrent.Callable;
 public class AddJs implements Callable<Integer> {
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @CommandLine.Option(names = {"to"},description = "target group / test" ) String groupName;
 
@@ -54,23 +55,13 @@ public class AddJs implements Callable<Integer> {
             return 1;
         }
 
-        NodeGroupEntity foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if(foundGroup == null){
             System.err.println("unable to find group: "+groupName);
             return 1;
         }
 
-        NodeEntity node = JsNode.parse(name,function, n->nodeService.findNodeByFqdn(n,foundGroup.id));
-        if(node == null){
-            System.err.println("unable to create node from function:\n"+function);
-            return 1;
-        }
-        node.group=foundGroup;
-        if(node.sources.isEmpty()){
-            node.sources.add(foundGroup.root);
-        }
-        nodeService.create(node);
-
+        nodeService.create(name, foundGroup.id(), NodeType.JS, function);
 
         return 0;
     }

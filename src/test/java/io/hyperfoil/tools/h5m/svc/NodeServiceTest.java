@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -48,8 +49,8 @@ public class NodeServiceTest extends FreshDb {
     public void delete_without_group(){
         NodeEntity jqNode = new JqNode("foo",".bar");
         NodeEntity response = nodeService.create(jqNode);
-        nodeService.delete(jqNode);
-        List<NodeEntity> found = nodeService.findNodeByFqdn("foo");
+        nodeService.delete(jqNode.id);
+        List<Node> found = nodeService.findNodeByFqdn("foo");
         assertEquals(0, found.size());
     }
 
@@ -450,7 +451,7 @@ public class NodeServiceTest extends FreshDb {
         node.persist();
         tm.commit();
 
-        List<NodeEntity> found = nodeService.findNodeByFqdn(node.getFqdn());
+        List<Node> found = nodeService.findNodeByFqdn(node.getFqdn());
         assertEquals( 1,found.size());
     }
     @Test
@@ -473,11 +474,11 @@ public class NodeServiceTest extends FreshDb {
 
         tm.commit();
 
-        List<NodeEntity> found = nodeService.findNodeByFqdn(parent.name + FQDN_SEPARATOR + child.name);
+        List<Node> found = nodeService.findNodeByFqdn(parent.name + FQDN_SEPARATOR + child.name);
         assertEquals( 1,found.size());
-        NodeEntity foundNode = found.get(0);
+        Node foundNode = found.getFirst();
         assertNotNull(foundNode);
-        assertEquals(".correct",foundNode.operation);
+        assertEquals(".correct",foundNode.operation());
     }
     @Test
     public void findNodeByFqdn_group_orginal_group_name() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
@@ -492,7 +493,7 @@ public class NodeServiceTest extends FreshDb {
         node.persist();
         tm.commit();
 
-        List<NodeEntity> found = nodeService.findNodeByFqdn(node.getFqdn());
+        List<Node> found = nodeService.findNodeByFqdn(node.getFqdn());
         assertEquals( 1,found.size());
     }
 

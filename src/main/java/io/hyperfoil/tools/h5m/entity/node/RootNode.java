@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -13,8 +14,8 @@ public class RootNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.ROOT;
+    public NodeType type() {
+        return NodeType.ROOT;
     }
 
     //The root node does not shallow copy

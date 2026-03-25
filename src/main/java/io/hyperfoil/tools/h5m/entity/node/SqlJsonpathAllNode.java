@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -65,8 +66,8 @@ public class SqlJsonpathAllNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.SQL_JSONPATH_ALL_NODE;
+    public NodeType type() {
+        return NodeType.SQL_JSONPATH_ALL_NODE;
     }
 
     @Override

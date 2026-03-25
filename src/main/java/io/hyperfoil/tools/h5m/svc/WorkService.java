@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.h5m.queue.WorkQueue;
@@ -18,7 +19,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
-public class WorkService {
+public class WorkService implements WorkServiceInterface {
 
     private static final int RETRY_LIMIT = 0;
 
@@ -65,6 +66,7 @@ public class WorkService {
         }
     }
 
+    @Override
     public boolean terminate(long timeout, TimeUnit unit) throws InterruptedException {
         workExecutor.shutdown();
         return workExecutor.awaitTermination(timeout, unit);

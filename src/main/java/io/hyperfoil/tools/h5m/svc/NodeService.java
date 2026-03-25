@@ -8,8 +8,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
+import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.RelativeDifferenceConfig;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonArray;
 import io.hyperfoil.tools.h5m.pasted.ProxyJacksonObject;
@@ -47,10 +55,11 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
-public class NodeService {
+public class NodeService implements NodeServiceInterface {
 
     private static final Scope JQ_SCOPE;
     private static final ConcurrentHashMap<String, JsonQuery> JQ_CACHE = new ConcurrentHashMap<>();
+
     static {
         JQ_SCOPE = Scope.newEmptyScope();
         BuiltinFunctionLoader.getInstance().loadFunctions(Versions.JQ_1_6, JQ_SCOPE);
@@ -68,6 +77,9 @@ public class NodeService {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    ApiMapper apiMapper;
 
     @Inject
     ValueService valueService;
@@ -91,6 +103,43 @@ public class NodeService {
             return merged;
         }
         return node;
+    }
+
+    @Override
+    @Transactional
+    public Long create(String name, Long groupId, NodeType type, String operation){
+        NodeEntity node = switch (type) {
+            case JQ -> JqNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+            case JS -> JsNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+            case JSONATA -> JsonataNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+            case SQL_JSONPATH_NODE -> SqlJsonpathNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+            case SQL_JSONPATH_ALL_NODE -> SqlJsonpathAllNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+            default -> throw new IllegalArgumentException("Invalid node type " + type.display());
+        };
+        node.group = NodeGroupEntity.findById(groupId);
+        if(node.sources.isEmpty()){
+            node.sources.add(node.group.root);
+        }
+        NodeEntity merged = em.merge(node);
+        em.flush();
+        return merged.id;
+    }
+
+    @Override
+    @Transactional
+    public Long create(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException {
+        NodeEntity node = switch (type) {
+            case FINGERPRINT -> new FingerprintNode(name, "");
+            case FIXED_THRESHOLD -> new FixedThreshold(name, new ObjectMapper().writeValueAsString((FixedThresholdConfig)configuration));
+            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, new ObjectMapper().writeValueAsString((RelativeDifferenceConfig)configuration));
+            default -> throw new IllegalArgumentException("Invalid node type " + type.display());
+        };
+        node.group = NodeGroupEntity.findById(groupId);
+        node.sources = NodeEntity.findByIds(sources);
+
+        NodeEntity merged = em.merge(node);
+        em.flush();
+        return merged.id;
     }
 
     @Transactional
@@ -127,13 +176,13 @@ public class NodeService {
         ).setParameter("sourceId", n.id).getResultList();
     }
 
-
+    @Override
     @Transactional
-    public void delete(NodeEntity node){
-        if(node.id!=null) {
+    public void delete(Long nodeId){
+        if(nodeId!=null) {
             //remove nodes that depend on this or just remove the reference?
-            getDependentNodes(node).forEach(this::delete);
-            NodeEntity.deleteById(node.id);
+            //getDependentNodes(node).forEach(this::delete);
+            NodeEntity.deleteById(nodeId);
         }
     }
 
@@ -1080,60 +1129,67 @@ public class NodeService {
      * @param groupId
      * @return
      */
+    @Override
     @Transactional
-    public List<NodeEntity> findNodeByFqdn(String name,Long groupId){
-        List<NodeEntity> rtrn = new ArrayList<>();
+    public List<Node> findNodeByFqdn(String name,Long groupId){
+        CycleAvoidingContext cycleContext = new CycleAvoidingContext();
+        return internalFindNodeByFqdn(name, groupId).stream().map(entity -> apiMapper.toNode(entity, cycleContext)).toList();
+    }
+
+    private List<NodeEntity> internalFindNodeByFqdn(String name,Long groupId){
         if(name==null || name.isBlank()){
             return List.of();
         }
-        String split[] = name.split(NodeEntity.FQDN_SEPARATOR);
+        String[] split = name.split(NodeEntity.FQDN_SEPARATOR);
         if(split.length==1){
             if(split[0].matches("[0-9]+")){
-                rtrn.add(NodeEntity.findById(Long.parseLong(split[0])));
+                return NodeEntity.findById(Long.parseLong(split[0]));
             } else {
-                rtrn.addAll(NodeEntity.find("from node n where n.group.id=?1 and n.name=?2", groupId, split[0]).list());
+                return NodeEntity.list("from node n where n.group.id=?1 and n.name=?2", groupId, split[0]);
             }
         }else if (split.length==2){
-            rtrn.addAll(NodeEntity.find("from node n where n.group.id=?1 and n.originalGroup.name = ?2 n.name=?3",groupId,split[0],split[1]).list());
+            return NodeEntity.list("from node n where n.group.id=?1 and n.originalGroup.name = ?2 n.name=?3",groupId,split[0],split[1]);
         }
-        return rtrn;
+        return List.of();
     }
 
     @Transactional
-    public List<NodeEntity> findNodeByFqdn(String fqdn){
-        List<NodeEntity> rtrn = new ArrayList<>();
+    public List<Node> findNodeByFqdn(String fqdn){
         if(fqdn==null || fqdn.isBlank()){
             return List.of();
         }
         if(fqdn.contains(NodeEntity.FQDN_SEPARATOR)){
-            String split[] = fqdn.split(NodeEntity.FQDN_SEPARATOR);
+            CycleAvoidingContext cycleContext = new CycleAvoidingContext();
+            String[] split = fqdn.split(NodeEntity.FQDN_SEPARATOR);
             if(split.length==1){
                 if(split[0].matches("[0-9]+")){
-                    rtrn.add(NodeEntity.findById(Long.parseLong(split[0])));
+                    return List.of(apiMapper.toNode(NodeEntity.findById(Long.parseLong(split[0])), cycleContext));
                 }
             }else if(split.length==2){
                 String groupName = split[0];
                 String nodeName = split[1];
-                rtrn.addAll(NodeEntity.find("from node n where n.group.name=?1 and n.name=?2",groupName,nodeName).list());
-                rtrn.addAll(em.createNativeQuery(
+                List<Node> rtrn = new ArrayList<>();
+                rtrn.addAll(NodeEntity.<NodeEntity>stream("from node n where n.group.name=?1 and n.name=?2",groupName,nodeName).map(entity -> apiMapper.toNode(entity, cycleContext)).toList());
+                rtrn.addAll(em.unwrap(Session.class).createNativeQuery(
                     """
-                    select c.* 
+                    select c.*
                     from node c join node_edge ne on c.id = ne.child_id join node p on p.id = ne.parent_id 
                     where c.name=:nodeName and p.name=:parentName
                     """
                     , NodeEntity.class)
                     .setParameter("nodeName",nodeName)
-                    .setParameter("parentName",groupName).getResultList()
+                    .setParameter("parentName",groupName).stream().map(entity -> apiMapper.toNode(entity, cycleContext)).toList()
                 );
+                return rtrn;
             }else if (split.length==3){
                 String groupName = split[0];
                 String originalGroupName = split[1];
                 String nodeName = split[2];
-                rtrn.addAll(NodeEntity.find("from node n where n.group.name=?1 and n.originalGroup.name = ?2 and n.name=?3",groupName,originalGroupName,nodeName).list());
+                return NodeEntity.<NodeEntity>stream("from node n where n.group.name=?1 and n.originalGroup.name = ?2 and n.name=?3",groupName,originalGroupName,nodeName).map(entity -> apiMapper.toNode(entity, cycleContext)).toList();
             }else{
                 //This shouldn't happen
             }
         }
-        return rtrn;
+        return List.of();
     }
 }

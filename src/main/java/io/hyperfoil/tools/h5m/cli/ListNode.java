@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import picocli.CommandLine;
@@ -17,7 +17,7 @@ public class ListNode implements Callable<Integer> {
     ListCmd parent;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @CommandLine.Option(names = {"from"},description = "group name", arity="0..1") String groupName;
 
@@ -30,17 +30,17 @@ public class ListNode implements Callable<Integer> {
             cmd.usage(System.err);
             return 1;
         }
-        NodeGroupEntity nodeGroup = nodeGroupService.byName(groupName);
+        NodeGroup nodeGroup = nodeGroupService.byName(groupName);
         if(nodeGroup == null){
             System.err.println("NodeEntity group "+groupName+" not found");
             return 1;
         }
         System.out.println(
-            ListCmd.table(80,nodeGroup.sources,List.of("name","type","fqdn","operation"),
-                List.of(n->n.name,
+            ListCmd.table(80,nodeGroup.sources(),List.of("name","type","fqdn","operation"),
+                List.of(Node::name,
                 n->n.type().display(),
-                NodeEntity::getFqdn,
-                n->n.operation
+                Node::fqdn,
+                Node::operation
                 )
             )
         );

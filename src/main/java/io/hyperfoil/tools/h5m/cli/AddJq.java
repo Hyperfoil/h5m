@@ -1,10 +1,9 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.node.JqNode;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -21,10 +20,10 @@ public class AddJq implements Callable<Integer> {
     @CommandLine.Parameters(index="1",arity="0..1",description = "jq filter") String jq;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @Override
     public Integer call() throws Exception {
@@ -33,7 +32,7 @@ public class AddJq implements Callable<Integer> {
             System.out.printf("Enter name: ");
             name = sc.nextLine();
         }
-        NodeGroupEntity foundGroup = null;
+        NodeGroup foundGroup;
         do{
             if(groupName == null && H5m.consoleAttached()){
                 System.out.printf("Enter target group / folder name: ");
@@ -66,17 +65,9 @@ public class AddJq implements Callable<Integer> {
             System.out.printf("Enter jq filter: ");
             jq = sc.nextLine();
         }
-        NodeGroupEntity staticFoundGroup = foundGroup;
-        NodeEntity node = JqNode.parse(name,jq, n->nodeService.findNodeByFqdn(n,staticFoundGroup.id));
-        if(node == null){
-            System.err.println("cannot create node from jq="+jq);
-            return 1;
-        }
-        node.group=foundGroup;
-        if(node.sources.isEmpty()){
-            node.sources.add(foundGroup.root);
-        }
-        nodeService.create(node);
+
+        nodeService.create(name, foundGroup.id(), NodeType.JQ, jq);
+
         return 0;
     }
 }

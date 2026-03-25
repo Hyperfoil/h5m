@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.entity;
 
 import com.fasterxml.jackson.annotation.*;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
@@ -15,30 +16,6 @@ import java.util.stream.Collectors;
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "type", discriminatorType =  DiscriminatorType.STRING)
 public abstract class NodeEntity extends PanacheEntity implements Comparable<NodeEntity> {
-
-    public enum Type {
-        FINGERPRINT("fp"),
-        FIXED_THRESHOLD("ft"),
-        JQ("jq"),
-        JS("js"),
-        JSONATA("nata"),
-        RELATIVE_DIFFERENCE("rd"),
-        ROOT("root"),
-        SPLIT("split"),
-        SQL_JSONPATH_ALL_NODE("sql-all"),
-        SQL_JSONPATH_NODE("sql"),
-        USER_INPUT("user");
-
-        private final String display;
-
-        Type(String display) {
-            this.display = display;
-        }
-
-        public String display() {
-            return display;
-        }
-    }
 
     public static String FQDN_SEPARATOR = ":";
     public static String NAME_SEPARATOR = "=";
@@ -153,10 +130,10 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     protected abstract NodeEntity shallowCopy();
 
-    public abstract Type type();
+    public abstract NodeType type();
 
     public boolean hasNonRootSource(){
-        return sources.stream().anyMatch(s-> s.type() != Type.ROOT);
+        return sources.stream().anyMatch(s-> s.type() != NodeType.ROOT);
     }
 
     public NodeEntity copy(){

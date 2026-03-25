@@ -2,8 +2,12 @@ package io.hyperfoil.tools.h5m.cli;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
+import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.svc.*;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
@@ -11,7 +15,7 @@ import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
+import jakarta.persistence.NoResultException;
 import picocli.AutoComplete;
 import picocli.CommandLine;
 
@@ -27,19 +31,19 @@ import java.util.concurrent.TimeUnit;
 public class H5m implements QuarkusApplication {
 
     //@Inject
-    FolderService folderService;
+    FolderServiceInterface folderService;
 
     //@Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     //@Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     //@Inject
-    ValueService valueService;
+    ValueServiceInterface valueService;
 
     //@Inject
-    WorkService workService;
+    WorkServiceInterface workService;
 
     public static boolean consoleAttached(){
         return System.console() != null;
@@ -59,23 +63,23 @@ public class H5m implements QuarkusApplication {
 
     @CommandLine.Command(name="structure",description = "use yaup to compute the structure of a folder",aliases = {"shape"}, mixinStandardHelpOptions = true)
     public int structure(String folderName){
-        FolderEntity found = folderService.byName(folderName);
-        if(found == null){
+        try {
+            Json structure = folderService.structure(folderName);
+            System.out.println(structure.toString(2));
+        } catch (NoResultException e) {
             System.err.println("could not find folder "+folderName);
             return 1;
         }
-        Json structure = folderService.structure(found);
-        System.out.println(structure.toString(2));
         return 0;
     }
     @CommandLine.Command(name="recalculate",description = "recalculate values for all entries in folder")
-    public int recalculate(String folderName) throws InterruptedException {
-        FolderEntity folder = folderService.byName(folderName);
-        if(folder == null){
+    public int recalculate(String folderName){
+        try {
+            folderService.recalculate(folderName);
+        } catch (NoResultException e) {
             System.err.println("could not find folder "+folderName);
             return 1;
         }
-        folderService.recalculate(folder);
         return 0;
     }
     @CommandLine.Command(name="upload",description = "")
@@ -85,7 +89,7 @@ public class H5m implements QuarkusApplication {
             @CommandLine.Option(names = {"to"},description = "grouping node" ,arity = "1")
             String folderName
     ){
-        FolderEntity folder = folderService.byName(folderName);
+        Folder folder = folderService.byName(folderName);
         if(folder == null){
             System.err.println("could not find folder "+folderName);
             return 1;
@@ -104,7 +108,12 @@ public class H5m implements QuarkusApplication {
                 }
                 JsonNode read = objectMapper.readTree(f);
                 if(read!=null){
-                    folderService.upload(folder,f.getPath(),read);
+                    try {
+                        folderService.upload(folderName, f.getPath(), read);
+                    } catch (NoResultException e) {
+                        System.err.println("could not find folder " + folderName);
+                        return 1;
+                    }
                 }else{
                     System.err.println(f.getPath()+" could not be loaded as json");
                 }

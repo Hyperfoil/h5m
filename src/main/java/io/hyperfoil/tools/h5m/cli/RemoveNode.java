@@ -1,7 +1,8 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.svc.NodeService;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -12,7 +13,7 @@ import java.util.concurrent.Callable;
 public class RemoveNode implements Callable<Integer> {
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
     @CommandLine.Parameters(index="0",arity="1",description = "node name") String name;
 
@@ -20,20 +21,17 @@ public class RemoveNode implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-
-        if(groupName != null){
-            name = groupName + NodeEntity.FQDN_SEPARATOR + name;
-        }
-        List<NodeEntity> found = nodeService.findNodeByFqdn(name);
+        String fqdn = groupName == null ? name : groupName + NodeEntity.FQDN_SEPARATOR + name;
+        List<Node> found = nodeService.findNodeByFqdn(fqdn);
         if(found==null || found.isEmpty()) {
-            System.err.println("could not find " + name);
+            System.err.println("could not find " + fqdn);
             return 1;
         }else if (found.size()>1){
             System.err.println("found too many matching nodes");
             found.forEach(System.out::println);
             return 1;
         }else{
-            nodeService.delete(found.get(0));
+            nodeService.delete(found.getFirst().id());
         }
         return 0;
     }

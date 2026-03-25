@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.svc.NodeGroupService;
-import io.hyperfoil.tools.h5m.svc.NodeService;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -16,10 +16,10 @@ public class AddSplit  implements Callable<Integer> {
     @CommandLine.Parameters(index="1",arity="1",description = "operation") String operation;
 
     @Inject
-    NodeGroupService nodeGroupService;
+    NodeGroupServiceInterface nodeGroupService;
 
     @Inject
-    NodeService nodeService;
+    NodeServiceInterface nodeService;
 
 
     @Override
@@ -32,7 +32,7 @@ public class AddSplit  implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroupEntity foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if(foundGroup == null){
             System.err.println("could not find target group/test "+groupName);
             return 1;

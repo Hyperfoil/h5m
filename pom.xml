@@ -60,6 +60,7 @@
         <lib.jdbi>3.41.3</lib.jdbi>
         <lib.jmh>1.37</lib.jmh>
         <lib.jsonata>2.6.2</lib.jsonata>
+        <lib.mapstruct>1.6.3</lib.mapstruct>
         <lib.math3>3.6.1</lib.math3>
         <lib.yaup>0.9.11</lib.yaup>
 
@@ -72,6 +73,7 @@
 
         <!-- quarkiverse -->
         <quarkiverse.jdbc-sqlite>3.0.11</quarkiverse.jdbc-sqlite>
+        <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
 
         <!-- quarkus (quarkus.platform.version defined in .mvn/maven.config) -->
         <quarkus.graalvm.version>25.0.2</quarkus.graalvm.version>
@@ -116,6 +118,11 @@
             <groupId>io.quarkiverse.jdbc</groupId>
             <artifactId>quarkus-jdbc-sqlite</artifactId>
             <version>${quarkiverse.jdbc-sqlite}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkiverse.mapstruct</groupId>
+            <artifactId>quarkus-mapstruct</artifactId>
+            <version>${quarkiverse.mapstruct}</version>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -189,6 +196,11 @@
             <groupId>org.jdbi</groupId>
             <artifactId>jdbi3-core</artifactId>
             <version>${lib.jdbi}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>${lib.mapstruct}</version>
         </dependency>
         <dependency>
             <groupId>org.graalvm.sdk</groupId>
@@ -284,6 +296,11 @@
                             <groupId>org.openjdk.jmh</groupId>
                             <artifactId>jmh-generator-annprocess</artifactId>
                             <version>${lib.jmh}</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${lib.mapstruct}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

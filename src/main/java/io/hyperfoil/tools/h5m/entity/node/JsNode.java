@@ -3,6 +3,7 @@ package io.hyperfoil.tools.h5m.entity.node;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import jakarta.persistence.DiscriminatorValue;
@@ -161,8 +162,8 @@ public class JsNode extends NodeEntity {
     }
 
     @Override
-    public Type type() {
-        return Type.JS;
+    public NodeType type() {
+        return NodeType.JS;
     }
 
     @Override

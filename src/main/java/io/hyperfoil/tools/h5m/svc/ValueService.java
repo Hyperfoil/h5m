@@ -1,8 +1,12 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.h5m.api.Value;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
@@ -20,9 +24,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @ApplicationScoped
-public class ValueService {
+public class ValueService implements ValueServiceInterface {
 
     @Inject
     EntityManager em;
@@ -31,12 +36,15 @@ public class ValueService {
 //    @Named("duckdb")
 //    AgroalDataSource duckDatasource;
 
+    @Inject
+    ApiMapper apiMapper;
+
     @ConfigProperty(name="quarkus.datasource.db-kind")
     String dbKind;
     @Inject
     NodeService nodeService;
 
-
+    @Override
     @Transactional
     public void purgeValues(){
         em.createNativeQuery("delete from Value").executeUpdate();
@@ -390,9 +398,10 @@ public class ValueService {
      * @param groupBy
      * @return
      */
+    @Override
     @Transactional
     //TODO here thar be dragons
-    public List<JsonNode> getGroupedValues(NodeEntity groupBy){
+    public List<JsonNode> getGroupedValues(Long nodeId){
         return em.unwrap(Session.class).createNativeQuery(
             switch(dbKind) {
                 case "sqlite" ->
@@ -429,17 +438,17 @@ public class ValueService {
                     """;
             default ->"";
             }, JsonNode.class
-        ).setParameter("nodeId",groupBy.id).getResultList();
+        ).setParameter("nodeId",nodeId).getResultList();
     }
     /**
      * get all value that have a value from node as an ancestor
-     * @param node
+     * @param nodeId
      * @return
      */
     @Transactional
-    public List<ValueEntity> getDescendantValues(NodeEntity node){
-        List<ValueEntity> rtrn = new ArrayList<>();
-        rtrn.addAll(em.createNativeQuery(
+    public List<Value> getNodeDescendantValues(Long nodeId){
+        CycleAvoidingContext cycleContext = new CycleAvoidingContext();
+        return em.unwrap(Session.class).createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
                      SELECT ve.child_id from value_edge ve where ve.parent_id in (select v.id from value v where v.node_id = :nodeId)
@@ -448,8 +457,7 @@ public class ValueService {
                 )
                 SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id
                 """, ValueEntity.class
-        ).setParameter("nodeId",node.id).getResultList());
-        return rtrn;
+        ).setParameter("nodeId",nodeId).getResultStream().map(entity -> apiMapper.toValue(entity, cycleContext)).toList();
     }
     /**
      * returns the values that depend on the root value somewhere up the hierarchy and come from the specified node
