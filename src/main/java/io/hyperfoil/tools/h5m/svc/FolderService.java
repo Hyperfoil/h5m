@@ -152,24 +152,6 @@ public class FolderService implements FolderServiceInterface {
         ValueEntity newValue = new ValueEntity(folder,folder.group.root,data);
         valueService.create(newValue);
 
-        //do we only queue the top level and let new values queue the remaining?
-        //that would match the re-calculation workflow
-        //or do we rely on workQueue for de-duplication?
-/*
-        folder.group.getTopLevelNodes().forEach(source ->{
-            Work newWork = new Work(source,new ArrayList<>(source.sources),List.of(newValue));
-            workService.create(newWork);
-            workQueue.addWork(newWork);
-        });
-*/
-        //List.copyOf is a hack to get around ConcurrentModificationException that is likely due to using entity list and panache setSources
-//        List<Work> toQueue = List.copyOf(folder.group.sources).stream().map(source -> {
-//            Work newWork = new Work(source,new ArrayList<>(source.sources),List.of(newValue));
-//            workService.create(newWork);
-//            return newWork;
-//        }).toList();
-//        workQueue.addWorks(toQueue);
-
         workService.create(List.copyOf(folder.group.sources).stream().map(source -> new Work(source, new ArrayList<>(source.sources), List.of(newValue))).toList());
     }
 }

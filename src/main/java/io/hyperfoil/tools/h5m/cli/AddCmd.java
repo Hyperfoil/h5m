@@ -18,6 +18,7 @@ import java.util.concurrent.Callable;
         AddSplit.class,
         AddRelativeDifference.class,
         AddFixedThreshold.class,
+        AddNotification.class,
     }
 )
 public class AddCmd implements Callable<Integer> {
