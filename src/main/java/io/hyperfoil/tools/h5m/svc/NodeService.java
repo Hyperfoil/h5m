@@ -90,6 +90,8 @@ public class NodeService implements NodeServiceInterface {
     NodeGroupService nodeGroupService;
     @Inject
     FolderService folderService;
+    @Inject
+    NotificationService notificationService;
 
 
     @Transactional
@@ -132,6 +134,7 @@ public class NodeService implements NodeServiceInterface {
             case FINGERPRINT -> new FingerprintNode(name, "");
             case FIXED_THRESHOLD -> new FixedThreshold(name, new ObjectMapper().writeValueAsString((FixedThresholdConfig)configuration));
             case RELATIVE_DIFFERENCE -> new RelativeDifference(name, new ObjectMapper().writeValueAsString((RelativeDifferenceConfig)configuration));
+            case NOTIFICATION -> new io.hyperfoil.tools.h5m.entity.node.NotificationNode(name, null);
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -336,6 +339,19 @@ public class NodeService implements NodeServiceInterface {
                 for(int rIdx=0; rIdx<roots.size(); rIdx++){
                     ValueEntity root =  roots.get(rIdx);
                     rtrn.addAll(calculateFixedThresholdValues(ft,root,rtrn.size()));
+                }
+                break;
+            case NOTIFICATION:
+                io.hyperfoil.tools.h5m.entity.node.NotificationNode notifNode = (io.hyperfoil.tools.h5m.entity.node.NotificationNode) node;
+                for(int rIdx=0; rIdx<roots.size(); rIdx++){
+                    ValueEntity root = roots.get(rIdx);
+                    List<ValueEntity> detectionValues = new ArrayList<>();
+                    for(NodeEntity sourceNode : notifNode.getMonitoredNodes()){
+                        detectionValues.addAll(valueService.getDescendantValues(root, sourceNode));
+                    }
+                    if(!detectionValues.isEmpty()){
+                        notificationService.notify(root.folder, notifNode, detectionValues);
+                    }
                 }
                 break;
             default:

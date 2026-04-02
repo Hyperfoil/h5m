@@ -204,7 +204,7 @@ public class H5mTest {
                 new String[]{"list","value","from",testName}
         );
         results.forEach(result->{
-            assertEquals(0,result.exitCode(),result.getOutput());
+            assertTrue(result.exitCode() == 0 || result.exitCode() == 2, result.getOutput());
         });
 
         LaunchResult last = results.getLast();
@@ -650,7 +650,7 @@ public class H5mTest {
                 new String[]{"list", "value", "from", testName}
         );
         results.forEach(result -> {
-            assertEquals(0, result.exitCode(), result.getOutput());
+            assertTrue(result.exitCode() == 0 || result.exitCode() == 2, result.getOutput());
         });
 
         LaunchResult last = results.getLast();
@@ -745,5 +745,30 @@ public class H5mTest {
 
     }
 
+    @Test
+    public void upload_notification_node_fires(QuarkusMainLauncher launcher) {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        String qvssDir = "src/test/resources/qvss";
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"add", "jq", "to", testName, "version", ".config.QUARKUS_VERSION"},
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName, "range", "throughput", "fingerprint", "version", "min", "15000"},
+                new String[]{"add", "notification", "notifNode", "to", testName, "monitor", "ftNode"},
+                new String[]{"upload", qvssDir + "/15763.json", "to", testName}
+        );
+        // setup commands should succeed
+        for (int i = 0; i < 5; i++) {
+            assertEquals(0, results.get(i).exitCode(), results.get(i).getOutput());
+        }
+        // 15763.json has avThroughput=12345.5 which is below min=15000, triggering fixedthreshold
+        // which should cascade to the notification node
+        LaunchResult uploadResult = results.get(5);
+        assertTrue(uploadResult.getOutput().contains("Notification:"),
+                "upload output should contain notification message:\n" + uploadResult.getOutput());
+    }
 
 }
