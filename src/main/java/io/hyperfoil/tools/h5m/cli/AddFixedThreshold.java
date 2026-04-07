@@ -119,8 +119,8 @@ public class AddFixedThreshold implements Callable<Integer> {
             }
         }
 
-        Long fingerprintId = nodeService.create("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
-        nodeService.create(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
+        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        nodeService.createConfigured(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
 
         return 0;
     }
