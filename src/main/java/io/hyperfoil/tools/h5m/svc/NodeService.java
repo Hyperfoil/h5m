@@ -176,12 +176,32 @@ public class NodeService implements NodeServiceInterface {
         ).setParameter("sourceId", n.id).getResultList();
     }
 
+    @Transactional
+    public long getNodeParentCount(NodeEntity node){
+        return EdgeQueries.getParentCount(em, "node_edge", node.id);
+    }
+
+    @Transactional
+    public Map<Long, Long> getNodeParentCounts(List<Long> childIds){
+        return EdgeQueries.getParentCounts(em, "node_edge", childIds);
+    }
+
     @Override
     @Transactional
     public void delete(Long nodeId){
         if(nodeId!=null) {
-            //remove nodes that depend on this or just remove the reference?
-            //getDependentNodes(node).forEach(this::delete);
+            NodeEntity node = NodeEntity.findById(nodeId);
+            if(node == null) return;
+            List<NodeEntity> dependents = getDependentNodes(node);
+            Map<Long, Long> parentCounts = getNodeParentCounts(dependents.stream().map(n -> n.id).toList());
+            for(NodeEntity dependent : dependents){
+                long parentCount = parentCounts.getOrDefault(dependent.id, 0L);
+                if(parentCount <= 1){
+                    delete(dependent.id);
+                }
+            }
+            // clean up edge rows where this node is a parent (inverse side not managed by JPA)
+            EdgeQueries.deleteParentEdges(em, "node_edge", nodeId);
             NodeEntity.deleteById(nodeId);
         }
     }

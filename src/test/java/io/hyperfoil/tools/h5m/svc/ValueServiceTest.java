@@ -16,6 +16,7 @@ import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.*;
 import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Disabled;
@@ -40,6 +41,9 @@ public class ValueServiceTest extends FreshDb {
     @Inject
     TransactionManager tm;
 
+    @Inject
+    EntityManager em;
+
     @Test
     public void delete_does_not_cascade_and_delete_ancestor() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         tm.begin();
@@ -63,6 +67,216 @@ public class ValueServiceTest extends FreshDb {
         assertNotNull(found);
     }
 
+
+    @Test
+    public void delete_does_not_cascade_to_shared_child() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a",".a");
+        aNode.sources=List.of(rootNode);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b",".b");
+        bNode.sources=List.of(rootNode);
+        bNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        rootValue.persist();
+        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        aValue.sources=List.of(rootValue);
+        aValue.persist();
+        ValueEntity bValue = new ValueEntity(null,bNode,new TextNode("b"));
+        bValue.sources=List.of(rootValue);
+        bValue.persist();
+        // X is shared: both aValue and bValue are parents
+        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        xValue.sources=List.of(aValue, bValue);
+        xValue.persist();
+        tm.commit();
+
+        tm.begin();
+        valueService.delete(aValue);
+        tm.commit();
+
+        // X should still exist because bValue is still a parent
+        ValueEntity foundX = ValueEntity.findById(xValue.id);
+        assertNotNull(foundX, "shared child X should not be deleted when one parent is removed");
+        // bValue should still exist
+        ValueEntity foundB = ValueEntity.findById(bValue.id);
+        assertNotNull(foundB, "bValue should still exist");
+    }
+
+    @Test
+    public void delete_cascades_to_exclusive_child() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a",".a");
+        aNode.sources=List.of(rootNode);
+        aNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        rootValue.persist();
+        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        aValue.sources=List.of(rootValue);
+        aValue.persist();
+        // X has only aValue as parent
+        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        xValue.sources=List.of(aValue);
+        xValue.persist();
+        tm.commit();
+
+        tm.begin();
+        valueService.delete(aValue);
+        tm.commit();
+
+        // X should be deleted because aValue was its only parent
+        ValueEntity foundX = ValueEntity.findById(xValue.id);
+        assertNull(foundX, "exclusive child X should be deleted when its only parent is removed");
+    }
+
+    @Test
+    public void delete_mixed_shared_and_exclusive() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a",".a");
+        aNode.sources=List.of(rootNode);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b",".b");
+        bNode.sources=List.of(rootNode);
+        bNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        rootValue.persist();
+        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        aValue.sources=List.of(rootValue);
+        aValue.persist();
+        ValueEntity bValue = new ValueEntity(null,bNode,new TextNode("b"));
+        bValue.sources=List.of(rootValue);
+        bValue.persist();
+        // X is shared between aValue and bValue
+        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        xValue.sources=List.of(aValue, bValue);
+        xValue.persist();
+        // Y is exclusive to aValue
+        ValueEntity yValue = new ValueEntity(null,aNode,new TextNode("y"));
+        yValue.sources=List.of(aValue);
+        yValue.persist();
+        tm.commit();
+
+        tm.begin();
+        valueService.delete(aValue);
+        tm.commit();
+
+        // X should survive (shared with bValue)
+        ValueEntity foundX = ValueEntity.findById(xValue.id);
+        assertNotNull(foundX, "shared child X should survive");
+        // Y should be deleted (exclusive to aValue)
+        ValueEntity foundY = ValueEntity.findById(yValue.id);
+        assertNull(foundY, "exclusive child Y should be deleted");
+    }
+
+    @Test
+    public void deleteDescendantValues_preserves_shared_descendants() throws Exception {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a", ".a");
+        aNode.sources = List.of(rootNode);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b", ".b");
+        bNode.sources = List.of(rootNode);
+        bNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null, rootNode, new TextNode("root"));
+        rootValue.persist();
+        ValueEntity aValue = new ValueEntity(null, aNode, new TextNode("a"));
+        aValue.sources = List.of(rootValue);
+        aValue.persist();
+        ValueEntity bValue = new ValueEntity(null, bNode, new TextNode("b"));
+        bValue.sources = List.of(rootValue);
+        bValue.persist();
+        // shared: child of both aValue and bValue
+        ValueEntity sharedValue = new ValueEntity(null, aNode, new TextNode("shared"));
+        sharedValue.sources = List.of(aValue, bValue);
+        sharedValue.persist();
+        // exclusive: child of aValue only
+        ValueEntity exclusiveValue = new ValueEntity(null, aNode, new TextNode("exclusive"));
+        exclusiveValue.sources = List.of(aValue);
+        exclusiveValue.persist();
+        tm.commit();
+
+        tm.begin();
+        int deleted = valueService.deleteDescendantValues(rootValue, aNode);
+        // verify within same transaction using native SQL to bypass L1 cache
+        long aCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", aValue.id).getSingleResult()).longValue();
+        long exclusiveCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", exclusiveValue.id).getSingleResult()).longValue();
+        long sharedCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", sharedValue.id).getSingleResult()).longValue();
+        tm.commit();
+
+        // aValue (parentCount=1) and exclusiveValue (parentCount=1) should be deleted
+        // sharedValue (parentCount=2 from aValue+bValue) should survive
+        assertEquals(0, aCount, "aValue should be deleted (single parent)");
+        assertEquals(0, exclusiveCount, "exclusive descendant should be deleted");
+        assertEquals(1, sharedCount, "shared descendant should survive");
+        assertEquals(2, deleted, "aValue and exclusiveValue should be deleted");
+    }
+
+    @Test
+    public void purge_removes_subtree_preserves_external() throws Exception {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a", ".a");
+        aNode.sources = List.of(rootNode);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b", ".b");
+        bNode.sources = List.of(rootNode);
+        bNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null, rootNode, new TextNode("root"));
+        rootValue.persist();
+        // aValue is the purge target
+        ValueEntity aValue = new ValueEntity(null, aNode, new TextNode("a"));
+        aValue.sources = List.of(rootValue);
+        aValue.persist();
+        ValueEntity bValue = new ValueEntity(null, bNode, new TextNode("b"));
+        bValue.sources = List.of(rootValue);
+        bValue.persist();
+        // child only reachable via aValue
+        ValueEntity childOfA = new ValueEntity(null, aNode, new TextNode("childOfA"));
+        childOfA.sources = List.of(aValue);
+        childOfA.persist();
+        // shared child with external parent bValue
+        ValueEntity sharedChild = new ValueEntity(null, aNode, new TextNode("shared"));
+        sharedChild.sources = List.of(aValue, bValue);
+        sharedChild.persist();
+        tm.commit();
+
+        tm.begin();
+        int purged = valueService.purge(aValue);
+        long aCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", aValue.id).getSingleResult()).longValue();
+        long childCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", childOfA.id).getSingleResult()).longValue();
+        long sharedCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", sharedChild.id).getSingleResult()).longValue();
+        long bCount = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM value WHERE id = :id")
+                .setParameter("id", bValue.id).getSingleResult()).longValue();
+        tm.commit();
+
+        // aValue and childOfA should be gone
+        assertEquals(0, aCount, "purge target should be deleted");
+        assertEquals(0, childCount, "exclusive child should be deleted");
+        // shared child and bValue should survive
+        assertEquals(1, sharedCount, "shared child should survive (external parent bValue)");
+        assertEquals(1, bCount, "bValue should survive");
+        assertEquals(2, purged, "should delete aValue (root) + childOfA (exclusive) = 2");
+    }
 
     @Test
     public void lazy_data() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {

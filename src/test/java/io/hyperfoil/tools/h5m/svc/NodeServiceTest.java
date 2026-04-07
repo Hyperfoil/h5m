@@ -75,6 +75,35 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
+    public void delete_does_not_cascade_to_shared_dependent() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity sourceA = new JqNode("sourceA",".a");
+        sourceA.sources=List.of(rootNode);
+        sourceA.persist();
+        NodeEntity sourceB = new JqNode("sourceB",".b");
+        sourceB.sources=List.of(rootNode);
+        sourceB.persist();
+        // sharedNode has both sourceA and sourceB as parents
+        NodeEntity sharedNode = new JqNode("shared",".shared");
+        sharedNode.sources=List.of(sourceA, sourceB);
+        sharedNode.persist();
+        tm.commit();
+
+        tm.begin();
+        nodeService.delete(sourceA.id);
+        tm.commit();
+
+        // sharedNode should still exist because sourceB is still a parent
+        NodeEntity foundShared = NodeEntity.findById(sharedNode.id);
+        assertNotNull(foundShared, "shared node should not be deleted when one source is removed");
+        // sourceB should still exist
+        NodeEntity foundB = NodeEntity.findById(sourceB.id);
+        assertNotNull(foundB, "sourceB should still exist");
+    }
+
+    @Test
     public void renameParameters_spaced_parameters() {
         assertEquals("function foo( biz , buz ){}", nodeService.renameParameters("function foo( fiz , fuzz ){}", Map.of("fiz", "biz", "fuzz", "buz")));
     }
