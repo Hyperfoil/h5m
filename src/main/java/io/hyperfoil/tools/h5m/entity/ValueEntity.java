@@ -56,10 +56,11 @@ public class ValueEntity extends PanacheEntity {
             name="value_edge",
             joinColumns = @JoinColumn(name = "child_id"),
             inverseJoinColumns = @JoinColumn(name = "parent_id"),
-            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"}),
+            indexes = @Index(name = "idx_value_edge_parent", columnList = "parent_id")
     )
     @OrderColumn(name = "idx")
-    @BatchSize(size = 25)
+    @BatchSize(size = 100)
     public List<ValueEntity> sources;
 
     public ValueEntity(){
