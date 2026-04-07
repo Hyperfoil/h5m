@@ -1,5 +1,8 @@
 package io.hyperfoil.tools.h5m.api;
 
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+
+@Schema(description = "The type of transformation a node performs")
 public enum NodeType {
     FINGERPRINT("fp"),
     FIXED_THRESHOLD("ft"),

@@ -3,67 +3,55 @@ package io.hyperfoil.tools.h5m.api.svc;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.yaup.json.Json;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.Map;
 
-/**
- * Service interface for managing Folders.
- */
+@Path("/api/folder")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@Tag(name = "Folder", description = "Manage folders for uploaded data")
 public interface FolderServiceInterface {
 
-    /**
-     * Retrieves a folder by its name.
-     *
-     * @param name The name of the folder.
-     * @return The folder with the given name.
-     */
-    Folder byName(String name);
+    @GET
+    @Path("{name}")
+    @Operation(description = "Retrieve a folder by its name")
+    Folder byName(@PathParam("name") String name);
 
-    /**
-     * Gets the upload count for all folders.
-     *
-     * @return A map of folder names to their upload counts.
-     */
+    @GET
+    @Operation(description = "Get the upload count for all folders")
     Map<String, Integer> getFolderUploadCount();
 
-    /**
-     * Creates a new folder with the given name.
-     *
-     * @param name The name of the folder to create.
-     * @return The ID of the created folder.
-     */
-    long create(String name);
+    @POST
+    @Path("{name}")
+    @Operation(description = "Create a new folder")
+    long create(@PathParam("name") String name);
 
-    /**
-     * Deletes a folder by its name.
-     *
-     * @param name The name of the folder to delete.
-     * @return The ID of the deleted folder.
-     */
-    long delete(String name);
+    @DELETE
+    @Path("{name}")
+    @Operation(description = "Delete a folder by its name")
+    long delete(@PathParam("name") String name);
 
-    /**
-     * Uploads data to a specific path within a folder.
-     *
-     * @param name The name of the folder.
-     * @param path The path within the folder.
-     * @param data The JSON data to upload.
-     */
-    void upload(String name, String path, JsonNode data);
+    @POST
+    @Path("{name}/upload")
+    @Operation(description = "Upload JSON data to a folder")
+    void upload(
+            @PathParam("name") String name,
+            @QueryParam("path") @Parameter(description = "Path within the folder") String path,
+            JsonNode data);
 
-    /**
-     * Recalculates the contents or state of a folder by its name.
-     *
-     * @param name The name of the folder to recalculate.
-     */
-    void recalculate(String name);
+    @POST
+    @Path("{name}/recalculate")
+    @Operation(description = "Recalculate all values in a folder")
+    void recalculate(@PathParam("name") String name);
 
-    /**
-     * Retrieves the structural representation of a folder.
-     *
-     * @param name The name of the folder.
-     * @return The JSON representation of the folder's structure.
-     */
-    Json structure(String name);
+    @GET
+    @Path("{name}/structure")
+    @Operation(description = "Get the structural representation of a folder")
+    Json structure(@PathParam("name") String name);
 
 }

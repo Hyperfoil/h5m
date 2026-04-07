@@ -129,9 +129,9 @@ public class AddRelativeDifference implements Callable<Integer> {
             }
         }
 
-        Long fingerprintId = nodeService.create("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
         List<Long> sources = domainNode == null ? List.of(fingerprintId, groupByNode.id(), rangeNode.id()) : List.of(fingerprintId, groupByNode.id(), rangeNode.id(), domainNode.id());
-        nodeService.create(name, foundGroup.id(), NodeType.RELATIVE_DIFFERENCE, sources, new RelativeDifferenceConfig(filter, threshold, window, minPrevious, fingerprintFilter));
+        nodeService.createConfigured(name, foundGroup.id(), NodeType.RELATIVE_DIFFERENCE, sources, new RelativeDifferenceConfig(filter, threshold, window, minPrevious, fingerprintFilter));
 
         return 0;
     }

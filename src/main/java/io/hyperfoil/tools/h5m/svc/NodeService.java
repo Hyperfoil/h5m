@@ -75,6 +75,8 @@ public class NodeService implements NodeServiceInterface {
         return compiled;
     }
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Inject
     EntityManager em;
 
@@ -127,11 +129,11 @@ public class NodeService implements NodeServiceInterface {
 
     @Override
     @Transactional
-    public Long create(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException {
+    public Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException {
         NodeEntity node = switch (type) {
             case FINGERPRINT -> new FingerprintNode(name, "");
-            case FIXED_THRESHOLD -> new FixedThreshold(name, new ObjectMapper().writeValueAsString((FixedThresholdConfig)configuration));
-            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, new ObjectMapper().writeValueAsString((RelativeDifferenceConfig)configuration));
+            case FIXED_THRESHOLD -> new FixedThreshold(name, OBJECT_MAPPER.writeValueAsString((FixedThresholdConfig)configuration));
+            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, OBJECT_MAPPER.writeValueAsString((RelativeDifferenceConfig)configuration));
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -484,8 +486,7 @@ public class NodeService implements NodeServiceInterface {
                                 assert cv != null;
                                 Double prevData = converted.get((int)relDiff.getWindow()-1);
                                 Double lastData = cv;
-                                ObjectMapper mapper = new ObjectMapper();
-                                ObjectNode data = mapper.createObjectNode();
+                                ObjectNode data = OBJECT_MAPPER.createObjectNode();
                                 data.set("previous",new DoubleNode(prevData));
                                 data.set("last",new DoubleNode(lastData));
                                 data.set("value",new DoubleNode(value));
@@ -564,8 +565,7 @@ public class NodeService implements NodeServiceInterface {
                 }
 
                 if (violationType != null) {
-                    ObjectMapper mapper = new ObjectMapper();
-                    ObjectNode data = mapper.createObjectNode();
+                    ObjectNode data = OBJECT_MAPPER.createObjectNode();
                     data.set("value", new DoubleNode(numericValue));
                     data.set("bound", new DoubleNode(bound));
                     data.put("direction", violationType.label());
@@ -810,9 +810,8 @@ public class NodeService implements NodeServiceInterface {
                             //TODO do we support splitting an array into multiple Values?
                             data = (JsonNode) result;
                         }else{//scalar
-                            ObjectMapper mapper = new ObjectMapper();
                             try {
-                                data = mapper.readTree(result.toString());
+                                data = OBJECT_MAPPER.readTree(result.toString());
                             } catch (JsonProcessingException e) {
                                 System.err.println("failed to convert "+result+" to a javascript object");
                             }
@@ -884,7 +883,6 @@ public class NodeService implements NodeServiceInterface {
     }
     //copied from io.hyperfoil.tools.horreum.exp.pasted.ExpUtil#convert but changed to return JsonNode
     public static JsonNode convert(org.graalvm.polyglot.Value value) throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
         if (value == null) {
             return null;
         } else if (value.isNull()) {
@@ -903,7 +901,7 @@ public class NodeService implements NodeServiceInterface {
             } else {
                 //not sure when this would happend
                 System.err.println("Unexpected proxy object: "+p);
-                return mapper.readTree(p.toString());
+                return OBJECT_MAPPER.readTree(p.toString());
             }
         } else if (value.isBoolean()) {
             return BooleanNode.valueOf(value.asBoolean());
@@ -988,8 +986,7 @@ public class NodeService implements NodeServiceInterface {
 
     @Transactional
     public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode fpObject = mapper.createObjectNode();
+        ObjectNode fpObject = OBJECT_MAPPER.createObjectNode();
         TreeMap<String, JsonNode> sorted = new TreeMap<>();
         for (NodeEntity source : node.sources) {
             if (sourceValues.containsKey(source.name)) {
@@ -1066,8 +1063,7 @@ public class NodeService implements NodeServiceInterface {
         if (isNullInput) {
             input = NullNode.getInstance();
         } else if (isSlurp) {
-            ObjectMapper mapper = new ObjectMapper();
-            ArrayNode slurped = mapper.createArrayNode();
+            ArrayNode slurped = OBJECT_MAPPER.createArrayNode();
             sourceData.forEach(slurped::add);
             input = slurped;
         } else {
@@ -1153,6 +1149,7 @@ public class NodeService implements NodeServiceInterface {
         return List.of();
     }
 
+    @Override
     @Transactional
     public List<Node> findNodeByFqdn(String fqdn){
         if(fqdn==null || fqdn.isBlank()){
