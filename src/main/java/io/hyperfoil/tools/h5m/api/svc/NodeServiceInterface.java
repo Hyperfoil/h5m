@@ -3,8 +3,6 @@ package io.hyperfoil.tools.h5m.api.svc;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 
@@ -22,7 +20,7 @@ public interface NodeServiceInterface {
      * @param operation The operation associated with the node.
      * @return The ID of the created node.
      */
-    Long create(@NotEmpty String name, @NotNull Long groupId, @NotNull NodeType type, String operation);
+    Long create(String name, Long groupId, NodeType type, String operation);
 
     /**
      * Creates a new node with sources and configuration.
@@ -35,22 +33,14 @@ public interface NodeServiceInterface {
      * @return The ID of the created node.
      * @throws JsonProcessingException If there is an error processing the configuration JSON.
      */
-    Long create(@NotEmpty String name, @NotNull Long groupId, @NotNull NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException;
+    Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException;
 
     /**
-     * Deletes a node by its mode ID.
+     * Deletes a node by its ID.
      *
-     * @param modeId The mode ID to delete.
+     * @param nodeId The ID of the node to delete.
      */
-    void delete(Long modeId);
-
-    /**
-     * Finds nodes by their fully qualified domain name (FQDN).
-     *
-     * @param name The FQDN of the node.
-     * @return A list of matching nodes.
-     */
-    List<Node> findNodeByFqdn(String name);
+    void delete(Long nodeId);
 
     /**
      * Finds nodes by their fully qualified domain name (FQDN) within a specific group.
@@ -60,5 +50,14 @@ public interface NodeServiceInterface {
      * @return A list of matching nodes within the group.
      */
     List<Node> findNodeByFqdn(String name, Long groupId);
+
+    /**
+     * Finds nodes by their fully qualified domain name (FQDN).
+     * Used by CLI commands. Not exposed as a REST endpoint.
+     *
+     * @param fqdn The FQDN of the node.
+     * @return A list of matching nodes.
+     */
+    List<Node> findNodeByFqdn(String fqdn);
 
 }
