@@ -67,6 +67,11 @@ public class WorkService implements WorkServiceInterface {
     }
 
     @Override
+    public boolean awaitWork(long rootValueId, long timeout, TimeUnit unit) throws InterruptedException {
+        return workExecutor.getWorkQueue().awaitRootValue(rootValueId, timeout, unit);
+    }
+
+    @Override
     public boolean terminate(long timeout, TimeUnit unit) throws InterruptedException {
         workExecutor.shutdown();
         return workExecutor.awaitTermination(timeout, unit);

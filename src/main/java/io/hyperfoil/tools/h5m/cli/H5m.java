@@ -8,6 +8,7 @@ import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
+import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.svc.*;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
@@ -22,6 +23,7 @@ import picocli.CommandLine;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -74,10 +76,29 @@ public class H5m implements QuarkusApplication {
     }
     @CommandLine.Command(name="recalculate",description = "recalculate values for all entries in folder")
     public int recalculate(String folderName){
+        List<Long> rootValueIds;
         try {
-            folderService.recalculate(folderName);
+            rootValueIds = folderService.recalculate(folderName);
         } catch (NoResultException e) {
             System.err.println("could not find folder "+folderName);
+            return 1;
+        }
+        return awaitRootValues(rootValueIds);
+    }
+
+    private int awaitRootValues(List<Long> rootValueIds) {
+        try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+            for (Long rootValueId : rootValueIds) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0 || !workService.awaitWork(rootValueId, remaining, TimeUnit.NANOSECONDS)) {
+                    System.err.println("timed out waiting for processing to complete");
+                    return 1;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("interrupted while waiting for processing to complete");
             return 1;
         }
         return 0;
@@ -101,6 +122,7 @@ public class H5m implements QuarkusApplication {
         }
         List<File> todo = pathFile.isDirectory() ? List.of(pathFile.listFiles(s->s.toString().endsWith(".json") && !s.getName().startsWith("."))): List.of(pathFile);
         ObjectMapper objectMapper = new ObjectMapper();
+        List<ValueEntity> rootValues = new ArrayList<>();
         for( File f : todo){
             try {
                 if( todo.size()>1) {
@@ -109,7 +131,8 @@ public class H5m implements QuarkusApplication {
                 JsonNode read = objectMapper.readTree(f);
                 if(read!=null){
                     try {
-                        folderService.upload(folderName, f.getPath(), read);
+                        ValueEntity rootValue = folderService.upload(folderName, f.getPath(), read);
+                        rootValues.add(rootValue);
                     } catch (NoResultException e) {
                         System.err.println("could not find folder " + folderName);
                         return 1;
@@ -122,7 +145,23 @@ public class H5m implements QuarkusApplication {
                 return 1;
             }
         }
+        int waitResult = awaitRootValues(rootValues.stream().map(ValueEntity::getId).toList());
+        if (waitResult != 0) {
+            return waitResult;
+        }
+        List<ValueEntity> detections = folderService.getDetectionValues(folderName, rootValues);
+        if (!detections.isEmpty()) {
+            printChangeSummary(detections);
+            return 2;
+        }
         return 0;
+    }
+
+    private void printChangeSummary(List<ValueEntity> detections) {
+        System.out.println("Changes detected: " + detections.size());
+        for (ValueEntity v : detections) {
+            System.out.println("  " + v.node.name + ": " + v.data);
+        }
     }
 
     @Inject

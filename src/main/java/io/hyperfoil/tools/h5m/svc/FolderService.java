@@ -34,6 +34,13 @@ public class FolderService implements FolderServiceInterface {
     @Inject
     ApiMapper apiMapper;
 
+    private FolderEntity findByName(String name) {
+        return em.createQuery(
+                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+                FolderEntity.class
+        ).setParameter("name", name).getSingleResult();
+    }
+
     @Override
     @Transactional
     public long create(String name){
@@ -102,10 +109,7 @@ public class FolderService implements FolderServiceInterface {
     @Override
     @Transactional
     public Json structure(String name) {
-        FolderEntity folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
-                FolderEntity.class
-        ).setParameter("name", name).getSingleResult();
+        FolderEntity folder = findByName(name);
 
         Json fullStructure = Json.typeStructure(new Json(false));
         NodeEntity root = folder.group.root;
@@ -125,11 +129,8 @@ public class FolderService implements FolderServiceInterface {
      */
     @Override
     @Transactional
-    public void recalculate(String name){
-        FolderEntity folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
-                FolderEntity.class
-        ).setParameter("name", name).getSingleResult();
+    public List<Long> recalculate(String name){
+        FolderEntity folder = findByName(name);
         NodeEntity root = folder.group.root;
         List<ValueEntity> rootValues = valueService.getValues(root);
         rootValues.forEach(ValueEntity::getPath); // this fixes the LazyException, por que?
@@ -140,15 +141,13 @@ public class FolderService implements FolderServiceInterface {
             }
         }
         workService.create(newWorks);
+        return rootValues.stream().map(ValueEntity::getId).toList();
     }
 
     @Override
     @Transactional
-    public void upload(String name, String path, JsonNode data){
-        FolderEntity folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
-                FolderEntity.class
-        ).setParameter("name", name).getSingleResult();
+    public ValueEntity upload(String name, String path, JsonNode data){
+        FolderEntity folder = findByName(name);
         ValueEntity newValue = new ValueEntity(folder,folder.group.root,data);
         valueService.create(newValue);
 
@@ -171,5 +170,25 @@ public class FolderService implements FolderServiceInterface {
 //        workQueue.addWorks(toQueue);
 
         workService.create(List.copyOf(folder.group.sources).stream().map(source -> new Work(source, new ArrayList<>(source.sources), List.of(newValue))).toList());
+        return newValue;
+    }
+
+    @Override
+    @Transactional
+    public List<ValueEntity> getDetectionValues(String name, List<ValueEntity> rootValues) {
+        FolderEntity folder = findByName(name);
+
+        List<NodeEntity> detectionNodes = folder.group.sources.stream()
+                .filter(s -> s.type().isDetection())
+                .toList();
+        if (detectionNodes.isEmpty()) {
+            return List.of();
+        }
+        List<ValueEntity> detections = new ArrayList<>();
+        for (ValueEntity rootValue : rootValues) {
+            detections.addAll(valueService.getDescendantValuesByNodes(rootValue, detectionNodes)
+                    .values().stream().flatMap(List::stream).toList());
+        }
+        return detections;
     }
 }
