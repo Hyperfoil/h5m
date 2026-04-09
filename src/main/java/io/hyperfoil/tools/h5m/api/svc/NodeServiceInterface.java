@@ -5,60 +5,54 @@ import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
 
-/**
- * Service interface for managing Nodes.
- */
+@Path("/api/node")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@Tag(name = "Node", description = "Manage transformation nodes in the DAG pipeline")
 public interface NodeServiceInterface {
 
-    /**
-     * Creates a new node with an operation.
-     *
-     * @param name      The name of the node.
-     * @param groupId   The ID of the group the node belongs to.
-     * @param type      The type of the node.
-     * @param operation The operation associated with the node.
-     * @return The ID of the created node.
-     */
-    Long create(@NotEmpty String name, @NotNull Long groupId, @NotNull NodeType type, String operation);
+    @POST
+    @Operation(description = "Create a new node with an operation")
+    Long create(
+            @QueryParam("name") @NotEmpty String name,
+            @QueryParam("groupId") @NotNull Long groupId,
+            @QueryParam("type") @NotNull NodeType type,
+            @QueryParam("operation") String operation);
+
+    @POST
+    @Path("configured")
+    @Operation(description = "Create a new node with sources and configuration")
+    Long createConfigured(
+            @QueryParam("name") @NotEmpty String name,
+            @QueryParam("groupId") @NotNull Long groupId,
+            @QueryParam("type") @NotNull NodeType type,
+            @QueryParam("sources") List<Long> sources,
+            Object configuration) throws JsonProcessingException;
+
+    @DELETE
+    @Path("{id}")
+    @Operation(description = "Delete a node by its ID")
+    void delete(@PathParam("id") Long nodeId);
+
+    @GET
+    @Path("find")
+    @Operation(description = "Find nodes by FQDN within a specific group")
+    List<Node> findNodeByFqdn(
+            @QueryParam("name") @Parameter(description = "FQDN of the node") String name,
+            @QueryParam("groupId") @Parameter(description = "Group ID to search within") Long groupId);
 
     /**
-     * Creates a new node with sources and configuration.
-     *
-     * @param name          The name of the node.
-     * @param groupId       The ID of the group the node belongs to.
-     * @param type          The type of the node.
-     * @param sources       A list of source node IDs.
-     * @param configuration The configuration object for the node.
-     * @return The ID of the created node.
-     * @throws JsonProcessingException If there is an error processing the configuration JSON.
+     * Find nodes by fully qualified domain name (without group context).
+     * Used by CLI commands. Not exposed as a REST endpoint.
      */
-    Long create(@NotEmpty String name, @NotNull Long groupId, @NotNull NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException;
-
-    /**
-     * Deletes a node by its mode ID.
-     *
-     * @param modeId The mode ID to delete.
-     */
-    void delete(Long modeId);
-
-    /**
-     * Finds nodes by their fully qualified domain name (FQDN).
-     *
-     * @param name The FQDN of the node.
-     * @return A list of matching nodes.
-     */
-    List<Node> findNodeByFqdn(String name);
-
-    /**
-     * Finds nodes by their fully qualified domain name (FQDN) within a specific group.
-     *
-     * @param name    The FQDN of the node.
-     * @param groupId The ID of the group.
-     * @return A list of matching nodes within the group.
-     */
-    List<Node> findNodeByFqdn(String name, Long groupId);
+    List<Node> findNodeByFqdn(String fqdn);
 
 }
