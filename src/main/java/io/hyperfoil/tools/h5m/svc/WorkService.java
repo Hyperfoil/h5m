@@ -10,7 +10,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
 import jakarta.transaction.Transactional;
+import jakarta.transaction.TransactionManager;
+import io.quarkus.logging.Log;
+import org.hibernate.Hibernate;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -25,6 +30,9 @@ public class WorkService implements WorkServiceInterface {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    TransactionManager tm;
 
     @Inject
     NodeService nodeService;
@@ -56,7 +64,48 @@ public class WorkService implements WorkServiceInterface {
             }
             newWorks.add(work);
         }
-        workQueue.addWorks(newWorks);
+        if (!newWorks.isEmpty()) {
+            // Defer queue insertion until this transaction commits.
+            // Worker threads will only see Work items after the DB row is visible,
+            // preventing StaleObjectStateException from the visibility race.
+            List<Work> toQueue = List.copyOf(newWorks);
+            // Eagerly initialize lazy proxies that WorkQueue.sort() → dependsOn()
+            // traverses, since addWorks runs in afterCompletion outside the session.
+            for (Work work : toQueue) {
+                for (ValueEntity sv : work.sourceValues) {
+                    Hibernate.initialize(sv.node);
+                    Hibernate.initialize(sv.sources);
+                    if (sv.node != null) {
+                        // Trigger ancestor cache computation while session is open
+                        sv.node.dependsOn(sv.node);
+                    }
+                }
+                if (work.activeNode != null) {
+                    // Trigger ancestor cache computation while session is open
+                    work.activeNode.dependsOn(work.activeNode);
+                }
+            }
+            try {
+                tm.getTransaction().registerSynchronization(new Synchronization() {
+                    @Override
+                    public void beforeCompletion() {}
+
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == Status.STATUS_COMMITTED) {
+                            Log.debugf("afterCompletion: queueing %d Work items", toQueue.size());
+                            workQueue.addWorks(toQueue);
+                        } else {
+                            Log.warnf("Transaction rolled back (status=%d), %d Work items not queued",
+                                    status, toQueue.size());
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Failed to register transaction synchronization; refusing to queue before commit", e);
+            }
+        }
     }
 
     @Transactional
@@ -76,7 +125,11 @@ public class WorkService implements WorkServiceInterface {
     public void execute(Work w){
         WorkQueue workQueue = workExecutor.getWorkQueue();
         try {
-            Work work = em.merge(w);
+            Work work = em.find(Work.class, w.id);
+            if (work == null) {
+                Log.warnf("execute: Work id=%d not found in DB (already processed?), skipping", w.id);
+                return;
+            }
             if(work.activeNode==null || work.sourceValues == null || work.sourceValues.isEmpty()){
                 //error conditions?
                 //work.activeNode == null is not yet a validation condition but it could be for post processing tasks?
@@ -85,8 +138,6 @@ public class WorkService implements WorkServiceInterface {
             //calculateValue should probably accept all sourceValues and leave it to the node function to decide
             List<ValueEntity> calculated = nodeService.calculateValues(work.activeNode,work.sourceValues);
 
-            //if the activeNode is a sqlpath then the entity is already persisted
-            boolean allPersisted = calculated.stream().allMatch(v->v.getId()!=null);
             List<ValueEntity> newOrUpdated = new ArrayList<>();
             for(ValueEntity v : work.sourceValues) {
                 Map<String, ValueEntity> descendants = valueService.getDescendantValueByPath(v, work.activeNode);
