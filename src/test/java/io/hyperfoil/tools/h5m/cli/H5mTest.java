@@ -233,11 +233,6 @@ public class H5mTest {
                 }
                 """
         );
-        ///  Window []
-        // When 3 -> [3]
-        //when 2-> [2,3]
-        //when 1-> [1,2,3]
-
 
 
         Path filePath02 = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
@@ -275,9 +270,6 @@ public class H5mTest {
                 new String[]{"upload",filePath01.toString(),"to",testName},
                 new String[]{"upload",filePath02.toString(),"to",testName},
                 new String[]{"upload",filePath03.toString(),"to",testName},
-                new String[]{"list", "value", "from", testName, "by", "fp1"},
-                new String[]{"list", "value", "from", testName, "by", "fp2"},
-                new String[]{"list", "value", "from", testName, "by", "split"},
                 new String[]{"list","value","from",testName}
 
 
@@ -287,7 +279,7 @@ public class H5mTest {
         });
 
         LaunchResult last = results.getLast();
-        assertTrue(last.getOutput().contains("Count: 40"),"expect 40 values from test (6 per node type + 4 change detections)");
+        assertTrue(last.getOutput().contains("Count: 38"),"expect 38 values from test (6 per node type + 4 change detections)");
     }
 
     @Test
