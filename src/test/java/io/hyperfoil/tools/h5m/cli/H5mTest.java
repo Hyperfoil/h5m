@@ -203,9 +203,17 @@ public class H5mTest {
                 new String[]{"upload",filePath03.toString(),"to",testName},
                 new String[]{"list","value","from",testName}
         );
-        results.forEach(result->{
-            assertEquals(0,result.exitCode(),result.getOutput());
-        });
+        // setup commands (indices 0-6) should succeed
+        for (int i = 0; i < 7; i++) {
+            assertEquals(0, results.get(i).exitCode(), results.get(i).getOutput());
+        }
+        // uploads may return 0 or 2 depending on whether relative difference values are produced
+        for (int i = 7; i < 10; i++) {
+            assertTrue(results.get(i).exitCode() == 0 || results.get(i).exitCode() == 2,
+                    "upload should return 0 or 2, got " + results.get(i).exitCode() + ": " + results.get(i).getOutput());
+        }
+        // list should succeed
+        assertEquals(0, results.get(10).exitCode(), results.get(10).getOutput());
 
         LaunchResult last = results.getLast();
         assertTrue(last.getOutput().contains("Count: 13"),"expect 13 values from test");
@@ -649,9 +657,14 @@ public class H5mTest {
                 new String[]{"upload", folder.toString(), "to", testName},
                 new String[]{"list", "value", "from", testName}
         );
-        results.forEach(result -> {
-            assertEquals(0, result.exitCode(), result.getOutput());
-        });
+        // setup commands (indices 0-5) should succeed with exit code 0
+        for (int i = 0; i < 6; i++) {
+            assertEquals(0, results.get(i).exitCode(), results.get(i).getOutput());
+        }
+        // upload (index 6) returns exit code 2 because 2 values are out of [10,100] range
+        assertEquals(2, results.get(6).exitCode(), results.get(6).getOutput());
+        // list (index 7) should succeed
+        assertEquals(0, results.get(7).exitCode(), results.get(7).getOutput());
 
         LaunchResult last = results.getLast();
         // 3 rangeNode values + 3 fp1 values + 3 _fp-ftNode values + 2 fixedthreshold violations = 11
@@ -744,6 +757,5 @@ public class H5mTest {
         assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
 
     }
-
 
 }

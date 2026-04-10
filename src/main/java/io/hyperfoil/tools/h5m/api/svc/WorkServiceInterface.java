@@ -17,4 +17,6 @@ public interface WorkServiceInterface {
      */
     boolean terminate(long timeout, TimeUnit timeUnit) throws InterruptedException;
 
+    boolean awaitWork(long rootValueId, long timeout, TimeUnit unit) throws InterruptedException;
+
 }

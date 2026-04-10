@@ -15,6 +15,7 @@ import jakarta.transaction.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -149,5 +150,123 @@ public class WorkQueueTest extends FreshDb {
         assertFalse(q.isPending(cWork),"c should not be in the queue");
     }
 
+    @Test
+    public void awaitRootValue_returns_immediately_when_no_work() throws InterruptedException {
+        WorkQueue q = new WorkQueue();
+        assertTrue(q.awaitRootValue(999L, 1, TimeUnit.SECONDS), "no work for this root should return immediately");
+    }
+
+    @Test
+    public void awaitRootValue_blocks_until_work_completes() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        RootNode root = new RootNode();
+        root.persist();
+        NodeEntity aNode = new JqNode("a", ".a", root);
+        aNode.persist();
+        ValueEntity rootValue = new ValueEntity(null, root, new TextNode("data"));
+        rootValue.persist();
+        Work aWork = new Work(aNode, aNode.sources, List.of(rootValue));
+        aWork.persist();
+        tm.commit();
+
+        q.addWorks(List.of(aWork));
+        q.poll(); // move to active
+
+        // decrement completes the work
+        q.decrement(aWork);
+        assertTrue(q.awaitRootValue(rootValue.id, 1, TimeUnit.SECONDS), "should return after work completes");
+    }
+
+    @Test
+    public void awaitRootValue_independent_of_other_roots() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        RootNode root = new RootNode();
+        root.persist();
+        NodeEntity aNode = new JqNode("a", ".a", root);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b", ".b", root);
+        bNode.persist();
+        ValueEntity rootA = new ValueEntity(null, root, new TextNode("dataA"));
+        rootA.persist();
+        ValueEntity rootB = new ValueEntity(null, root, new TextNode("dataB"));
+        rootB.persist();
+        Work workA = new Work(aNode, aNode.sources, List.of(rootA));
+        workA.persist();
+        Work workB = new Work(bNode, bNode.sources, List.of(rootB));
+        workB.persist();
+        tm.commit();
+
+        q.addWorks(List.of(workA, workB));
+        q.poll(); // poll workA
+        q.poll(); // poll workB
+
+        // complete only A's work
+        q.decrement(workA);
+
+        // A should be done, B should still be active
+        assertTrue(q.awaitRootValue(rootA.id, 1, TimeUnit.SECONDS), "root A work is complete");
+        assertFalse(q.awaitRootValue(rootB.id, 100, TimeUnit.MILLISECONDS), "root B work is still active");
+    }
+
+    @Test
+    public void awaitRootValue_respects_timeout() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        RootNode root = new RootNode();
+        root.persist();
+        NodeEntity aNode = new JqNode("a", ".a", root);
+        aNode.persist();
+        ValueEntity rootValue = new ValueEntity(null, root, new TextNode("data"));
+        rootValue.persist();
+        Work aWork = new Work(aNode, aNode.sources, List.of(rootValue));
+        aWork.persist();
+        tm.commit();
+
+        q.addWorks(List.of(aWork));
+        q.poll(); // move to active
+
+        assertFalse(q.awaitRootValue(rootValue.id, 100, TimeUnit.MILLISECONDS), "should timeout while work is active");
+    }
+
+    @Test
+    public void awaitRootValue_handles_cascade() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        RootNode root = new RootNode();
+        root.persist();
+        NodeEntity aNode = new JqNode("a", ".a", root);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b", ".b", root);
+        bNode.persist();
+        ValueEntity rootValue = new ValueEntity(null, root, new TextNode("data"));
+        rootValue.persist();
+        Work w1 = new Work(aNode, aNode.sources, List.of(rootValue));
+        w1.persist();
+        // pre-create w2 in the same transaction to avoid detached entity issues
+        Work w2 = new Work(bNode, bNode.sources, List.of(rootValue));
+        w2.persist();
+        tm.commit();
+
+        q.addWorks(List.of(w1));
+        q.poll(); // w1 is now active
+
+        // simulate cascade: w1 spawns w2 for same root value (before w1 is decremented)
+        q.addWorks(List.of(w2));
+
+        // now decrement w1 — w2 is still pending
+        q.decrement(w1);
+        assertFalse(q.awaitRootValue(rootValue.id, 100, TimeUnit.MILLISECONDS), "should not complete while cascade work pending");
+
+        // poll and complete w2
+        q.poll();
+        q.decrement(w2);
+        assertTrue(q.awaitRootValue(rootValue.id, 1, TimeUnit.SECONDS), "should complete after all cascade work done");
+    }
 
 }

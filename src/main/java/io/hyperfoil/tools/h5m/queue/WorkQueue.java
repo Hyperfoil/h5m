@@ -31,15 +31,65 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     private final Condition notEmpty = takeLock.newCondition();
     //private final ReentrantLock putLock = new ReentrantLock();
 
+    private final Map<Long, RootValueTracker> rootTrackers = new HashMap<>();
+
     private List<Runnable> runnables = new  ArrayList<>();
+
+    private static class RootValueTracker {
+        int count;
+        final Condition done;
+
+        RootValueTracker(Condition done) {
+            this.count = 0;
+            this.done = done;
+        }
+    }
+
+    private Long getRootValueId(Work work) {
+        return (work.sourceValues != null && !work.sourceValues.isEmpty())
+                ? work.sourceValues.get(0).getId() : null;
+    }
+
+    private void incrementTracker(Work work) {
+        Long rootId = getRootValueId(work);
+        if (rootId != null) {
+            rootTrackers.computeIfAbsent(rootId, k -> new RootValueTracker(takeLock.newCondition())).count++;
+        }
+    }
+
+    private void decrementTracker(Work work) {
+        Long rootId = getRootValueId(work);
+        if (rootId != null) {
+            RootValueTracker tracker = rootTrackers.get(rootId);
+            if (tracker != null) {
+                tracker.count--;
+                if (tracker.count <= 0) {
+                    tracker.done.signalAll();
+                    rootTrackers.remove(rootId);
+                }
+            }
+        }
+    }
 
     public WorkQueue() {
     }
 
-    public boolean isIdle(){
-        takeLock.lock();
+
+    public boolean awaitRootValue(long rootValueId, long timeout, TimeUnit unit) throws InterruptedException {
+        long nanos = unit.toNanos(timeout);
+        takeLock.lockInterruptibly();
         try {
-            return activeWork.isEmpty() && runnables.isEmpty();
+            RootValueTracker tracker = rootTrackers.get(rootValueId);
+            if (tracker == null) {
+                return true; // no work tracked for this root value
+            }
+            while (tracker.count > 0) {
+                if (nanos <= 0L) {
+                    return false;
+                }
+                nanos = tracker.done.awaitNanos(nanos);
+            }
+            return true;
         } finally {
             takeLock.unlock();
         }
@@ -53,6 +103,7 @@ public class WorkQueue implements BlockingQueue<Runnable> {
                 //signal all because this could unblock multiple work items
                 notEmpty.signalAll();
             }
+            decrementTracker(work);
         } finally {
             fullyUnlock();
         }
@@ -178,12 +229,13 @@ public class WorkQueue implements BlockingQueue<Runnable> {
             List<Work> acceptedWork = works.stream().filter(w -> !hasWork(w)).peek(w-> {
                 pendingWork.add(w);
                 runnables.add(w);
+                incrementTracker(w);
                 assert isPending(w);
             }).toList();
             if (!acceptedWork.isEmpty()) {
                 sort();
                 if (wasEmpty) {
-                    signalNotEmpty();
+                    notEmpty.signal();
                 }
             }
             return acceptedWork;
@@ -226,7 +278,8 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         try {
             int c = runnables.size();
             runnables.add(runnable);
-            if(runnable instanceof Work){
+            if(runnable instanceof Work work){
+                incrementTracker(work);
                 sort();
             }
             if(c == 0){
@@ -310,11 +363,10 @@ public class WorkQueue implements BlockingQueue<Runnable> {
             }
             int c = runnables.size();
             runnables.add(runnable);
-            if(c!=0){
-                signalNotEmpty();
+            if(c==0){
+                notEmpty.signal();
             }
         }finally {
-//            putLock.unlock();
             takeLock.unlock();
         }
         //not supported

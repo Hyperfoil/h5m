@@ -2,8 +2,10 @@ package io.hyperfoil.tools.h5m.api.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.yaup.json.Json;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -49,14 +51,16 @@ public interface FolderServiceInterface {
      * @param path The path within the folder.
      * @param data The JSON data to upload.
      */
-    void upload(String name, String path, JsonNode data);
+    ValueEntity upload(String name, String path, JsonNode data);
+
+    List<ValueEntity> getDetectionValues(String name, List<ValueEntity> rootValues);
 
     /**
      * Recalculates the contents or state of a folder by its name.
      *
      * @param name The name of the folder to recalculate.
      */
-    void recalculate(String name);
+    List<Long> recalculate(String name);
 
     /**
      * Retrieves the structural representation of a folder.
