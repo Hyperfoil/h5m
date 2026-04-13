@@ -519,6 +519,7 @@ public class ValueService implements ValueServiceInterface {
                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr ON ve.parent_id = sr.v_id
                 )
                 SELECT distinct v.* FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id IN (:nodeIds)
+                ORDER BY v.idx asc
                 """, ValueEntity.class)
                                   .setParameter("rootId", root.id)
                                   .setParameter("nodeIds", nodeIds)

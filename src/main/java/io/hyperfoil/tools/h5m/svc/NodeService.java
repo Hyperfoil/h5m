@@ -34,16 +34,11 @@ import org.graalvm.polyglot.proxy.Proxy;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.hibernate.Session;
 
-import net.thisptr.jackson.jq.BuiltinFunctionLoader;
-import net.thisptr.jackson.jq.Expression;
-import net.thisptr.jackson.jq.Function;
-import net.thisptr.jackson.jq.JsonQuery;
-import net.thisptr.jackson.jq.PathOutput;
-import net.thisptr.jackson.jq.Scope;
-import net.thisptr.jackson.jq.Version;
-import net.thisptr.jackson.jq.Versions;
-import net.thisptr.jackson.jq.exception.JsonQueryException;
-import net.thisptr.jackson.jq.path.Path;
+import io.hyperfoil.tools.jjq.JqProgram;
+import io.hyperfoil.tools.jjq.jackson.JacksonConverter;
+import io.hyperfoil.tools.jjq.jackson.JacksonJqEngine;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqValue;
 
 import java.io.IOException;
 import java.sql.PreparedStatement;
@@ -57,22 +52,11 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class NodeService implements NodeServiceInterface {
 
-    private static final Scope JQ_SCOPE;
-    private static final ConcurrentHashMap<String, JsonQuery> JQ_CACHE = new ConcurrentHashMap<>();
+    private static final JacksonJqEngine JQ_ENGINE = new JacksonJqEngine();
+    private static final ConcurrentHashMap<String, JqProgram> JQ_CACHE = new ConcurrentHashMap<>();
 
-    static {
-        JQ_SCOPE = Scope.newEmptyScope();
-        BuiltinFunctionLoader.getInstance().loadFunctions(Versions.JQ_1_6, JQ_SCOPE);
-    }
-
-    private static JsonQuery compileJq(String filter) throws JsonQueryException {
-        JsonQuery cached = JQ_CACHE.get(filter);
-        if (cached != null) {
-            return cached;
-        }
-        JsonQuery compiled = JsonQuery.compile(filter, Versions.JQ_1_6);
-        JQ_CACHE.put(filter, compiled);
-        return compiled;
+    private static JqProgram compileJq(String filter) {
+        return JQ_CACHE.computeIfAbsent(filter, JQ_ENGINE::compile);
     }
 
     @Inject
@@ -1055,11 +1039,12 @@ public class NodeService implements NodeServiceInterface {
     public List<ValueEntity> calculateJqValues(JqNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
 
-        // Compile the jq filter expression
-        JsonQuery query;
+        boolean isNullInput = JqNode.isNullInput(node.operation);
+
+        JqProgram program;
         try {
-            query = compileJq(node.operation);
-        } catch (JsonQueryException e) {
+            program = compileJq(node.operation);
+        } catch (Exception e) {
             System.err.println("Error compiling jq filter for node " + node.id + " " + node.name + ": " + e.getMessage());
             return rtrn;
         }
@@ -1076,50 +1061,33 @@ public class NodeService implements NodeServiceInterface {
             sourceValues.values().forEach(sourceValue -> sourceData.add(sourceValue.data));
         }
 
-        // Determine jq mode and build input, mirroring how jq processes a JSONL stream:
+        // Determine jq mode, mirroring how jq processes a JSONL stream:
         //   --null-input:  . is null, sources accessible only via inputs/input
         //   --slurp:       all sources combined into a single array
         //   default:       filter runs on the single source value
-        boolean isNullInput = JqNode.isNullInput(node.operation);
         boolean isSlurp = !isNullInput && (node.sources.size() > 1 || sourceValues.size() > 1);
 
-        JsonNode input;
-        if (isNullInput) {
-            input = NullNode.getInstance();
-        } else if (isSlurp) {
-            ObjectMapper mapper = new ObjectMapper();
-            ArrayNode slurped = mapper.createArrayNode();
-            sourceData.forEach(slurped::add);
-            input = slurped;
-        } else {
-            input = !sourceData.isEmpty() ? sourceData.getFirst() : NullNode.getInstance();
-        }
-
-        // Register custom inputs/input builtins so null-input filters can read the source stream
-        Scope childScope = Scope.newChildScope(JQ_SCOPE);
-        if (isNullInput) {
-            childScope.addFunction("inputs", 0, (Scope scope, List<Expression> args, JsonNode in,
-                                                  Path ipath, PathOutput output, Version version) -> {
-                for (JsonNode data : sourceData) {
-                    output.emit(data, null);
-                }
-            });
-            childScope.addFunction("input", 0, new Function() {
-                private int index = 0;
-                @Override
-                public void apply(Scope scope, List<Expression> args, JsonNode in,
-                                  Path ipath, PathOutput output, Version version) throws JsonQueryException {
-                    if (index < sourceData.size()) {
-                        output.emit(sourceData.get(index++), null);
-                    }
-                }
-            });
-        }
         try {
+            List<JsonNode> results;
+            if (isNullInput) {
+                List<JqValue> jqInputs = sourceData.stream()
+                        .map(JacksonConverter::fromJsonNodeLazy)
+                        .toList();
+                results = program.applyNullInput(jqInputs).stream()
+                        .map(v -> JacksonConverter.toJsonNode(v, JQ_ENGINE.mapper()))
+                        .toList();
+            } else if (isSlurp) {
+                List<JqValue> jqInputs = sourceData.stream()
+                        .map(JacksonConverter::fromJsonNodeLazy)
+                        .toList();
+                results = program.applyAll(JqArray.ofTrusted(jqInputs)).stream()
+                        .map(v -> JacksonConverter.toJsonNode(v, JQ_ENGINE.mapper()))
+                        .toList();
+            } else {
+                JsonNode input = sourceData.isEmpty() ? NullNode.getInstance() : sourceData.getFirst();
+                results = JQ_ENGINE.apply(program, input);
+            }
             int order = startingOrdinal;
-            List<JsonNode> results = new ArrayList<>();
-            query.apply(childScope, input, results::add);
-
             for (JsonNode jsNode : results) {
                 if (!jsNode.isNull()) {
                     ValueEntity newValue = new ValueEntity();
@@ -1133,7 +1101,7 @@ public class NodeService implements NodeServiceInterface {
                     rtrn.add(newValue);
                 }
             }
-        } catch (JsonQueryException e) {
+        } catch (Exception e) {
             System.err.println("Error processing " + node.id + " " + node.name
                     + "\n  values: " + sourceValues.entrySet().stream()
                     .map(entry -> entry.getKey() + "=" + entry.getValue().id)
