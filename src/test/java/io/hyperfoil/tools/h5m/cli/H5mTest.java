@@ -210,7 +210,8 @@ public class H5mTest {
         LaunchResult last = results.getLast();
         assertTrue(last.getOutput().contains("Count: 13"),"expect 13 values from test");
     }
-    @Test //not yet working because relativedifference doesn't know about the "datsaet" node
+
+    @Test//not yet working because relativedifference doesn't know about the "datsaet" node
     //need to tell relativedifference which node is the dataset. either detect it with CTE (is that possible)
     //or make it an attribute on the FolderEntity / NodeGroupEntity
     @Disabled("There should be only changes detected for x = 2 and x = 12 but there are two other detected for x = 3 and x = 13")
@@ -226,6 +227,7 @@ public class H5mTest {
                   "each": [
                     {"x": 3, "y": 1.1, "fp1": "alpha", "fp2": "alpha"},
                     {"x": 13, "y": 20.2, "fp1": "alpha", "fp2": "bravo"}
+             
                   ]
                 }
                 """
@@ -244,8 +246,8 @@ public class H5mTest {
                 """
                 {
                   "each": [
-                    {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
-                    {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
+                   {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
+                   {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
                   ]
                 }
                 """
@@ -744,6 +746,179 @@ public class H5mTest {
         assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
 
     }
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values(QuarkusMainLauncher launcher) throws IOException {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        Path folder = Files.createTempDirectory("h5m");
+        
+        // First upload: multiple items with different fingerprints
+        Path filePath01 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 20.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 175.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+
+        Path filePath02 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 5.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 150.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Path filePath03 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                        """
+                        {
+                          "items": [
+                            {"x": "item1", "y": 70.0, "fp1": "alpha"},
+                            {"x": "item2", "y": 100.0, "fp1": "beta"}
+                          ]
+                        }
+                        """
+        );
+
+        
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+
+                new String[]{"add", "jq", "to", testName, "itemSplit", ".items[]"},
+
+                new String[]{"add", "jq", "to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"add", "jq", "to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"add", "jq", "to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"list", testName, "nodes"},
+
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName,
+                    "range", "rangeNode",
+                    "fingerprint", "categoryFp",
+                    "min", "10",
+                    "max", "100"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", folder.toString(), "to", testName},
+                new String[]{"list", "value", "from", testName}
+
+        );
+        
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+
+        assertTrue(last.getOutput().contains("Count: 33"),
+            "Expected 33 total values from test \n" + last.getOutput());
+
+
+        // Verify violating values have correct fingerprints
+        assertTrue(last.getOutput().contains("\"value\":175") && last.getOutput().contains("\"categoryFp\":\"beta\""),
+                "Value 175 should have beta fingerprint");
+        assertTrue(last.getOutput().contains("\"value\":5") && last.getOutput().contains("\"categoryFp\":\"alpha\""),
+                "Value 5 should have alpha fingerprint");
+        assertTrue(last.getOutput().contains("\"value\":150") && last.getOutput().contains("\"categoryFp\":\"beta\""),
+                "Value 150 should have beta fingerprint");
+
+    }
+
+// Test with by itemSplit
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values_with_by_split(QuarkusMainLauncher launcher) throws IOException {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        Path folder = Files.createTempDirectory("h5m");
+
+        // First upload: multiple items with different fingerprints
+        Path filePath01 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 20.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 175.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+
+        Path filePath02 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 5.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 150.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Path filePath03 = Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 70.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 100.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+
+                new String[]{"add", "jq", "to", testName, "itemSplit", ".items[]"},
+
+                new String[]{"add", "jq", "to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"add", "jq", "to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"add", "jq", "to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"list", testName, "nodes"},
+
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName,
+                        "range", "rangeNode",
+                        "by","itemSplit",
+                        "fingerprint", "categoryFp",
+                        "min", "10",
+                        "max", "100"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", folder.toString(), "to", testName},
+                new String[]{"list", "value", "from", testName}
+
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+
+        assertTrue(last.getOutput().contains("Count: 33"),
+                "Expected 33 total values from test \n" + last.getOutput());
+
+        // Verify violating values have correct fingerprints
+        assertTrue(last.getOutput().contains("\"value\":175") && last.getOutput().contains("\"categoryFp\":\"beta\""),
+                "Value 175 should have beta fingerprint");
+        assertTrue(last.getOutput().contains("\"value\":5") && last.getOutput().contains("\"categoryFp\":\"alpha\""),
+                "Value 5 should have alpha fingerprint");
+        assertTrue(last.getOutput().contains("\"value\":150") && last.getOutput().contains("\"categoryFp\":\"beta\""),
+                "Value 150 should have beta fingerprint");
+
+    }
 
 
 }
+
+
+
