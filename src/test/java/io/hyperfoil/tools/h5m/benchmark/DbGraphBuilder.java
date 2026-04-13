@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Database-persisting graph builder for benchmarks.
- * Creates real JPA entities via NodeService with proper closure table population.
+ * Creates real JPA entities via NodeService with proper edge table population.
  * All entity references are reloaded by ID after transaction boundaries to avoid detached entity issues.
  */
 public class DbGraphBuilder {

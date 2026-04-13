@@ -18,15 +18,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Database-backed closure table benchmarks.
+ * Database-backed edge table benchmarks.
  * Measures insertion, query, and edge-growth scaling at various DAG topologies and sizes.
+ * The node_edge and value_edge tables are adjacency list join tables (direct parent-child edges);
+ * transitive relationships are computed at query time via recursive SQL CTEs.
  * <p>
- * Run with: mvn test -Dtest=ClosureTableBenchmarkTest
- * PostgreSQL: mvn test -Dtest=ClosureTableBenchmarkTest -Dquarkus.datasource.db-kind=postgresql
+ * Run with: mvn test -Dtest=EdgeTableBenchmarkTest
+ * PostgreSQL: mvn test -Dtest=EdgeTableBenchmarkTest -Dquarkus.datasource.db-kind=postgresql
  */
 @QuarkusTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class ClosureTableBenchmarkTest extends FreshDb {
+public class EdgeTableBenchmarkTest extends FreshDb {
 
     private static final int WARMUP = 2;
     private static final int MEASURE = 5;
@@ -153,7 +155,7 @@ public class ClosureTableBenchmarkTest extends FreshDb {
 
     @AfterAll
     static void printReport() {
-        System.out.println("\n========== CLOSURE TABLE BENCHMARK RESULTS ==========");
+        System.out.println("\n========== EDGE TABLE BENCHMARK RESULTS ==========");
         System.out.println(BenchmarkTimer.csvHeader());
         for (BenchmarkTimer.Result r : results) {
             System.out.println(BenchmarkTimer.toCsv(r));

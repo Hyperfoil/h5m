@@ -7,7 +7,7 @@ h5m has three levels of benchmarks, each testing different aspects at different 
 | Type | What it tests | Run command |
 |------|--------------|-------------|
 | JMH microbenchmarks | In-memory algorithm performance (ns) | `mvn clean verify -Dbenchmark` |
-| DB closure table | Database insertion & query scaling (ms) | `mvn test -Dtest=ClosureTableBenchmarkTest` |
+| DB edge table | Database insertion & query scaling (ms) | `mvn test -Dtest=EdgeTableBenchmarkTest` |
 | qDup end-to-end | Full application upload workflow (s) | See [perf_test/README.md](perf_test/README.md) |
 
 All benchmarks are excluded from the normal `mvn test` run.
@@ -58,11 +58,11 @@ Results are written to `benchmark/target/` as `jmh-result.json` (or the configur
 
 ---
 
-## DB Closure Table Benchmarks
+## DB Edge Table Benchmarks
 
 **Location:** `src/test/java/.../benchmark/`
 
-Database-backed benchmarks measuring closure table (`node_edge`, `value_edge`) performance at various DAG scales. Uses `@QuarkusTest` with manual `System.nanoTime` timing because JMH cannot bootstrap Quarkus CDI.
+Database-backed benchmarks measuring edge table (`node_edge`, `value_edge`) performance at various DAG scales. These are adjacency list join tables storing direct parent-child edges; transitive relationships are computed via recursive SQL CTEs. Uses `@QuarkusTest` with manual `System.nanoTime` timing because JMH cannot bootstrap Quarkus CDI.
 
 ### Benchmarks
 
@@ -84,10 +84,10 @@ Supporting files:
 
 ```bash
 # SQLite (fast, good for development)
-mvn test -Dtest=ClosureTableBenchmarkTest
+mvn test -Dtest=EdgeTableBenchmarkTest
 
 # PostgreSQL (production database, auto-starts via Dev Services)
-mvn test -Dtest=ClosureTableBenchmarkTest -Dquarkus.datasource.db-kind=postgresql
+mvn test -Dtest=EdgeTableBenchmarkTest -Dquarkus.datasource.db-kind=postgresql
 ```
 
 Output is printed to stdout as CSV (timing results) and edge count reports.
@@ -96,7 +96,7 @@ Output is printed to stdout as CSV (timing results) and edge count reports.
 
 - **Flat:** N independent nodes, each depending only on root. Edge count = N. Tests baseline insertion cost.
 - **Chain:** Linear chain root -> n0 -> n1 -> ... -> n(N-1). Edge count = N. Tests sequential dependency handling.
-- **Diamond (LxW):** L layers of W nodes each, every node depends on all nodes in the previous layer. Edge count ~ L * W^2. Tests closure table stress under quadratic edge growth.
+- **Diamond (LxW):** L layers of W nodes each, every node depends on all nodes in the previous layer. Edge count ~ L * W^2. Tests edge table stress under quadratic edge growth.
 
 ---
 
