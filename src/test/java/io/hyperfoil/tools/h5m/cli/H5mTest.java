@@ -828,20 +828,20 @@ public class H5mTest {
             "Expected 33 total values from test \n" + last.getOutput());
 
         //checking for appropriate fingerprint matching
-        assertTrue(last.getOutput().contains("\"y\":20.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 20.0");
-        assertTrue(last.getOutput().contains("\"y\":5.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 5.0");
-        assertTrue(last.getOutput().contains("\"y\":70.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 70.0");
+        assertTrue(last.getOutput().contains("\"y\":20,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 20");
+        assertTrue(last.getOutput().contains("\"y\":5,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 5");
+        assertTrue(last.getOutput().contains("\"y\":70,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 70");
 
         //checking for appropriate fingerprint matching
-        assertTrue(last.getOutput().contains("\"y\":175.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 175.0");
-        assertTrue(last.getOutput().contains("\"y\":150.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 150.0");
-        assertTrue(last.getOutput().contains("\"y\":100.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 100.0");
+        assertTrue(last.getOutput().contains("\"y\":175,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 175");
+        assertTrue(last.getOutput().contains("\"y\":150,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 150");
+        assertTrue(last.getOutput().contains("\"y\":100,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 100");
 
     }
 
@@ -923,20 +923,20 @@ public class H5mTest {
 
 
 
-        assertTrue(last.getOutput().contains("\"y\":20.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 20.0");
-        assertTrue(last.getOutput().contains("\"y\":5.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 5.0");
-        assertTrue(last.getOutput().contains("\"y\":70.0,\"fp1\":\"alpha\""),
-                "Appropriate fingerprint matching failed: Alpha should be tied to 70.0");
+        assertTrue(last.getOutput().contains("\"y\":20,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 20");
+        assertTrue(last.getOutput().contains("\"y\":5,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 5");
+        assertTrue(last.getOutput().contains("\"y\":70,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 70");
 
 
-        assertTrue(last.getOutput().contains("\"y\":175.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 175.0");
-        assertTrue(last.getOutput().contains("\"y\":150.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 150.0");
-        assertTrue(last.getOutput().contains("\"y\":100.0,\"fp1\":\"beta\""),
-                "Appropriate fingerprint matching failed: Beta should be tied to 100.0");
+        assertTrue(last.getOutput().contains("\"y\":175,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 175");
+        assertTrue(last.getOutput().contains("\"y\":150,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 150");
+        assertTrue(last.getOutput().contains("\"y\":100,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 100");
 
     }
 
