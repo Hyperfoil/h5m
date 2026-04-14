@@ -65,16 +65,33 @@ public class ValueService implements ValueServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> getDependentNodes(ValueEntity v){
-        return NodeEntity.list("SELECT DISTINCT v FROM value v JOIN v.sources s WHERE s.id = ?1",v.id);
+    public List<ValueEntity> getDependentValues(ValueEntity v){
+        return ValueEntity.list("SELECT DISTINCT v FROM value v JOIN v.sources s WHERE s.id = ?1",v.id);
     }
 
+    @Transactional
+    public long getParentCount(ValueEntity value){
+        return EdgeQueries.getParentCount(em, "value_edge", value.id);
+    }
+
+    @Transactional
+    public Map<Long, Long> getParentCounts(List<Long> childIds){
+        return EdgeQueries.getParentCounts(em, "value_edge", childIds);
+    }
 
     @Transactional
     public void delete(ValueEntity value){
-        if(value.id != null){
-            //remove values that depend on this or just remove the reference?
-            getDependentNodes(value).forEach(this::delete);
+        if(value.id != null && ValueEntity.findById(value.id) != null){
+            List<ValueEntity> dependents = getDependentValues(value);
+            Map<Long, Long> parentCounts = getParentCounts(dependents.stream().map(ValueEntity::getId).toList());
+            for(ValueEntity dependent : dependents){
+                long parentCount = parentCounts.getOrDefault(dependent.id, 0L);
+                if(parentCount <= 1){
+                    delete(dependent);
+                }
+            }
+            // clean up edge rows where this value is a parent (inverse side not managed by JPA)
+            EdgeQueries.deleteParentEdges(em, "value_edge", value.id);
             ValueEntity.deleteById(value.id);
         }
     }
@@ -542,8 +559,18 @@ public class ValueService implements ValueServiceInterface {
     public int deleteDescendantValues(ValueEntity root, NodeEntity node){
         List<ValueEntity> descendants = getDescendantValues(root,node);
         descendants = KahnDagSort.sort(descendants,v->v.getSources()).reversed();
-        descendants.forEach(PanacheEntityBase::delete);
-        return descendants.size();
+        Map<Long, Long> parentCounts = getParentCounts(descendants.stream().map(ValueEntity::getId).toList());
+        int deleted = 0;
+        for(ValueEntity v : descendants){
+            if(parentCounts.getOrDefault(v.id, 0L) <= 1){
+                EdgeQueries.deleteParentEdges(em, "value_edge", v.id);
+                EdgeQueries.deleteChildEdges(em, "value_edge", v.id);
+                em.createNativeQuery("DELETE FROM value WHERE id = :id")
+                        .setParameter("id", v.id).executeUpdate();
+                deleted++;
+            }
+        }
+        return deleted;
     }
 
     @Transactional
@@ -552,9 +579,35 @@ public class ValueService implements ValueServiceInterface {
             return 0;//don't want to support deleting uploads just yet
         }
         List<ValueEntity> descendants = getDescendantValues(root);
-        descendants.forEach(ValueEntity::delete);
-        root.delete();
-        return 1+descendants.size();
+        Set<Long> purgeSet = new HashSet<>();
+        purgeSet.add(root.id);
+        descendants.forEach(d -> purgeSet.add(d.id));
+        descendants = KahnDagSort.sort(descendants,v->v.getSources()).reversed();
+        int deleted = 0;
+        for(ValueEntity d : descendants){
+            if(!hasExternalParent(d, purgeSet)){
+                EdgeQueries.deleteParentEdges(em, "value_edge", d.id);
+                EdgeQueries.deleteChildEdges(em, "value_edge", d.id);
+                em.createNativeQuery("DELETE FROM value WHERE id = :id")
+                        .setParameter("id", d.id).executeUpdate();
+                deleted++;
+            }
+        }
+        EdgeQueries.deleteParentEdges(em, "value_edge", root.id);
+        EdgeQueries.deleteChildEdges(em, "value_edge", root.id);
+        em.createNativeQuery("DELETE FROM value WHERE id = :id")
+                .setParameter("id", root.id).executeUpdate();
+        return 1 + deleted;
+    }
+
+    private boolean hasExternalParent(ValueEntity value, Set<Long> deletionSet){
+        List<?> externalParents = em.createNativeQuery(
+            "SELECT 1 FROM value_edge WHERE child_id = :childId AND parent_id NOT IN (:deletionSet)"
+        ).setParameter("childId", value.id)
+         .setParameter("deletionSet", deletionSet)
+         .setMaxResults(1)
+         .getResultList();
+        return !externalParents.isEmpty();
     }
 
     //TODO getHash(ValueEntity value) to see if a new value is different than the persisted one
