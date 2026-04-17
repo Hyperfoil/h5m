@@ -25,4 +25,5 @@ public enum NodeType {
     public String display() {
         return display;
     }
+
 }
