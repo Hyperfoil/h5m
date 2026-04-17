@@ -22,4 +22,8 @@ public enum NodeType {
     public String display() {
         return display;
     }
+
+    public boolean isDetection() {
+        return this == FIXED_THRESHOLD || this == RELATIVE_DIFFERENCE;
+    }
 }

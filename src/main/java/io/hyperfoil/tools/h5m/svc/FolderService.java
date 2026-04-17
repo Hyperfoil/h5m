@@ -136,7 +136,7 @@ public class FolderService implements FolderServiceInterface {
         List<Work> newWorks = new ArrayList<>();
         for(ValueEntity rootValue: rootValues){
             for(NodeEntity source : List.copyOf(folder.group.sources)){
-                newWorks.add(new Work(source,new ArrayList<>(source.sources),List.of(rootValue)));
+                newWorks.add(new Work(source,new ArrayList<>(source.sources),List.of(rootValue)).setNotify(false));
             }
         }
         workService.create(newWorks);
