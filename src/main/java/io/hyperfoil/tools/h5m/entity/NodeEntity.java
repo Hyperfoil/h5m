@@ -132,6 +132,10 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     public abstract NodeType type();
 
+    public boolean isDetection() {
+        return type() == NodeType.FIXED_THRESHOLD || type() == NodeType.RELATIVE_DIFFERENCE;
+    }
+
     public boolean hasNonRootSource(){
         return sources.stream().anyMatch(s-> s.type() != NodeType.ROOT);
     }

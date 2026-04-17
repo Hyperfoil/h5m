@@ -57,7 +57,7 @@
         <!-- dependencies -->
         <lib.duckdb>1.4.4.0</lib.duckdb>
         <lib.jdbi>3.41.3</lib.jdbi>
-        <lib.jjq>0.1.1</lib.jjq>
+        <lib.jjq>0.1.2</lib.jjq>
         <lib.jmh>1.37</lib.jmh>
         <lib.jsonata>2.6.2</lib.jsonata>
         <lib.mapstruct>1.6.3</lib.mapstruct>
@@ -290,7 +290,6 @@
                     <release>${maven.compiler.release}</release>
                     <compilerArgs>
                         <arg>-parameters</arg>
-                        <arg>--enable-preview</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
@@ -362,7 +361,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${build.maven-surefire-plugin}</version>
                 <configuration>
-                    <argLine>@{argLine} --enable-preview</argLine>
+                    <argLine>@{argLine}</argLine>
                     <excludes>**/*IT.java</excludes>
                     <excludes>%regex[.*IT.class]</excludes>
                     <systemPropertyVariables>

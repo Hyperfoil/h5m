@@ -6,7 +6,9 @@ import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.h5m.queue.WorkQueue;
 import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
 import io.quarkus.runtime.StartupEvent;
+import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -34,6 +36,9 @@ public class WorkService implements WorkServiceInterface {
 
     @Inject
     WorkQueueExecutor workExecutor;
+
+    @Inject
+    Event<ChangeDetectedEvent> changeDetectedEvent;
 
     //resumes unfinished work from previous execution
     @Transactional
@@ -120,6 +125,11 @@ public class WorkService implements WorkServiceInterface {
                 }
             }
             newOrUpdated.addAll(calculated);
+
+            if(work.activeNode.isDetection() && !newOrUpdated.isEmpty()){
+                List<Long> valueIds = newOrUpdated.stream().map(ValueEntity::getId).toList();
+                changeDetectedEvent.fire(new ChangeDetectedEvent(work.activeNode.getId(), work.activeNode.name, valueIds));
+            }
 
             //we need to trigger more calculations? perhaps for a recalculation we do?
             if(!newOrUpdated.isEmpty()){
