@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 @ApplicationScoped
 public class WorkService implements WorkServiceInterface {
 
-    private static final int RETRY_LIMIT = 0;
+    private static final int RETRY_LIMIT = 3;
 
     @Inject
     EntityManager em;
@@ -181,14 +181,13 @@ public class WorkService implements WorkServiceInterface {
             //not in the finally so that it only happens if the work succeeds
             delete(work);
         }catch( Exception e){
-            //TODO how to handle the exception, adding it back to the todo list
-            System.err.println("WorkRunner caught: "+e.getMessage()+"\n work="+w);
-            e.printStackTrace();
+            Log.errorf(e, "WorkRunner caught exception for work=%s", w);
             w.retryCount++;
             if(w.retryCount > RETRY_LIMIT){
-                System.err.println("Work exceeded retry limit");
+                Log.errorf("Work exceeded retry limit (%d), deleting: %s", RETRY_LIMIT, w);
+                delete(w);
             } else {
-                System.err.println("Adding work to retry in queue");
+                Log.warnf("Retrying work (attempt %d/%d): %s", w.retryCount, RETRY_LIMIT, w);
                 workQueue.add(w);
             }
         } finally {
