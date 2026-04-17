@@ -46,6 +46,9 @@ public class Work  extends PanacheEntity implements Runnable, Comparable<Work>{
 
     boolean cumulative = false;
 
+    @Transient
+    public boolean notify = true;
+
 
     public Work(){
         retryCount = 0;
@@ -62,6 +65,11 @@ public class Work  extends PanacheEntity implements Runnable, Comparable<Work>{
 
     public NodeEntity getActiveNode() {
         return activeNode;
+    }
+
+    public Work setNotify(boolean notify) {
+        this.notify = notify;
+        return this;
     }
 
     public void setActiveNode(NodeEntity activeNode) {
