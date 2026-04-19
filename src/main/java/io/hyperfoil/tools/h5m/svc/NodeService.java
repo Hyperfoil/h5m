@@ -52,14 +52,13 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class NodeService implements NodeServiceInterface {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final JacksonJqEngine JQ_ENGINE = new JacksonJqEngine();
     private static final ConcurrentHashMap<String, JqProgram> JQ_CACHE = new ConcurrentHashMap<>();
 
     private static JqProgram compileJq(String filter) {
         return JQ_CACHE.computeIfAbsent(filter, JQ_ENGINE::compile);
     }
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Inject
     EntityManager em;
@@ -356,6 +355,7 @@ public class NodeService implements NodeServiceInterface {
         try{
             long minPrevious = relDiff.getWindow() > relDiff.getMinPrevious() ? relDiff.getWindow() : relDiff.getMinPrevious();
             NodeEntity groupBy = NodeEntity.findById(relDiff.getGroupByNode().getId());
+            NodeEntity scopingNode = findScopingNode(relDiff);
             List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root,relDiff.getFingerprintNode());
             String fpFilter = relDiff.getFingerprintFilter();
             for(int fIdx=0; fIdx<fingerprintValues.size(); fIdx++){
@@ -401,7 +401,7 @@ public class NodeService implements NodeServiceInterface {
                     //or get the domainValues greater than domain values from root and calculate all those changes?
                     List<ValueEntity> domainValues = valueService.findMatchingFingerprint(
                             relDiff.getDomainNode(),
-                            groupBy,
+                            scopingNode,
                             fingerprintValue,
                             relDiff.getDomainNode()
                     );
@@ -410,7 +410,7 @@ public class NodeService implements NodeServiceInterface {
                         //todo this does not look for values after previous relDiff observation :(
                         List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
                                 relDiff.getRangeNode(),
-                                groupBy,
+                                scopingNode,
                                 fingerprintValue,
                                 relDiff.getDomainNode(),
                                 domainValue,
@@ -477,7 +477,6 @@ public class NodeService implements NodeServiceInterface {
                                 data.set("last",new DoubleNode(lastData));
                                 data.set("value",new DoubleNode(value));
                                 data.set("ratio",new DoubleNode(100*(ratio-1)));
-                                //data.set("dIdx",new IntNode(dIdx));//was added for debug
                                 data.set("domainvalue",domainValue.data);
                                 //skip domain values due to a detection
                                 dIdx+=minPrevious;
@@ -499,70 +498,91 @@ public class NodeService implements NodeServiceInterface {
         return rtrn;
     }
 
+    /**
+     * Finds the nearest common ancestor node of the fingerprint and range nodes.
+     * This determines the correct scoping boundary for matching range values to fingerprints,
+     * even when the user-specified groupBy is broader (e.g., root).
+     */
+    private NodeEntity findScopingNode(DetectionNode detection) {
+        NodeEntity fpNode = NodeEntity.findById(detection.getFingerprintNode().getId());
+        NodeEntity rangeNode = NodeEntity.findById(detection.getRangeNode().getId());
+
+        Queue<NodeEntity> queue = new ArrayDeque<>(fpNode.getSources());
+        Set<Long> visited = new HashSet<>();
+        visited.add(fpNode.getId());
+        while (!queue.isEmpty()) {
+            NodeEntity node = queue.poll();
+            if (node.getId() != null && visited.add(node.getId())) {
+                node = NodeEntity.findById(node.getId());
+                if (node.getId().equals(rangeNode.getId()) || rangeNode.dependsOn(node)) {
+                    return node;
+                }
+                queue.addAll(node.getSources());
+            }
+        }
+        return NodeEntity.findById(detection.getGroupByNode().getId());
+    }
+
     @Transactional
     public List<ValueEntity> calculateFixedThresholdValues(FixedThreshold ft, ValueEntity root, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         try {
             NodeEntity groupBy = NodeEntity.findById(ft.getGroupByNode().getId());
+            NodeEntity scopingNode = findScopingNode(ft);
             List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root, ft.getFingerprintNode());
             String fpFilter = ft.getFingerprintFilter();
 
-            // Check fingerprint filter — if all fingerprints are filtered out, skip this root
-            JsonNode fingerprintData = null;
             for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
                 ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
                 if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
                     continue;
                 }
-                fingerprintData = fingerprintValue.data;
-                break;
-            }
-            if (fingerprintData == null) {
-                return rtrn;
-            }
 
-            // Get range values scoped to this root only
-            List<ValueEntity> rangeValues = valueService.getDescendantValues(root, ft.getRangeNode());
-            for (int rIdx = 0; rIdx < rangeValues.size(); rIdx++) {
-                ValueEntity rangeValue = rangeValues.get(rIdx);
-                Double numericValue;
-                if (rangeValue.data instanceof NumericNode numericNode) {
-                    numericValue = numericNode.asDouble();
-                } else if (rangeValue.data.toString().matches("[0-9]+\\.?[0-9]*")) {
-                    numericValue = Double.parseDouble(rangeValue.data.toString());
-                } else {
-                    continue;
-                }
-
-                FixedThreshold.ViolationType violationType = null;
-                double bound = Double.NaN;
-
-                if (ft.isMinEnabled()) {
-                    if (ft.isMinInclusive() ? numericValue < ft.getMin() : numericValue <= ft.getMin()) {
-                        violationType = FixedThreshold.ViolationType.BELOW;
-                        bound = ft.getMin();
+                // Get range values scoped to this fingerprint and current root
+                List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
+                    ft.getRangeNode(), scopingNode, fingerprintValue, null, null, root, -1, -1, true
+                );
+                for (int rIdx = 0; rIdx < rangeValues.size(); rIdx++) {
+                    ValueEntity rangeValue = rangeValues.get(rIdx);
+                    Double numericValue;
+                    if (rangeValue.data instanceof NumericNode numericNode) {
+                        numericValue = numericNode.asDouble();
+                    } else if (rangeValue.data.toString().matches("[0-9]+\\.?[0-9]*")) {
+                        numericValue = Double.parseDouble(rangeValue.data.toString());
+                    } else {
+                        continue;
                     }
-                }
-                if (violationType == null && ft.isMaxEnabled()) {
-                    if (ft.isMaxInclusive() ? numericValue > ft.getMax() : numericValue >= ft.getMax()) {
-                        violationType = FixedThreshold.ViolationType.ABOVE;
-                        bound = ft.getMax();
-                    }
-                }
 
-                if (violationType != null) {
-                    ObjectNode data = OBJECT_MAPPER.createObjectNode();
-                    data.set("value", new DoubleNode(numericValue));
-                    data.set("bound", new DoubleNode(bound));
-                    data.put("direction", violationType.label());
-                    data.set("fingerprint", fingerprintData);
-                    ValueEntity changeValue = new ValueEntity(root.folder, ft, data);
-                    changeValue.idx = startingOrdinal;
-                    List<ValueEntity> foundParents = valueService.getAncestor(root, groupBy);
-                    if (foundParents.size() == 1) {
-                        changeValue.sources = foundParents;
+                    FixedThreshold.ViolationType violationType = null;
+                    double bound = Double.NaN;
+
+                    if (ft.isMinEnabled()) {
+                        if (ft.isMinInclusive() ? numericValue < ft.getMin() : numericValue <= ft.getMin()) {
+                            violationType = FixedThreshold.ViolationType.BELOW;
+                            bound = ft.getMin();
+                        }
                     }
-                    rtrn.add(changeValue);
+                    if (violationType == null && ft.isMaxEnabled()) {
+                        if (ft.isMaxInclusive() ? numericValue > ft.getMax() : numericValue >= ft.getMax()) {
+                            violationType = FixedThreshold.ViolationType.ABOVE;
+                            bound = ft.getMax();
+                        }
+                    }
+
+                    if (violationType != null) {
+                        ObjectNode data = OBJECT_MAPPER.createObjectNode();
+                        data.set("value", new DoubleNode(numericValue));
+                        data.set("bound", new DoubleNode(bound));
+                        data.put("direction", violationType.label());
+                        data.set("fingerprint", fingerprintValue.data);
+                        ValueEntity changeValue = new ValueEntity(root.folder, ft, data);
+                        changeValue.idx = startingOrdinal;
+                        List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
+                        if (foundParents.size() == 1) {
+                            changeValue.sources = foundParents;
+                        }
+                        rtrn.add(changeValue);
+                    }
                 }
             }
         } catch (Exception e) {

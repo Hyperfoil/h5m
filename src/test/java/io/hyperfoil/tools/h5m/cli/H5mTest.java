@@ -5,7 +5,6 @@ import io.quarkus.test.junit.main.LaunchResult;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -210,10 +210,7 @@ public class H5mTest {
         LaunchResult last = results.getLast();
         assertTrue(last.getOutput().contains("Count: 13"),"expect 13 values from test");
     }
-    @Test //not yet working because relativedifference doesn't know about the "datsaet" node
-    //need to tell relativedifference which node is the dataset. either detect it with CTE (is that possible)
-    //or make it an attribute on the FolderEntity / NodeGroupEntity
-    @Disabled("There should be only changes detected for x = 2 and x = 12 but there are two other detected for x = 3 and x = 13")
+    @Test
     public void calculate_relativedifference_dataset_node(QuarkusMainLauncher launcher) throws IOException {
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
@@ -226,16 +223,20 @@ public class H5mTest {
                   "each": [
                     {"x": 3, "y": 1.1, "fp1": "alpha", "fp2": "alpha"},
                     {"x": 13, "y": 20.2, "fp1": "alpha", "fp2": "bravo"}
+             
                   ]
                 }
                 """
         );
+
+
         Path filePath02 = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
                 """
                 {
                   "each": [
                     {"x": 2, "y": 2.1, "fp1": "alpha", "fp2": "alpha"},
                     {"x": 12, "y": 30.2, "fp1": "alpha", "fp2": "bravo"}
+                
                   ]
                 }
                 """
@@ -244,8 +245,8 @@ public class H5mTest {
                 """
                 {
                   "each": [
-                    {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
-                    {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
+                   {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
+                   {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
                   ]
                 }
                 """
@@ -258,19 +259,22 @@ public class H5mTest {
                 new String[]{"add","jq","to",testName,"fp1","{split}:.fp1"},
                 new String[]{"add","jq","to",testName,"fp2","{split}:.fp2"},
                 new String[]{"list",testName,"nodes"},
-                new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","by","split","fingerprint","fp1,fp2","window","1","minPrevious","1"},
+                new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","by","split","fingerprint","fp1,fp2","window","1","minPrevious","1","threshold","0.1"},
                 new String[]{"list",testName,"nodes"},
                 new String[]{"upload",filePath01.toString(),"to",testName},
                 new String[]{"upload",filePath02.toString(),"to",testName},
                 new String[]{"upload",filePath03.toString(),"to",testName},
                 new String[]{"list","value","from",testName}
+
+
         );
         results.forEach(result->{
             assertEquals(0,result.exitCode(),result.getOutput());
         });
 
         LaunchResult last = results.getLast();
-        assertTrue(last.getOutput().contains("Count: 38"),"expect 38 values from test");
+        assertTrue(last.getOutput().contains("Count: 40"),
+                "expect 40 values from test\n" + last.getOutput());
     }
 
     @Test
@@ -744,6 +748,247 @@ public class H5mTest {
         assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
 
     }
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values(QuarkusMainLauncher launcher) throws IOException {
+        runFixedThresholdMultipleParentValues(launcher,
+                "calculate_fixedthreshold_with_multiple_parent_values",
+                new String[]{"range", "rangeNode", "fingerprint", "categoryFp", "min", "10", "max", "100"});
+    }
 
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values_with_by_split(QuarkusMainLauncher launcher) throws IOException {
+        runFixedThresholdMultipleParentValues(launcher,
+                "calculate_fixedthreshold_with_multiple_parent_values_with_by_split",
+                new String[]{"range", "rangeNode", "by", "itemSplit", "fingerprint", "categoryFp", "min", "10", "max", "100"});
+    }
+
+    private void runFixedThresholdMultipleParentValues(QuarkusMainLauncher launcher, String testName, String[] ftArgs) throws IOException {
+        Path folder = Files.createTempDirectory("h5m");
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 20.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 175.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 5.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 150.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 70.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 100.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        // Build fixedthreshold command: "add fixedthreshold ftNode to <testName>" + ftArgs
+        String[] ftCmd = new String[5 + ftArgs.length];
+        ftCmd[0] = "add"; ftCmd[1] = "fixedthreshold"; ftCmd[2] = "ftNode"; ftCmd[3] = "to"; ftCmd[4] = testName;
+        System.arraycopy(ftArgs, 0, ftCmd, 5, ftArgs.length);
+
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "itemSplit", ".items[]"},
+                new String[]{"add", "jq", "to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"add", "jq", "to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"add", "jq", "to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"list", testName, "nodes"},
+                ftCmd,
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", folder.toString(), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+
+        assertTrue(last.getOutput().contains("Count: 33"),
+                "Expected 33 total values from test \n" + last.getOutput());
+
+        assertTrue(last.getOutput().contains("\"y\":20,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 20");
+        assertTrue(last.getOutput().contains("\"y\":5,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 5");
+        assertTrue(last.getOutput().contains("\"y\":70,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 70");
+
+        assertTrue(last.getOutput().contains("\"y\":175,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 175");
+        assertTrue(last.getOutput().contains("\"y\":150,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 150");
+        assertTrue(last.getOutput().contains("\"y\":100,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 100");
+    }
+
+    private String qvssPath(String filename) {
+        return new File(Objects.requireNonNull(
+                getClass().getClassLoader().getResource("qvss/" + filename)).getFile()
+        ).getAbsolutePath();
+    }
+
+    @Test
+    public void fixedthreshold_qvss_throughput(QuarkusMainLauncher launcher) {
+        String testName = "fixedthreshold_qvss_throughput";
+
+        // Throughput values (quarkus3-jvm avThroughput):
+        // 27405: 2203 (below), 27406: 2206 (below), 27271: 8778 (below), 27272: 9223 (below)
+        // 26594: 29482 (ok), 26598: 29715 (ok), 27279: 29490 (ok), 27897: 29576 (ok)
+        // 84315: 88777 (above)
+        // Threshold: min=10000, max=35000
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"add", "jq", "to", testName, "version", ".config.QUARKUS_VERSION"},
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName,
+                        "range", "throughput",
+                        "fingerprint", "version",
+                        "min", "10000",
+                        "max", "35000"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", qvssPath("27405.json"), "to", testName},
+                new String[]{"upload", qvssPath("27406.json"), "to", testName},
+                new String[]{"upload", qvssPath("27271.json"), "to", testName},
+                new String[]{"upload", qvssPath("27272.json"), "to", testName},
+                new String[]{"upload", qvssPath("26594.json"), "to", testName},
+                new String[]{"upload", qvssPath("26598.json"), "to", testName},
+                new String[]{"upload", qvssPath("27279.json"), "to", testName},
+                new String[]{"upload", qvssPath("27897.json"), "to", testName},
+                new String[]{"upload", qvssPath("84315.json"), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+        String output = last.getOutput();
+
+        // 4 below (2203, 2206, 8778, 9223) + 1 above (88777) = 5 violations
+        assertTrue(output.contains("below"), "should detect below-threshold violations\n" + output);
+        assertTrue(output.contains("above"), "should detect above-threshold violation\n" + output);
+    }
+
+    @Test
+    public void relativedifference_qvss_throughput_regression(QuarkusMainLauncher launcher) {
+        String testName = "relativedifference_qvss_throughput_regression";
+
+        // 9 files from Quarkus 3.7.x, chronological order, shared fingerprint "3.7":
+        // 26594: 3.7.1 tp=29482  (2024-02-02) — baseline
+        // 26598: 3.7.1 tp=29715  (2024-02-02) — stable
+        // 26599: 3.7.1 tp=29561  (2024-02-02) — stable
+        // 26776: 3.7.1 tp=29583  (2024-02-07) — stable
+        // 27271: 3.7.3 tp=8778   (2024-02-19) — big regression (~70% drop)
+        // 27272: 3.7.3 tp=9223   (2024-02-19) — still low
+        // 27279: 3.7.3 tp=29490  (2024-02-19) — recovery
+        // 27405: 3.7.4 tp=2203   (2024-02-22) — severe regression (~93% drop)
+        // 27406: 3.7.4 tp=2206   (2024-02-22) — still low
+        // Fingerprint: major.minor version extracted via split/join → "3.7"
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"add", "jq", "to", testName, "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
+                new String[]{"add", "jq", "to", testName, "startTime", ".timing.start"},
+                new String[]{"add", "relativedifference", "rdNode", "to", testName,
+                        "range", "throughput",
+                        "domain", "startTime",
+                        "fingerprint", "majorMinor",
+                        "window", "1",
+                        "minPrevious", "3",
+                        "threshold", "0.2"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", qvssPath("26594.json"), "to", testName},
+                new String[]{"upload", qvssPath("26598.json"), "to", testName},
+                new String[]{"upload", qvssPath("26599.json"), "to", testName},
+                new String[]{"upload", qvssPath("26776.json"), "to", testName},
+                new String[]{"upload", qvssPath("27271.json"), "to", testName},
+                new String[]{"upload", qvssPath("27272.json"), "to", testName},
+                new String[]{"upload", qvssPath("27279.json"), "to", testName},
+                new String[]{"upload", qvssPath("27405.json"), "to", testName},
+                new String[]{"upload", qvssPath("27406.json"), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+        String output = last.getOutput();
+
+        // Detections expected when enough history builds up:
+        // The 29583→8778 drop (~70%) and 29490→2203 drop (~93%) should trigger detection
+        assertTrue(output.contains("ratio"), "should detect throughput regression via relative difference\n" + output);
+    }
+
+    @Test
+    public void fixedthreshold_qvss_split_by_framework(QuarkusMainLauncher launcher) {
+        String testName = "fixedthreshold_qvss_split_by_framework";
+
+        // 6 files with both quarkus-jvm and spring-jvm results:
+        // 7691:  quarkus=28795, spring=10714
+        // 7750:  quarkus=28904, spring=10758
+        // 6313:  quarkus=32798, spring=11088
+        // 6314:  quarkus=37391, spring=12269
+        // 16328: quarkus=28829, spring=9431
+        // 17333: quarkus=28772, spring=9700
+        // Split on .results | to_entries[], fingerprint on framework key
+        // Threshold min=15000: all spring-jvm values violate, no quarkus-jvm values violate
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "framework", ".results | to_entries[]"},
+                new String[]{"add", "jq", "to", testName, "throughput", "{framework}:.value.load.avThroughput"},
+                new String[]{"add", "jq", "to", testName, "fwName", "{framework}:.key"},
+                new String[]{"add", "fixedthreshold", "ftNode", "to", testName,
+                        "range", "throughput",
+                        "fingerprint", "fwName",
+                        "min", "15000"},
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", qvssPath("7691.json"), "to", testName},
+                new String[]{"upload", qvssPath("7750.json"), "to", testName},
+                new String[]{"upload", qvssPath("6313.json"), "to", testName},
+                new String[]{"upload", qvssPath("6314.json"), "to", testName},
+                new String[]{"upload", qvssPath("16328.json"), "to", testName},
+                new String[]{"upload", qvssPath("17333.json"), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+        String output = last.getOutput();
+
+        // All spring-jvm values (~9400-12200) are below min=15000
+        assertTrue(output.contains("below"), "should detect spring below threshold\n" + output);
+        assertTrue(output.contains("\"fwName\":\"spring-jvm\""),
+                "should have spring-jvm in violation fingerprint\n" + output);
+
+        // All quarkus-jvm values (~28700-37400) are above min=15000
+        // No violation should contain quarkus-jvm fingerprint — scoping must keep them separate
+        assertFalse(output.contains("\"fingerprint\":{\"fwName\":\"quarkus-jvm\"}"),
+                "quarkus-jvm should not appear in violations — scoping broken\n" + output);
+    }
 
 }
