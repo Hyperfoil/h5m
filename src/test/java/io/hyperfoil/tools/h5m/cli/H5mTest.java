@@ -5,7 +5,6 @@ import io.quarkus.test.junit.main.LaunchResult;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.io.IOException;
@@ -210,10 +209,7 @@ public class H5mTest {
         LaunchResult last = results.getLast();
         assertTrue(last.getOutput().contains("Count: 13"),"expect 13 values from test");
     }
-    @Test //not yet working because relativedifference doesn't know about the "datsaet" node
-    //need to tell relativedifference which node is the dataset. either detect it with CTE (is that possible)
-    //or make it an attribute on the FolderEntity / NodeGroupEntity
-    @Disabled("There should be only changes detected for x = 2 and x = 12 but there are two other detected for x = 3 and x = 13")
+    @Test
     public void calculate_relativedifference_dataset_node(QuarkusMainLauncher launcher) throws IOException {
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
@@ -226,16 +222,20 @@ public class H5mTest {
                   "each": [
                     {"x": 3, "y": 1.1, "fp1": "alpha", "fp2": "alpha"},
                     {"x": 13, "y": 20.2, "fp1": "alpha", "fp2": "bravo"}
+             
                   ]
                 }
                 """
         );
+
+
         Path filePath02 = Files.writeString(Files.createTempFile(folder,"h5m",".json").toAbsolutePath(),
                 """
                 {
                   "each": [
                     {"x": 2, "y": 2.1, "fp1": "alpha", "fp2": "alpha"},
                     {"x": 12, "y": 30.2, "fp1": "alpha", "fp2": "bravo"}
+                
                   ]
                 }
                 """
@@ -244,8 +244,8 @@ public class H5mTest {
                 """
                 {
                   "each": [
-                    {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
-                    {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
+                   {"x": 1, "y": 3.1, "fp1": "alpha", "fp2": "alpha"},
+                   {"x": 11, "y": 40.2, "fp1": "alpha", "fp2": "bravo"}
                   ]
                 }
                 """
@@ -258,19 +258,22 @@ public class H5mTest {
                 new String[]{"add","jq","to",testName,"fp1","{split}:.fp1"},
                 new String[]{"add","jq","to",testName,"fp2","{split}:.fp2"},
                 new String[]{"list",testName,"nodes"},
-                new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","by","split","fingerprint","fp1,fp2","window","1","minPrevious","1"},
+                new String[]{"add","relativedifference","relativediff","to",testName,"range","rangeNode","domain","domainNode","by","split","fingerprint","fp1,fp2","window","1","minPrevious","1","threshold","0.1"},
                 new String[]{"list",testName,"nodes"},
                 new String[]{"upload",filePath01.toString(),"to",testName},
                 new String[]{"upload",filePath02.toString(),"to",testName},
                 new String[]{"upload",filePath03.toString(),"to",testName},
                 new String[]{"list","value","from",testName}
+
+
         );
         results.forEach(result->{
             assertEquals(0,result.exitCode(),result.getOutput());
         });
 
         LaunchResult last = results.getLast();
-        assertTrue(last.getOutput().contains("Count: 38"),"expect 38 values from test");
+        assertTrue(last.getOutput().contains("Count: 40"),
+                "expect 40 values from test\n" + last.getOutput());
     }
 
     @Test
@@ -744,6 +747,96 @@ public class H5mTest {
         assertFalse(result.getOutput().contains("\"example\""),"strings should not be quoted");
 
     }
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values(QuarkusMainLauncher launcher) throws IOException {
+        runFixedThresholdMultipleParentValues(launcher,
+                "calculate_fixedthreshold_with_multiple_parent_values",
+                new String[]{"range", "rangeNode", "fingerprint", "categoryFp", "min", "10", "max", "100"});
+    }
 
+    @Test
+    public void calculate_fixedthreshold_with_multiple_parent_values_with_by_split(QuarkusMainLauncher launcher) throws IOException {
+        runFixedThresholdMultipleParentValues(launcher,
+                "calculate_fixedthreshold_with_multiple_parent_values_with_by_split",
+                new String[]{"range", "rangeNode", "by", "itemSplit", "fingerprint", "categoryFp", "min", "10", "max", "100"});
+    }
+
+    private void runFixedThresholdMultipleParentValues(QuarkusMainLauncher launcher, String testName, String[] ftArgs) throws IOException {
+        Path folder = Files.createTempDirectory("h5m");
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 20.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 175.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 5.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 150.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                {
+                  "items": [
+                    {"x": "item1", "y": 70.0, "fp1": "alpha"},
+                    {"x": "item2", "y": 100.0, "fp1": "beta"}
+                  ]
+                }
+                """
+        );
+
+        // Build fixedthreshold command: "add fixedthreshold ftNode to <testName>" + ftArgs
+        String[] ftCmd = new String[5 + ftArgs.length];
+        ftCmd[0] = "add"; ftCmd[1] = "fixedthreshold"; ftCmd[2] = "ftNode"; ftCmd[3] = "to"; ftCmd[4] = testName;
+        System.arraycopy(ftArgs, 0, ftCmd, 5, ftArgs.length);
+
+        List<LaunchResult> results = run(launcher,
+                new String[]{"add", "folder", testName},
+                new String[]{"add", "jq", "to", testName, "itemSplit", ".items[]"},
+                new String[]{"add", "jq", "to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"add", "jq", "to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"add", "jq", "to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"list", testName, "nodes"},
+                ftCmd,
+                new String[]{"list", testName, "nodes"},
+                new String[]{"upload", folder.toString(), "to", testName},
+                new String[]{"list", "value", "from", testName}
+        );
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+
+        assertTrue(last.getOutput().contains("Count: 33"),
+                "Expected 33 total values from test \n" + last.getOutput());
+
+        assertTrue(last.getOutput().contains("\"y\":20,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 20");
+        assertTrue(last.getOutput().contains("\"y\":5,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 5");
+        assertTrue(last.getOutput().contains("\"y\":70,\"fp1\":\"alpha\""),
+                "Appropriate fingerprint matching failed: Alpha should be tied to 70");
+
+        assertTrue(last.getOutput().contains("\"y\":175,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 175");
+        assertTrue(last.getOutput().contains("\"y\":150,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 150");
+        assertTrue(last.getOutput().contains("\"y\":100,\"fp1\":\"beta\""),
+                "Appropriate fingerprint matching failed: Beta should be tied to 100");
+    }
 
 }

@@ -132,6 +132,10 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     public abstract NodeType type();
 
+    public boolean isDetection() {
+        return this instanceof io.hyperfoil.tools.h5m.entity.node.DetectionNode;
+    }
+
     public boolean hasNonRootSource(){
         return sources.stream().anyMatch(s-> s.type() != NodeType.ROOT);
     }
