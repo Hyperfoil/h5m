@@ -13,7 +13,7 @@ import java.util.List;
 
 @Entity
 @DiscriminatorValue("rd")
-public class RelativeDifference extends NodeEntity {
+public class RelativeDifference extends NodeEntity implements DetectionNode {
 
     private static final String THRESHOLD = "threshold";
     public static final double DEFAULT_THRESHOLD = 0.2;

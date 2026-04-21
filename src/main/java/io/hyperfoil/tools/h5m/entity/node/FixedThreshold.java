@@ -13,7 +13,7 @@ import java.util.List;
 
 @Entity
 @DiscriminatorValue("ft")
-public class FixedThreshold extends NodeEntity {
+public class FixedThreshold extends NodeEntity implements DetectionNode {
 
     private static final String MIN = "min";
     private static final String MAX = "max";
