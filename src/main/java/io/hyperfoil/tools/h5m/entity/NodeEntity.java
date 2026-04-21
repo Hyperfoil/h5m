@@ -133,7 +133,7 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
     public abstract NodeType type();
 
     public boolean isDetection() {
-        return type() == NodeType.FIXED_THRESHOLD || type() == NodeType.RELATIVE_DIFFERENCE;
+        return this instanceof io.hyperfoil.tools.h5m.entity.node.DetectionNode;
     }
 
     public boolean hasNonRootSource(){
