@@ -1,5 +1,8 @@
 package io.hyperfoil.tools.h5m.entity;
 
+import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -103,5 +106,21 @@ public class NodeTest {
         assertTrue(n1.isCircular(),"n1 should be circular");
     }
 
+
+    @Test
+    public void hashCode_not_infinite_recursion(){
+        List<Node> groupSources = new ArrayList<>();
+        NodeGroup group = new NodeGroup(-1L,"group",new Node(-1L,"root","root", NodeType.ROOT,null,"",Collections.emptyList()),groupSources);
+
+        Node n = new Node(1L,"node","fqdn",NodeType.JQ,group,"$.",List.of(group.root()));
+
+        groupSources.add(n);
+        try {
+            int hash = n.hashCode();
+        }catch(StackOverflowError e){
+            fail("infinite recursion in Node.hashCode");
+        }
+
+    }
 
 }
