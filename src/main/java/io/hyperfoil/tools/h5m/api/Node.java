@@ -15,17 +15,17 @@ public record Node(
         @Schema(description = "Node operation (jq filter, JS function, etc.)") String operation,
         @Schema(description = "Source dependency nodes") List<Node> sources) {
 
-        @Override
+/*        @Override
         public boolean equals(Object o) {
             if(o instanceof Node n){
                 return Objects.equals(n.id, id) &&
                         Objects.equals(n.name,name) &&
                         Objects.equals(n.type,type) &&
-                        (n.group!= null && group!=null ? Objects.equals(n.group,group) : n.group == group)
+                        (n.group!= null && group!=null ? Objects.equals(n.group.id,group.id) : n.group == group)
                         && Objects.equals(n.operation,operation) && Objects.equals(n.sources,sources);
             }
             return false;
-        }
+        }*/
 
         @Override
         public int hashCode(){

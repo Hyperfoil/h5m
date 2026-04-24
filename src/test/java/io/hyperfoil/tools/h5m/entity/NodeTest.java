@@ -123,4 +123,29 @@ public class NodeTest {
 
     }
 
+    @Test
+    public void equals_not_infinite_recursion(){
+        List<Node> sources1 = new ArrayList<>();
+        List<Node> sources2 = new ArrayList<>();
+        NodeGroup g1 = new NodeGroup(-1L,"group",new Node(-1L,"root","root", NodeType.ROOT,null,"",Collections.emptyList()),sources1);
+        NodeGroup g2 = new NodeGroup(-1L,"group",new Node(-1L,"root","root", NodeType.ROOT,null,"",Collections.emptyList()),sources2);
+
+        Node s = new Node(2L,"source","source",NodeType.JQ,g1,".",List.of(g1.root()));
+        sources1.add(s);
+        sources2.add(s);
+
+        Node n1 = new Node(1L,"node","fqdn",NodeType.JQ,g1,"$.",List.of(s));
+        Node n2 = new Node(1L,"node","fqdn",NodeType.JQ,g1,"$.",List.of(s));
+        sources1.add(n1);
+        sources2.add(n1);
+
+        try{
+            assertTrue(n1.equals(n2));
+            assertTrue(n1.equals(n1));
+            assertTrue(g1.equals(g2));
+            assertTrue(g1.equals(g1));
+        }catch(StackOverflowError e){
+            fail("infinite recursion in Node.equals");
+        }
+    }
 }
