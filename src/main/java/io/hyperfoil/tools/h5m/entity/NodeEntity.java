@@ -44,10 +44,11 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
             name="node_edge",
             joinColumns = @JoinColumn(name = "child_id"),
             inverseJoinColumns = @JoinColumn(name = "parent_id"),
-            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"})
+            uniqueConstraints = @UniqueConstraint(columnNames = {"child_id", "parent_id"}),
+            indexes = @Index(name = "idx_node_edge_parent", columnList = "parent_id")
     )
     @OrderColumn(name = "idx")
-    @BatchSize(size = 25)
+    @BatchSize(size = 100)
     public List<NodeEntity> sources;
 
     public List<NodeEntity> getSources() {return sources;}
@@ -213,6 +214,9 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
     }
 
     private Set<Long> computeAncestorIds() {
+        if(sources == null || sources.isEmpty()) {
+            return Collections.emptySet();
+        }
         Set<Long> ancestors = new HashSet<>();
         Queue<NodeEntity> queue = new ArrayDeque<>(sources);
         while (!queue.isEmpty()) {
