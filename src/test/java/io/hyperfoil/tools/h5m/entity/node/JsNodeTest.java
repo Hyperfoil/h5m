@@ -144,6 +144,39 @@ public class JsNodeTest {
     }
 
     @Test
+    public void createParameters_single_param_unmatched_wraps_in_object() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, ValueEntity> values = Map.of(
+                "source0", new ValueEntity(null, null, mapper.readTree("\"hello\"")),
+                "source1", new ValueEntity(null, null, mapper.readTree("\"world\""))
+        );
+        List<JsonNode> params = JsNode.createParameters("obj => Object.values(obj)", values);
+        assertNotNull(params);
+        assertEquals(1, params.size(), "should wrap all sources into one ObjectNode");
+        assertInstanceOf(ObjectNode.class, params.get(0));
+        ObjectNode obj = (ObjectNode) params.get(0);
+        assertTrue(obj.has("source0"), "should contain source0 key");
+        assertTrue(obj.has("source1"), "should contain source1 key");
+        assertEquals("\"hello\"", obj.get("source0").toString());
+        assertEquals("\"world\"", obj.get("source1").toString());
+    }
+
+    @Test
+    public void createParameters_single_param_single_source_wraps_in_object() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, ValueEntity> values = Map.of(
+                "mySource", new ValueEntity(null, null, mapper.readTree("\"value\""))
+        );
+        List<JsonNode> params = JsNode.createParameters("obj => obj.mySource", values);
+        assertNotNull(params);
+        assertEquals(1, params.size());
+        assertInstanceOf(ObjectNode.class, params.get(0));
+        ObjectNode obj = (ObjectNode) params.get(0);
+        assertTrue(obj.has("mySource"));
+        assertEquals("\"value\"", obj.get("mySource").toString());
+    }
+
+    @Test
     public void parse_sources(){
         Map<String, NodeEntity> existing = Map.of("a",new JqNode("a",".a"),
                 "b",new JqNode("b",".b"));

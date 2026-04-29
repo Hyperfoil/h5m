@@ -99,7 +99,11 @@ public class JsNode extends NodeEntity {
                 }
             }else{
                 if(!sourceValues.containsKey(param)){
-                    System.err.println("unable to find parameter value for " + param);
+                    if(params.size()==1 && !sourceValues.isEmpty()){
+                        ObjectNode obj = mapper.createObjectNode();
+                        sourceValues.forEach((k,v) -> obj.set(k, v.data));
+                        rtrn.add(obj);
+                    }
                 }else{
                     if(currentNode != null){
                         currentNode.set(param,sourceValues.get(param).data);
