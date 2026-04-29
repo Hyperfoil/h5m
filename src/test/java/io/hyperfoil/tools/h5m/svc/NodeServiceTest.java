@@ -1379,4 +1379,92 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, mixedR1.size(), "minInclusive=false: value 10 should violate min=10");
         assertEquals(0, mixedR2.size(), "maxInclusive=true: value 100 should NOT violate max=100");
     }
+
+    /**
+     * Mirrors the Horreum Autobench Single Core label scenario.
+     *
+     * In Horreum (rhivos-perf-comprehensive, run 198223):
+     * - The transformer produces 10 datasets, each with scalar workload and results fields
+     * - Autobench Single Core label has 2 extractors: results (isarray=true), workload (isarray=false)
+     * - The label function checks: value["workload"] != "autobench" → return null
+     * - Only dataset 8 (workload="autobench") produces a non-null value (35.037)
+     * - All other datasets return null because their workload is "stressng", "fio", etc.
+     *
+     * In h5m without datasets, sqlall extractors return the full array as one value.
+     * Without auto-split, the JS function receives:
+     *   workload = ["stressng","stressng","stressng","fio","coremark_pro","autobench"]
+     *   results  = [null, null, null, null, null, [35.037, 42.5]]
+     * The check value["workload"] != "autobench" compares an array to a string → always true → always null.
+     *
+     * With auto-split, the function runs once per element:
+     *   iteration 0: workload="stressng", results=null → null (correct, matches Horreum dataset 0)
+     *   iteration 5: workload="autobench", results=[35.037, 42.5] → 35.037 (correct, matches Horreum dataset 8)
+     */
+    @Test
+    public void auto_split_mirrors_horreum_per_dataset_label_evaluation() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        tm.begin();
+
+        // Two source nodes simulating sqlall extractors that return parallel arrays
+        NodeEntity resultsNode = new JqNode("results", ".");
+        resultsNode.persist();
+        NodeEntity workloadNode = new JqNode("workload", ".");
+        workloadNode.persist();
+
+        // JS function matching Horreum's Autobench Single Core label:
+        // returns the first result value only when workload is "autobench", null otherwise
+        JsNode label = new JsNode("Autobench Single Core",
+                "({results, workload}) => { if (workload != \"autobench\") { return null; } return results; }",
+                List.of(resultsNode, workloadNode));
+        label.persist();
+
+        NodeEntity root = new RootNode();
+        root.persist();
+        ValueEntity rootVal = new ValueEntity(null, root, mapper.readTree("{}"));
+        rootVal.persist();
+
+        // Simulate sqlall output: each source has one value containing an array
+        // (3 workload iterations: stressng, fio, autobench)
+        ValueEntity resultsVal = new ValueEntity(null, resultsNode,
+                mapper.readTree("[null, null, 35.037]"));
+        resultsVal.sources = List.of(rootVal);
+        resultsVal.persist();
+
+        ValueEntity workloadVal = new ValueEntity(null, workloadNode,
+                mapper.readTree("[\"stressng\", \"fio\", \"autobench\"]"));
+        workloadVal.sources = List.of(rootVal);
+        workloadVal.persist();
+
+        tm.commit();
+
+        // Auto-split should expand arrays and pair by index
+        List<Map<String, ValueEntity>> permutations = nodeService.calculateSourceValuePermutations(label, rootVal);
+        assertNotNull(permutations);
+        assertEquals(3, permutations.size(), "should produce 3 permutations (one per array element, matching Horreum's 3 datasets)");
+
+        // Verify element-level pairing (not full arrays)
+        assertEquals("\"stressng\"", permutations.get(0).get("workload").data.toString());
+        assertTrue(permutations.get(0).get("results").data.isNull(), "stressng results should be null");
+        assertEquals("\"fio\"", permutations.get(1).get("workload").data.toString());
+        assertTrue(permutations.get(1).get("results").data.isNull(), "fio results should be null");
+        assertEquals("\"autobench\"", permutations.get(2).get("workload").data.toString());
+        assertEquals("35.037", permutations.get(2).get("results").data.toString(), "autobench results should be 35.037");
+
+        // Now calculate the actual JS values — should match Horreum's output:
+        // stressng → null, fio → null, autobench → 35.037
+        for (int i = 0; i < permutations.size(); i++) {
+            List<ValueEntity> jsResults = nodeService.calculateJsValues(label, permutations.get(i), i);
+            if (i < 2) {
+                // stressng and fio: function returns null → no value created
+                assertTrue(jsResults.isEmpty(),
+                        "iteration " + i + " should produce no value (workload != autobench)");
+            } else {
+                // autobench: function returns 35.037
+                assertEquals(1, jsResults.size(),
+                        "iteration 2 (autobench) should produce one value");
+                assertEquals("35.037", jsResults.get(0).data.toString(),
+                        "autobench value should be 35.037, matching Horreum");
+            }
+        }
+    }
 }

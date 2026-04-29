@@ -216,6 +216,29 @@ public class NodeService implements NodeServiceInterface {
             nodeValues.put(source.name, found);
         }
 
+        // Auto-split: when all sources have exactly 1 value but some contain JSON arrays,
+        // expand them into individual values for element-by-element pairing.
+        // This handles sqlall extractors whose single value is an array of N elements.
+        if (node.sources.size() > 1 && nodeValues.values().stream().allMatch(v -> v.size() == 1)) {
+            boolean hasArrayData = nodeValues.values().stream()
+                    .anyMatch(v -> v.get(0).data != null && v.get(0).data.isArray() && v.get(0).data.size() > 1);
+            if (hasArrayData) {
+                for (Map.Entry<String, List<ValueEntity>> entry : new ArrayList<>(nodeValues.entrySet())) {
+                    ValueEntity val = entry.getValue().get(0);
+                    if (val.data != null && val.data.isArray() && val.data.size() > 1) {
+                        List<ValueEntity> expanded = new ArrayList<>();
+                        for (int i = 0; i < val.data.size(); i++) {
+                            ValueEntity element = new ValueEntity(val.folder, val.node, val.data.get(i));
+                            element.idx = i;
+                            element.sources = val.sources;
+                            expanded.add(element);
+                        }
+                        nodeValues.put(entry.getKey(), expanded);
+                    }
+                }
+            }
+        }
+
         int maxNodeValuesLength = nodeValues.values().stream().map(Collection::size).max(Integer::compareTo).orElse(0);
 
         //the two cases where we do not need to worry about MultiIterationType
