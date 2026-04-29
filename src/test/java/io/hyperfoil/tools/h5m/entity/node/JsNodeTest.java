@@ -163,4 +163,45 @@ public class JsNodeTest {
         assertEquals(existing.get("b"),sources.get(1),"expected b value");
     }
 
+    @Test
+    public void parse_with_default_params_skips_missing(){
+        Map<String, NodeEntity> existing = Map.of("data", new JqNode("data", ".data"));
+
+        Function<String,List<NodeEntity>> getExisting = s ->
+                existing.containsKey(s) ? List.of(existing.get(s)) : Collections.emptyList();
+
+        // Function has 3 params but only 'data' has a node; others have defaults
+        JsNode node = JsNode.parse("node", "(data, threshold=0.5, verbose=false) => data > threshold", getExisting);
+        assertNotNull(node, "should succeed — unmatched params have defaults");
+        assertEquals(1, node.sources.size());
+        assertEquals(existing.get("data"), node.sources.get(0));
+    }
+
+    @Test
+    public void parse_fails_when_required_param_missing(){
+        Map<String, NodeEntity> existing = Map.of("a", new JqNode("a", ".a"));
+
+        Function<String,List<NodeEntity>> getExisting = s ->
+                existing.containsKey(s) ? List.of(existing.get(s)) : Collections.emptyList();
+
+        // 'b' has no default and no node — should fail
+        JsNode node = JsNode.parse("node", "(a, b) => a + b", getExisting);
+        assertNull(node, "should fail — 'b' has no default and no node");
+    }
+
+    @Test
+    public void parse_with_complex_defaults(){
+        Map<String, NodeEntity> existing = Map.of("nestedArr", new JqNode("nestedArr", ".data"));
+
+        Function<String,List<NodeEntity>> getExisting = s ->
+                existing.containsKey(s) ? List.of(existing.get(s)) : Collections.emptyList();
+
+        // Simulates Horreum boot-time label with string defaults
+        String func = "(nestedArr, nameRegexPattern=\"Starting Load\", calculateCvPercent=false, index = 0) => { return nestedArr; }";
+        JsNode node = JsNode.parse("node", func, getExisting);
+        assertNotNull(node, "should succeed — only nestedArr is required");
+        assertEquals(1, node.sources.size());
+        assertEquals(existing.get("nestedArr"), node.sources.get(0));
+    }
+
 }

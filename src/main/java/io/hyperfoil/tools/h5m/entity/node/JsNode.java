@@ -31,11 +31,13 @@ public class JsNode extends NodeEntity {
      * its sources.
      */
     public static JsNode parse(String name, String input, Function<String,List<NodeEntity>> nodeFn){
+        return parse(name, input, nodeFn, false);
+    }
+    public static JsNode parse(String name, String input, Function<String,List<NodeEntity>> nodeFn, boolean ignoreMissing){
         if(input==null || input.isBlank()){
             System.err.println("missing js node input");
             return null;
         }
-        JsNode rtrn = null;
         List<String> parameters = getParameterNames(input);
         if(parameters == null){
             System.err.println("unable to recognize javascript function from:\n"+input);
@@ -44,12 +46,16 @@ public class JsNode extends NodeEntity {
         boolean ok = true;
         List<NodeEntity> sourceNodes = new ArrayList<>();
         for (String param : parameters) {
-            List<NodeEntity> foundNodes = nodeFn.apply(param);
+            String paramName = param.contains("=") ? param.substring(0, param.indexOf('=')).trim() : param;
+            boolean hasDefault = param.contains("=");
+            List<NodeEntity> foundNodes = nodeFn.apply(paramName);
             if (foundNodes.isEmpty()) {
-                System.err.println("Could not find node for " + param);
-                ok = false;
+                if (!hasDefault) {
+                    System.err.println("Could not find node for " + paramName);
+                    ok = false;
+                }
             } else if (foundNodes.size() > 1) {
-                System.err.println("Found more than one node matching " + param);
+                System.err.println("Found more than one node matching " + paramName);
                 for (int i = 0; i < foundNodes.size(); i++) {
                     System.err.println(i + " " + foundNodes.get(i).getFqdn());
                 }
@@ -58,10 +64,10 @@ public class JsNode extends NodeEntity {
                 sourceNodes.add(foundNodes.get(0));
             }
         }
-        if(ok) {
-            rtrn = new JsNode(name, input, sourceNodes);
+        if(ok || (ignoreMissing && !sourceNodes.isEmpty())) {
+            return new JsNode(name, input, sourceNodes);
         }
-        return rtrn;
+        return null;
     }
 
     public static List<JsonNode> createParameters(String function, Map<String, ValueEntity> sourceValues){
