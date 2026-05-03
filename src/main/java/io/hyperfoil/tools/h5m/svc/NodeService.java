@@ -585,6 +585,8 @@ public class NodeService implements NodeServiceInterface {
         return rtrn;
     }
 
+    private final Map<Long, Map<String, JsonNode>> sqlBatchCache = new ConcurrentHashMap<>();
+
     @Transactional
     public List<ValueEntity> calculateSqlJsonpathValues(SqlJsonpathNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         return calculateSqlJsonpathValuesFirstOrAll(node,sourceValues,startingOrdinal,"jsonb_path_query_first");
@@ -605,16 +607,27 @@ public class NodeService implements NodeServiceInterface {
         }
         ValueEntity input = sourceValues.get(node.sources.getFirst().name);
 
-        JsonNode found = (JsonNode) em.createNativeQuery(
-                switch(dbKind) {
-                    case "sqlite" -> "SELECT (SELECT data FROM value WHERE id = ?) -> ?";
-                    case "postgresql" -> ("SELECT PSQL_FUNCTION((SELECT data FROM value WHERE id = ?), ?::jsonpath)")
-                            .replaceAll("PSQL_FUNCTION", psqlFunction);
-                    default -> "";
-                }, JsonNode.class)
-                .setParameter(1, input.id)
-                .setParameter(2, node.operation)
-                .getSingleResultOrNull();
+        // Check batch cache first
+        JsonNode found = null;
+        Map<String, JsonNode> cached = sqlBatchCache.get(input.id);
+        if (cached != null) {
+            found = cached.get(node.operation);
+        } else {
+            @SuppressWarnings("unchecked")
+            List<NodeEntity> siblings = em.createNativeQuery(
+                    "SELECT n.* FROM node n JOIN node_edge ne ON n.id = ne.child_id WHERE ne.parent_id = ? AND n.type IN ('sql','sqlall')",
+                    NodeEntity.class)
+                    .setParameter(1, node.sources.getFirst().id)
+                    .getResultList();
+
+            if (siblings.size() > 1 && dbKind.equals("postgresql")) {
+                Map<String, JsonNode> batchResults = executeBatchedJsonpath(input.id, siblings);
+                sqlBatchCache.put(input.id, batchResults);
+                found = batchResults.get(node.operation);
+            } else {
+                found = executeSingleJsonpath(input.id, node.operation, psqlFunction);
+            }
+        }
 
         if (found == null || found.isNull()) {
             return rtrn;
@@ -630,6 +643,67 @@ public class NodeService implements NodeServiceInterface {
         valueService.create(newValue);
         rtrn.add(newValue);
         return rtrn;
+    }
+
+    private Map<String, JsonNode> executeBatchedJsonpath(Long sourceValueId, List<NodeEntity> nodes) {
+        Map<String, JsonNode> results = new HashMap<>();
+        // Build a single query: SELECT path, result FROM (VALUES ...) for all nodes
+        StringBuilder sql = new StringBuilder(
+            "WITH source AS (SELECT data FROM value WHERE id = ?) " +
+            "SELECT p.path, CASE p.func " +
+            "WHEN 'first' THEN jsonb_path_query_first(s.data, p.path::jsonpath) " +
+            "WHEN 'array' THEN jsonb_path_query_array(s.data, p.path::jsonpath) " +
+            "END AS result " +
+            "FROM source s, (VALUES ");
+        for (int i = 0; i < nodes.size(); i++) {
+            if (i > 0) sql.append(",");
+            NodeEntity n = nodes.get(i);
+            String func = (n instanceof SqlJsonpathAllNode) ? "array" : "first";
+            sql.append("('").append(n.operation.replace("'", "''")).append("','").append(func).append("')");
+        }
+        sql.append(") AS p(path, func)");
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(sql.toString())
+                .setParameter(1, sourceValueId)
+                .getResultList();
+
+        ObjectMapper mapper = new ObjectMapper();
+        for (Object[] row : rows) {
+            String path = (String) row[0];
+            Object resultObj = row[1];
+            if (resultObj != null) {
+                try {
+                    JsonNode jsonResult;
+                    if (resultObj instanceof JsonNode jn) {
+                        jsonResult = jn;
+                    } else {
+                        jsonResult = mapper.readTree(resultObj.toString());
+                    }
+                    results.put(path, jsonResult);
+                } catch (Exception e) {
+                    System.err.println("Failed to parse batched jsonpath result for " + path + ": " + e.getMessage());
+                }
+            }
+        }
+        return results;
+    }
+
+    private JsonNode executeSingleJsonpath(Long sourceValueId, String operation, String psqlFunction) {
+        return (JsonNode) em.createNativeQuery(
+                switch(dbKind) {
+                    case "sqlite" -> "SELECT (SELECT data FROM value WHERE id = ?) -> ?";
+                    case "postgresql" -> ("SELECT PSQL_FUNCTION((SELECT data FROM value WHERE id = ?), ?::jsonpath)")
+                            .replaceAll("PSQL_FUNCTION", psqlFunction);
+                    default -> "";
+                }, JsonNode.class)
+                .setParameter(1, sourceValueId)
+                .setParameter(2, operation)
+                .getSingleResultOrNull();
+    }
+
+    public void clearSqlBatchCache() {
+        sqlBatchCache.clear();
     }
     @Transactional
     public List<ValueEntity> calculateSplitValues(SplitNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
