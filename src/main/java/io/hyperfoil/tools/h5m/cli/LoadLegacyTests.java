@@ -383,7 +383,6 @@ public class LoadLegacyTests implements Callable<Integer> {
                              entry[key]=toAdd
                            }
                          }
-                         console.log("entry",JSON.stringify(entry,null,2)   )
                          yield entry;
                       }
                     }
