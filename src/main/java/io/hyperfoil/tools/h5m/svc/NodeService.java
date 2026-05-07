@@ -247,7 +247,7 @@ public class NodeService implements NodeServiceInterface {
                             }else if(nValues.size()>idx){
                                 sourceValuesAtIndex.put(n.name,nValues.get(idx));
                             }else{
-                                return null;
+                                //do nothing with a missing value
                             }
                         }
                         rtrn.add(sourceValuesAtIndex);
