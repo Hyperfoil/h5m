@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.DoubleNode;
@@ -21,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.hyperfoil.tools.h5m.entity.NodeEntity.FQDN_SEPARATOR;
@@ -582,6 +584,54 @@ public class NodeServiceTest extends FreshDb {
         assertTrue(read.startsWith("["),"value should be an array: "+read);
         assertTrue(read.endsWith("]"),"value should be an array: "+read);
     }
+    @Test
+    public void calculateSourceValuePermutations_returns_non_null_on_length_mismatch() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        
+        // Create two source nodes that will produce different numbers of values
+        NodeEntity firstNode = new JqNode("first","$.first[]",root);
+        firstNode.persist();
+        NodeEntity secondNode = new JqNode("second","$.second[]",root);
+        secondNode.persist();
+        
+        // Create a combined node with Length multiType (default) and two sources
+        NodeEntity combined = new JsNode("combined","obj=>Object.values(obj)", List.of(firstNode, secondNode));
+        combined.multiType = NodeEntity.MultiIterationType.Length; // Explicitly set to Length
+        combined.persist();
+
+        // Root value with arrays of different lengths
+        ValueEntity rootValue = new ValueEntity(null, root, new ObjectMapper().readTree("""
+                {
+                  "first": [1, 2, 3]
+                }
+                """));
+        rootValue.persist();
+        
+        // First node produces 3 values
+        ValueEntity firstValue1 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("1"));
+        firstValue1.idx=1;
+        firstValue1.sources=List.of(rootValue);
+        firstValue1.persist();
+        ValueEntity firstValue2 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("2"));
+        firstValue2.idx=2;
+        firstValue2.sources=List.of(rootValue);
+        firstValue2.persist();
+        ValueEntity firstValue3 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("3"));
+        firstValue3.idx=3;
+        firstValue3.sources=List.of(rootValue);
+        firstValue3.persist();
+
+        tm.commit();
+
+        // When multiType is Length and source nodes have mismatched value counts,
+        // calculateSourceValuePermutations should return null
+        List<Map<String, ValueEntity>> result = nodeService.calculateSourceValuePermutations(combined, rootValue);
+
+        assertNotNull(result, "Expected not-null when Length multiType has mismatched source value counts:");
+    }
+
     @Test
     public void calculateJqValues_multiple_source_order() throws IOException, HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         tm.begin();
