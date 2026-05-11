@@ -487,12 +487,12 @@ public class ValueService implements ValueServiceInterface {
         rtrn.addAll(em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
-                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId OR ve.child_id = :rootId
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
                     UNION ALL
                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr
                     ON ve.parent_id = sr.v_id
                 )
-                SELECT distinct * FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
+                SELECT distinct v.* FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
                 """, ValueEntity.class
         ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
         return rtrn;
@@ -528,7 +528,7 @@ public class ValueService implements ValueServiceInterface {
         }
         List<ValueEntity> all = em.createNativeQuery("""
                 WITH RECURSIVE sourceRecursive (v_id) AS (
-                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId OR ve.child_id = :rootId
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
                     UNION ALL
                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr ON ve.parent_id = sr.v_id
                 )

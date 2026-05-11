@@ -16,6 +16,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Entity(name = "value")
+@Table(indexes = {
+    @Index(name = "idx_value_node_id", columnList = "node_id"),
+    @Index(name = "idx_value_folder_id", columnList = "folder_id")
+})
 public class ValueEntity extends PanacheEntity {
 
     @Column(columnDefinition = "JSONB")
