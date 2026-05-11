@@ -26,6 +26,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -982,6 +983,70 @@ public class ValueServiceTest extends FreshDb {
 
         assertFalse(found.contains(rootValue),"descendants should not include self: "+found);
         assertTrue(found.contains(bravobravoValue),"descendants should include value from target node: "+found);
+    }
+
+    @Test
+    public void getDescendantValues_excludes_root_when_same_node() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        // Single node — all values belong to the same node type
+        NodeEntity node = new JqNode("sametype");
+        node.persist();
+
+        // root → child → grandchild, all on the same node
+        ValueEntity rootValue = new ValueEntity(null, node, new TextNode("root-data"));
+        rootValue.persist();
+
+        ValueEntity childValue = new ValueEntity(null, node, new TextNode("child-data"));
+        childValue.sources = List.of(rootValue);
+        childValue.persist();
+
+        ValueEntity grandchildValue = new ValueEntity(null, node, new TextNode("grandchild-data"));
+        grandchildValue.sources = List.of(childValue);
+        grandchildValue.persist();
+        tm.commit();
+
+        // Query descendants of rootValue filtered to the SAME node type
+        List<ValueEntity> found = valueService.getDescendantValues(rootValue, node);
+
+        assertFalse(found.contains(rootValue),
+            "root value should not appear in its own descendants even when node types match");
+        assertTrue(found.contains(childValue),
+            "child value should be in descendants");
+        assertTrue(found.contains(grandchildValue),
+            "grandchild value should be in descendants");
+        assertEquals(2, found.size(),
+            "should find exactly 2 descendants: " + found);
+    }
+
+    @Test
+    public void getDescendantValuesByNodes_excludes_root_when_same_node() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity node = new JqNode("sametype");
+        node.persist();
+
+        ValueEntity rootValue = new ValueEntity(null, node, new TextNode("root-data"));
+        rootValue.persist();
+
+        ValueEntity childValue = new ValueEntity(null, node, new TextNode("child-data"));
+        childValue.sources = List.of(rootValue);
+        childValue.persist();
+
+        ValueEntity grandchildValue = new ValueEntity(null, node, new TextNode("grandchild-data"));
+        grandchildValue.sources = List.of(childValue);
+        grandchildValue.persist();
+        tm.commit();
+
+        Map<Long, List<ValueEntity>> found = valueService.getDescendantValuesByNodes(rootValue, List.of(node));
+
+        List<ValueEntity> values = found.getOrDefault(node.getId(), List.of());
+        assertFalse(values.contains(rootValue),
+            "root value should not appear in its own descendants even when node types match");
+        assertTrue(values.contains(childValue),
+            "child value should be in descendants");
+        assertTrue(values.contains(grandchildValue),
+            "grandchild value should be in descendants");
+        assertEquals(2, values.size(),
+            "should find exactly 2 descendants: " + values);
     }
 
     @Test
