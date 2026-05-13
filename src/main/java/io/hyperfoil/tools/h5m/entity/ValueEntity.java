@@ -9,7 +9,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Mutability;
 import org.hibernate.type.SqlTypes;
+import org.hibernate.type.descriptor.java.Immutability;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -25,6 +27,7 @@ public class ValueEntity extends PanacheEntity {
     @Column(columnDefinition = "JSONB")
     @JdbcTypeCode(SqlTypes.JSON)
     @Basic(fetch = FetchType.LAZY)
+    @Mutability(Immutability.class)
     public JsonNode data;
 
     //not yet used but the idea is to sort multiple values based on idx to preserve node output order for next nodes input
