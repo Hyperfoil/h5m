@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 public class Work  extends PanacheEntity implements Runnable, Comparable<Work>{
 
     @BatchSize(size=10)
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    @ManyToMany(cascade = {CascadeType.PERSIST}, fetch = FetchType.LAZY)
     @JoinTable(
             name="work_values",
             joinColumns = @JoinColumn(name = "work_id"),
@@ -30,7 +30,7 @@ public class Work  extends PanacheEntity implements Runnable, Comparable<Work>{
     public List<ValueEntity> sourceValues;//multiple values could happen for cross test comparisons and
 
     @BatchSize(size=10)
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    @ManyToMany(cascade = {CascadeType.PERSIST}, fetch = FetchType.LAZY)
     @JoinTable(
             name="work_nodes",
             joinColumns = @JoinColumn(name = "work_id"),
