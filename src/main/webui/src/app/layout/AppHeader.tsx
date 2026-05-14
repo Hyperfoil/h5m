@@ -16,13 +16,14 @@ import {
 import { listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense } from 'react';
+import { Outlet } from 'react-router-dom';
 
 const NavFolders = () => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
   return (
     <SideNavItems>
       {folders.map((folder) => (
-        <SideNavLink key={folder.id} href={`/${String(folder.id)}`}>
+        <SideNavLink key={folder.id} href={`/folder/${String(folder.id)}`}>
           {folder.name}
         </SideNavLink>
       ))}
@@ -32,38 +33,41 @@ const NavFolders = () => {
 
 export const AppHeader = () => {
   return (
-    <Theme theme="g100">
-      <HeaderContainer
-        render={({ isSideNavExpanded, onClickSideNavExpand }) => (
-          <>
-            <Header aria-label="Carbon App">
-              <SkipToContent />
-              <HeaderMenuButton aria-label="Hamburger menu" onClick={onClickSideNavExpand} isActive={isSideNavExpanded} isCollapsible={true} />
-              <HeaderName prefix="h5m">Horreum</HeaderName>
-              <HeaderGlobalBar />
-            </Header>
-            <SideNav aria-label="Side navigation" expanded={isSideNavExpanded} isPersistent={false} isFixedNav={false}>
-              <ErrorBoundary
-                fallback={
-                  <div style={{ padding: 'var(--cds-spacing-05)' }}>
-                    <InlineLoading status="error" description="Folder load failed" />
-                  </div>
-                }
-              >
-                <Suspense
+    <>
+      <Theme theme="g100">
+        <HeaderContainer
+          render={({ isSideNavExpanded, onClickSideNavExpand }) => (
+            <>
+              <Header aria-label="Carbon App">
+                <SkipToContent />
+                <HeaderMenuButton aria-label="Hamburger menu" onClick={onClickSideNavExpand} isActive={isSideNavExpanded} isCollapsible={true} />
+                <HeaderName prefix="h5m">Horreum</HeaderName>
+                <HeaderGlobalBar />
+              </Header>
+              <SideNav aria-label="Side navigation" expanded={isSideNavExpanded} isPersistent={false} isFixedNav={false}>
+                <ErrorBoundary
                   fallback={
                     <div style={{ padding: 'var(--cds-spacing-05)' }}>
-                      <SkeletonText paragraph={true} lineCount={50} />
+                      <InlineLoading status="error" description="Folder load failed" />
                     </div>
                   }
                 >
-                  <NavFolders />
-                </Suspense>
-              </ErrorBoundary>
-            </SideNav>
-          </>
-        )}
-      />
-    </Theme>
+                  <Suspense
+                    fallback={
+                      <div style={{ padding: 'var(--cds-spacing-05)' }}>
+                        <SkeletonText paragraph={true} lineCount={50} />
+                      </div>
+                    }
+                  >
+                    <NavFolders />
+                  </Suspense>
+                </ErrorBoundary>
+              </SideNav>
+            </>
+          )}
+        />
+      </Theme>
+      <Outlet />
+    </>
   );
 };
