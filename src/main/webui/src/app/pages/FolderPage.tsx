@@ -19,8 +19,8 @@ import {
 } from '@carbon/react';
 import { byIdOptions, listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { Suspense } from 'react';
-import { useParams } from 'react-router-dom';
+import { Suspense, useCallback } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 const NodesTab = ({ groupId }: { groupId: number }) => {
   const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
@@ -58,14 +58,22 @@ const GraphVisualizer = ({ groupId }: { groupId: number }) => {
   return <NodeGraphVisualizer nodeGroup={nodeGroup} />;
 };
 
+const TAB_ANCHORS = ['nodes', 'graph'];
+
 const FolderContent = ({ folderId }: { folderId: number }) => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
   const folder = folders.find((f) => f.id === folderId);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const selectedIndex = Math.max(0, TAB_ANCHORS.indexOf(location.hash.slice(1)));
+  const onTabChange = useCallback(({ selectedIndex: i }: { selectedIndex: number }) => {
+    void navigate({ hash: TAB_ANCHORS[i] }, { replace: true });
+  }, [navigate]);
   if (!folder) {
     return <InlineLoading status="error" description="Folder not found" />;
   }
   return (
-    <Tabs>
+    <Tabs selectedIndex={selectedIndex} onChange={onTabChange}>
       <TabList aria-label="Folder tabs">
         <Tab>Nodes</Tab>
         <Tab>Graph</Tab>
