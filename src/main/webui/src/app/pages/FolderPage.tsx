@@ -1,5 +1,6 @@
 import type { Node as ApiNode } from '@client/types.gen.ts';
 
+import { NodeGraphVisualizer } from '@app/components/NodeGraphVisualizer';
 import {
   ErrorBoundary,
   InlineLoading,
@@ -52,6 +53,11 @@ const NodesTab = ({ groupId }: { groupId: number }) => {
   );
 };
 
+const GraphVisualizer = ({ groupId }: { groupId: number }) => {
+  const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
+  return <NodeGraphVisualizer nodeGroup={nodeGroup} />;
+};
+
 const FolderContent = ({ folderId }: { folderId: number }) => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
   const folder = folders.find((f) => f.id === folderId);
@@ -62,6 +68,7 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
     <Tabs>
       <TabList aria-label="Folder tabs">
         <Tab>Nodes</Tab>
+        <Tab>Graph</Tab>
       </TabList>
       <TabPanels>
         <TabPanel>
@@ -69,6 +76,17 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
             <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load nodes" />}>
               <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
                 <NodesTab groupId={folder.groupId} />
+              </Suspense>
+            </ErrorBoundary>
+          ) : (
+            <p>No node group associated with this folder</p>
+          )}
+        </TabPanel>
+        <TabPanel>
+          {folder.groupId != null ? (
+            <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load nodes" />}>
+              <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
+                <GraphVisualizer groupId={folder.groupId} />
               </Suspense>
             </ErrorBoundary>
           ) : (
