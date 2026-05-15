@@ -1,0 +1,15 @@
+<p>Change detected in folder <strong>{folderName}</strong></p>
+<p>Detection node: <strong>{nodeName}</strong> ({nodeType})<br>
+Number of changes: {changeCount}</p>
+{#if changes.size > 0}
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>#</th><th>Fingerprint</th><th>Details</th></tr>
+{#each changes}
+<tr>
+  <td>{it_count}</td>
+  <td>{it.fingerprint}</td>
+  <td>{it.data}</td>
+</tr>
+{/each}
+</table>
+{/if}
