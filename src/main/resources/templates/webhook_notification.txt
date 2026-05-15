@@ -1,0 +1,4 @@
+Change detected in {folderName} by {nodeName} ({nodeType}): {changeCount} change(s)
+{#each changes}
+- Value ID: {it.valueId}{#if it.fingerprint}, Fingerprint: {it.fingerprint}{/if}
+{/each}
