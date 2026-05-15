@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 
-@CommandLine.Command(name="remove", description = "remove entity",aliases = {"rm","del","delete"}, mixinStandardHelpOptions = true, subcommands = {RemoveFolder.class, RemoveNode.class})
+@CommandLine.Command(name="remove", description = "remove entity",aliases = {"rm","del","delete"}, mixinStandardHelpOptions = true, subcommands = {RemoveFolder.class, RemoveNode.class, RemoveNotification.class})
 public class RemoveCmd implements Callable<Integer> {
 
     @Inject

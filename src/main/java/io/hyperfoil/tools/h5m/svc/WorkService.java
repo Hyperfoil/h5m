@@ -216,7 +216,13 @@ public class WorkService implements WorkServiceInterface {
 
             if(work.activeNode.isDetection() && !newOrUpdated.isEmpty()){
                 List<Long> valueIds = newOrUpdated.stream().map(ValueEntity::getId).toList();
-                changeDetectedEvent.fire(new ChangeDetectedEvent(work.activeNode.getId(), work.activeNode.name, valueIds));
+                // Resolve folderId from source values
+                long folderId = work.sourceValues.stream()
+                    .filter(v -> v.folder != null)
+                    .map(v -> v.folder.id)
+                    .findFirst()
+                    .orElse(-1L);
+                changeDetectedEvent.fire(new ChangeDetectedEvent(folderId, work.activeNode.getId(), work.activeNode.name, valueIds, true));
             }
 
             //we need to trigger more calculations? perhaps for a recalculation we do?
