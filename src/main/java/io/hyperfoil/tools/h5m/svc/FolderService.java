@@ -1,6 +1,9 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -9,14 +12,19 @@ import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.Team;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.yaup.json.Json;
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.hibernate.query.NativeQuery;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +32,8 @@ import java.util.Map;
 
 @ApplicationScoped
 public class FolderService implements FolderServiceInterface {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Inject
     EntityManager em;
@@ -187,5 +197,154 @@ public class FolderService implements FolderServiceInterface {
 //        workQueue.addWorks(toQueue);
 
         workService.create(List.copyOf(folder.group.sources).stream().map(source -> new Work(source, new ArrayList<>(source.sources), List.of(newValue))).toList());
+    }
+
+    /**
+     * Exports a folder's node graph to a JSON file.
+     *
+     * @param folderName the folder to export
+     * @param outputPath path to write the JSON file
+     */
+    @Transactional
+    public void export(String folderName, Path outputPath) throws IOException {
+        FolderEntity folder = em.createQuery(
+            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+            FolderEntity.class
+        ).setParameter("name", folderName).getSingleResult();
+
+        ObjectNode root = MAPPER.createObjectNode();
+        root.put("folder", folderName);
+        ArrayNode nodesArray = root.putArray("nodes");
+
+        // Root node first, then remaining nodes ordered by id.
+        // Auto-increment ids ensure parents are always created before children,
+        // so ORDER BY id is a valid topological order.
+        NodeEntity rootNode = folder.group.root;
+        nodesArray.add(serializeNode(rootNode));
+
+        em.createQuery("SELECT n FROM node n WHERE n.group.id = ?1 AND n.id != ?2 ORDER BY n.id", NodeEntity.class)
+            .setParameter(1, folder.group.id)
+            .setParameter(2, rootNode.id)
+            .getResultList()
+            .forEach(n -> nodesArray.add(serializeNode(n)));
+
+        Files.writeString(outputPath, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
+        Log.infof("Exported folder '%s' with %d nodes to %s", folderName, nodesArray.size(), outputPath);
+    }
+
+    /**
+     * Imports a folder and its node graph from a JSON file previously created by {@link #export}.
+     *
+     * @param inputPath path to the JSON file
+     * @param overwrite if true, delete existing folder before importing
+     * @return the folder name that was imported
+     */
+    @Transactional
+    public String importFolder(Path inputPath, boolean overwrite) throws IOException {
+        JsonNode root = MAPPER.readTree(inputPath.toFile());
+        String folderName = root.get("folder").asText();
+        JsonNode nodeArray = root.get("nodes");
+
+        FolderEntity existing = em.createQuery(
+            "SELECT f FROM folder f WHERE f.name = :name", FolderEntity.class
+        ).setParameter("name", folderName).getResultStream().findFirst().orElse(null);
+
+        if (existing != null) {
+            if (!overwrite) {
+                Log.infof("Folder '%s' already exists, skipping (use --overwrite to replace)", folderName);
+                return folderName;
+            }
+            delete(folderName);
+        }
+
+        long folderId = create(folderName);
+        FolderEntity folder = read(folderId);
+        NodeGroupEntity group = folder.group;
+
+        Map<Long, NodeEntity> idMap = new HashMap<>();
+        idMap.put(nodeArray.get(0).get("id").asLong(), group.root);
+
+        for (int i = 1; i < nodeArray.size(); i++) {
+            JsonNode n = nodeArray.get(i);
+            long exportedId = n.get("id").asLong();
+            String name = n.get("name").asText();
+            String type = n.get("type").asText();
+            String operation = n.has("operation") && !n.get("operation").isNull()
+                ? n.get("operation").asText() : "";
+
+            List<NodeEntity> sources = new ArrayList<>();
+            if (n.has("sources") && !n.get("sources").isNull()) {
+                for (JsonNode srcId : n.get("sources")) {
+                    NodeEntity src = idMap.get(srcId.asLong());
+                    if (src != null) {
+                        sources.add(src);
+                    } else {
+                        Log.warnf("Could not resolve source id %d for node '%s'", srcId.asLong(), name);
+                    }
+                }
+            }
+
+            NodeEntity node = switch (type) {
+                case "jq" -> new JqNode(name, operation, sources);
+                case "ecma" -> new JsNode(name, operation, sources);
+                case "sql" -> new SqlJsonpathNode(name, operation, sources);
+                case "sqlall" -> new SqlJsonpathAllNode(name, operation, sources);
+                case "split" -> new SplitNode(name, operation, sources);
+                case "fp" -> {
+                    FingerprintNode fp = new FingerprintNode(name, operation);
+                    fp.sources = new ArrayList<>(sources);
+                    yield fp;
+                }
+                case "ft" -> {
+                    FixedThreshold ft = new FixedThreshold(name, operation);
+                    ft.sources = new ArrayList<>(sources);
+                    yield ft;
+                }
+                case "rd" -> {
+                    RelativeDifference rd = new RelativeDifference(name, operation);
+                    rd.sources = new ArrayList<>(sources);
+                    yield rd;
+                }
+                default -> {
+                    Log.warnf("Unknown node type '%s' for node '%s', treating as jq", type, name);
+                    yield new JqNode(name, operation, sources);
+                }
+            };
+
+            node.group = group;
+            NodeEntity merged = em.merge(node);
+            group.sources.add(merged);
+            idMap.put(exportedId, merged);
+        }
+
+        em.flush();
+        em.merge(group);
+        Log.infof("Imported folder '%s' with %d nodes from %s", folderName, nodeArray.size(), inputPath);
+        return folderName;
+    }
+
+    private ObjectNode serializeNode(NodeEntity node) {
+        ObjectNode n = MAPPER.createObjectNode();
+        n.put("id", node.id);
+        n.put("name", node.name != null ? node.name : "");
+        n.put("type", discriminatorValue(node));
+        if (node.operation != null && !node.operation.isBlank()) {
+            n.put("operation", node.operation);
+        } else {
+            n.putNull("operation");
+        }
+        ArrayNode sources = n.putArray("sources");
+        if (node.sources != null) {
+            for (NodeEntity source : node.sources) {
+                sources.add(source.id);
+            }
+        }
+        return n;
+    }
+
+    /** Returns the JPA discriminator value for a node (e.g. "jq", "ecma", "sqlall"). */
+    private String discriminatorValue(NodeEntity node) {
+        var ann = node.getClass().getAnnotation(jakarta.persistence.DiscriminatorValue.class);
+        return ann != null ? ann.value() : node.type().display();
     }
 }

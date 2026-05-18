@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.yaup.json.Json;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -73,5 +75,22 @@ public interface FolderServiceInterface {
      * @return The JSON representation of the folder's structure.
      */
     Json structure(String name);
+
+    /**
+     * Exports a folder's node graph to a JSON file.
+     *
+     * @param folderName The folder to export.
+     * @param outputPath Path to write the JSON file.
+     */
+    void export(String folderName, Path outputPath) throws IOException;
+
+    /**
+     * Imports a folder and its node graph from a JSON file.
+     *
+     * @param inputPath Path to the JSON file.
+     * @param overwrite If true, delete existing folder before importing.
+     * @return The folder name that was imported.
+     */
+    String importFolder(Path inputPath, boolean overwrite) throws IOException;
 
 }
