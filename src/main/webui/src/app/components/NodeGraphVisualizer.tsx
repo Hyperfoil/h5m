@@ -35,11 +35,11 @@ const TYPE_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   USER_INPUT: Login,
 };
 
-function nodeColor(type?: string): string {
+export function nodeColor(type?: string): string {
   return TYPE_COLORS[type ?? ''] ?? gray40;
 }
 
-function prettyOperation(op: string) {
+export function prettyOperation(op: string) {
   let text = op;
   try {
     text = JSON.stringify(JSON.parse(op), null, 2);
@@ -111,12 +111,12 @@ const PipelineNode = ({ data }: { data: { name: string; operation?: string; node
 const nodeTypes = { pipeline: PipelineNode };
 const edgeTypes = { fixedStep: FixedOffsetEdge };
 
-interface GraphNode extends Omit<Node, 'id' | 'sources'> {
+export interface GraphNode extends Omit<Node, 'id' | 'sources'> {
   id: string;
   sources?: { id: string }[];
 }
 
-function collectNodes(node: Node, map: Map<string, GraphNode>) {
+export function collectNodes(node: Node, map: Map<string, GraphNode>) {
   if (node.id == null || map.has(String(node.id))) return;
   map.set(String(node.id), {
     ...node,
@@ -128,7 +128,7 @@ function collectNodes(node: Node, map: Map<string, GraphNode>) {
   });
 }
 
-function buildGraph(nodeGroup: NodeGroup): { nodes: FlowNode[]; edges: Edge[] } {
+export function buildGraph(nodeGroup: NodeGroup): { nodes: FlowNode[]; edges: Edge[] } {
   const nodeMap = new Map<string, GraphNode>();
   if (nodeGroup.root) collectNodes(nodeGroup.root, nodeMap);
   nodeGroup.sources?.forEach((s) => {
