@@ -44,7 +44,7 @@ export const AppHeader = () => {
         <Header aria-label="Carbon App">
           <SkipToContent />
           <HeaderMenuButton aria-label="Hamburger menu" onClick={toggleSideNav} isActive={sideNavOpen} isCollapsible={true} />
-          <HeaderName prefix="h5m">Horreum</HeaderName>
+          <HeaderName href="/" prefix="h5m">Horreum</HeaderName>
           <HeaderGlobalBar />
         </Header>
         <SideNav aria-label="Side navigation" expanded={sideNavOpen} isPersistent={false} isFixedNav={false}>

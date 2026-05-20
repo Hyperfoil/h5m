@@ -1,7 +1,26 @@
 import type { Node, NodeGroup } from '@client/types.gen.ts';
 
-import { buildGraph, collectNodes } from '@app/components/NodeGraphVisualizer';
+import { buildGraph, collectNodes, nodeColor } from '@app/components/NodeGraphVisualizer';
 import { describe, expect, it } from 'vitest';
+
+describe('nodeColor', () => {
+  it('returns specific color for known types', () => {
+    expect(nodeColor('ROOT')).not.toBe(nodeColor(undefined));
+    expect(nodeColor('FIXED_THRESHOLD')).not.toBe(nodeColor(undefined));
+    expect(nodeColor('RELATIVE_DIFFERENCE')).toBe(nodeColor('FIXED_THRESHOLD'));
+    expect(nodeColor('FINGERPRINT')).not.toBe(nodeColor('ROOT'));
+  });
+
+  it('returns default color for unknown types', () => {
+    expect(nodeColor('UNKNOWN')).toBe(nodeColor(undefined));
+    expect(nodeColor('JQ')).toBe(nodeColor(undefined));
+  });
+
+  it('returns default color for undefined', () => {
+    const defaultColor = nodeColor(undefined);
+    expect(defaultColor).toBeTruthy();
+  });
+});
 
 describe('collectNodes', () => {
   it('collects a single node', () => {

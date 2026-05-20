@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -25,6 +26,7 @@ import org.hibernate.query.NativeQuery;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +36,16 @@ import java.util.Map;
 public class FolderService implements FolderServiceInterface {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.sql.Timestamp ts) return ts.toLocalDateTime();
+        if (value instanceof LocalDateTime ldt) return ldt;
+        if (value instanceof java.time.OffsetDateTime odt) return odt.toLocalDateTime();
+        if (value instanceof Number n) return LocalDateTime.ofInstant(
+            java.time.Instant.ofEpochMilli(n.longValue()), java.time.ZoneId.systemDefault());
+        return null;
+    }
 
     @Inject
     EntityManager em;
@@ -114,6 +126,49 @@ public class FolderService implements FolderServiceInterface {
     @Transactional
     public List<Folder> list(){
         return FolderEntity.<FolderEntity>streamAll().map(apiMapper::toFolder).toList();
+    }
+
+    /**
+     * Returns dashboard summaries for all folders, including upload count,
+     * node count, change count, and timestamps of last upload and change.
+     */
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public List<FolderSummary> getDashboardSummaries() {
+        List<Object[]> rows = em.createNativeQuery("""
+            SELECT
+                f.id,
+                f.name,
+                COUNT(DISTINCT rv.id) AS upload_count,
+                COUNT(DISTINCT n.id) AS node_count,
+                COUNT(DISTINCT dv.id) AS change_count,
+                MAX(rv.created_at) AS last_upload,
+                MAX(dv.created_at) AS last_change
+            FROM folder f
+            JOIN node_group g ON f.group_id = g.id
+            JOIN node r ON r.id = g.root_id
+            LEFT JOIN value rv ON rv.node_id = r.id
+            LEFT JOIN node n ON n.group_id = g.id AND n.id != r.id
+            LEFT JOIN node dn ON dn.group_id = g.id AND dn.type IN ('ft', 'rd')
+            LEFT JOIN value dv ON dv.node_id = dn.id
+            GROUP BY f.id, f.name
+            ORDER BY f.name
+            """).getResultList();
+
+        List<FolderSummary> summaries = new ArrayList<>();
+        for (Object[] row : rows) {
+            summaries.add(new FolderSummary(
+                ((Number) row[0]).longValue(),
+                (String) row[1],
+                ((Number) row[2]).intValue(),
+                ((Number) row[3]).intValue(),
+                ((Number) row[4]).intValue(),
+                toLocalDateTime(row[5]),
+                toLocalDateTime(row[6])
+            ));
+        }
+        return summaries;
     }
 
     @Override

@@ -3,6 +3,8 @@ package io.hyperfoil.tools.h5m.rest;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
+import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -22,11 +24,26 @@ public class ValueResource {
     @Inject
     ValueServiceInterface valueService;
 
+    @Inject
+    ValueService valueServiceImpl;
+
     @DELETE
     @RolesAllowed("admin")
     @Operation(description = "Purge all values")
     public void purgeValues() {
         valueService.purgeValues();
+    }
+
+    @GET
+    @Path("{id}")
+    @PermitAll
+    @Operation(description = "Get a value's data by its ID")
+    public JsonNode getValueData(@PathParam("id") Long id) {
+        JsonNode data = valueServiceImpl.getValueData(id);
+        if (data == null) {
+            throw new NotFoundException("Value not found: " + id);
+        }
+        return data;
     }
 
     @GET
