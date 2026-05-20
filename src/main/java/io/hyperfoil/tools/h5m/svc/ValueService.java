@@ -98,6 +98,18 @@ public class ValueService implements ValueServiceInterface {
         return ValueEntity.findById(id);
     }
 
+    /**
+     * Returns the JSON data for a value, eagerly loaded within a transaction.
+     * Use this for REST endpoints to avoid LazyInitializationException.
+     */
+    @Transactional
+    public JsonNode getValueData(Long id) {
+        ValueEntity value = ValueEntity.findById(id);
+        if (value == null) return null;
+        // Access data within the transaction to initialize the lazy proxy
+        return value.data;
+    }
+
     @Transactional
     public ValueEntity byPath(String path){
         return ValueEntity.find("path",path).firstResult();

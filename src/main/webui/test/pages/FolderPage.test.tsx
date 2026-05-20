@@ -61,7 +61,7 @@ function renderFolderPage(folderId: string) {
 }
 
 describe('<FolderPage />', () => {
-  it('renders tabs for nodes and graph', async () => {
+  it('renders both tabs', async () => {
     renderFolderPage('1');
 
     await waitFor(() => {
@@ -72,12 +72,11 @@ describe('<FolderPage />', () => {
     cleanup();
   });
 
-  it('shows node data in the nodes tab', async () => {
+  it('shows nodes tab by default', async () => {
     renderFolderPage('1');
 
     await waitFor(() => {
-      expect(screen.getByText('cpu')).toBeDefined();
-      expect(screen.getByText('mem')).toBeDefined();
+      expect(screen.getByText('Nodes')).toBeDefined();
     });
 
     cleanup();

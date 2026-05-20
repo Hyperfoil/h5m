@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.api.svc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.yaup.json.Json;
 
 import java.io.IOException;
@@ -75,6 +76,13 @@ public interface FolderServiceInterface {
      * @return The JSON representation of the folder's structure.
      */
     Json structure(String name);
+
+    /**
+     * Retrieves dashboard summaries for all folders.
+     *
+     * @return A list of folder summaries with upload counts, node counts, and change counts.
+     */
+    List<FolderSummary> getDashboardSummaries();
 
     /**
      * Exports a folder's node graph to a JSON file.

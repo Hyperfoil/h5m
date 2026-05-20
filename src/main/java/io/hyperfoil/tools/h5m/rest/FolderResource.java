@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.rest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.security.Authenticated;
@@ -31,6 +32,14 @@ public class FolderResource {
     @Operation(description = "Retrieve the list of all the folders")
     public @NotNull List<Folder> listFolders() {
         return folderService.list();
+    }
+
+    @GET
+    @Path("dashboard")
+    @PermitAll
+    @Operation(description = "Get dashboard summaries for all folders")
+    public List<FolderSummary> getDashboardSummaries() {
+        return folderService.getDashboardSummaries();
     }
 
     @GET
