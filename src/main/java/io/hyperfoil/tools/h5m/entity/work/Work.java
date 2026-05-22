@@ -41,7 +41,7 @@ public class Work  extends PanacheEntity implements Runnable, Comparable<Work>{
     public int retryCount;
 
     @BatchSize(size=10)
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = {CascadeType.PERSIST}, fetch = FetchType.EAGER)
     @JoinTable(
             name="work_active_nodes",
             joinColumns = @JoinColumn(name = "work_id"),
