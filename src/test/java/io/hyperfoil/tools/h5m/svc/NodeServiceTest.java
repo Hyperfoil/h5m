@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Node;
+import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -1986,6 +1987,66 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(4.1, previous4, "Previous range value should be 4.1");
         assertEquals(-48.78048780487805,ratio4,"Ratio should exceed ~-48.78048780487805");
 
+    }
+
+    /**
+     * Verify that the upload -> work queue -> value computation pipeline
+     * works correctly with CascadeType.PERSIST only (no MERGE) on
+     * NodeEntity.sources and Work.activeNodes.
+     *
+     * Creates a node chain: root -> jq1 (.key) -> jq2 (. + "_suffix"),
+     * uploads data, and verifies both nodes compute correct values
+     * through WorkService.execute().
+     */
+    @Test
+    public void work_execution_with_persist_only_cascade() throws Exception {
+        // Setup: create folder with a chain of nodes
+        tm.begin();
+        FolderService folderService = jakarta.enterprise.inject.spi.CDI.current().select(FolderService.class).get();
+        WorkService workService = jakarta.enterprise.inject.spi.CDI.current().select(WorkService.class).get();
+        long folderId = folderService.create("cascade-test");
+        FolderEntity folder = folderService.read(folderId);
+        NodeEntity root = folder.group.root;
+
+        // root -> jq1 extracts .key
+        JqNode jq1 = new JqNode("extract", ".key", root);
+        jq1.group = folder.group;
+        jq1.persist();
+        folder.group.sources.add(jq1);
+
+        // jq1 -> jq2 appends a suffix
+        JqNode jq2 = new JqNode("transform", ". + \"_done\"", jq1);
+        jq2.group = folder.group;
+        jq2.persist();
+        folder.group.sources.add(jq2);
+
+        folder.group.persist();
+        tm.commit();
+
+        // Upload data — this creates Work items via WorkService.create()
+        // which calls em.merge(work) with activeNodes and sourceNodes
+        ObjectMapper mapper = new ObjectMapper();
+        folderService.upload("cascade-test", "$", mapper.readTree("{\"key\": \"hello\"}"));
+
+        // Wait for the work queue to process
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        assertTrue(workService.isIdle(), "Work queue should be idle");
+
+        // Verify computed values
+        tm.begin();
+        List<ValueEntity> extractValues = ValueEntity.find("node.id", jq1.id).list();
+        assertFalse(extractValues.isEmpty(), "JQ node 'extract' should have computed a value");
+        assertEquals("hello", extractValues.get(0).data.asText(),
+            "extract node should produce 'hello' from .key");
+
+        List<ValueEntity> transformValues = ValueEntity.find("node.id", jq2.id).list();
+        assertFalse(transformValues.isEmpty(), "JQ node 'transform' should have computed a value");
+        assertEquals("hello_done", transformValues.get(0).data.asText(),
+            "transform node should produce 'hello_done'");
+        tm.commit();
     }
 
 }
