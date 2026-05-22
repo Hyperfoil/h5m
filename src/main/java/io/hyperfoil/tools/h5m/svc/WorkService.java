@@ -176,6 +176,11 @@ public class WorkService implements WorkServiceInterface {
                 //error conditions?
                 //work.activeNode == null is not yet a validation condition but it could be for post processing tasks?
             }
+            // Eagerly initialize lazy-loaded data fields to avoid LazyInitializationException
+            // when accessed later in calculateValues (ValueEntity.data is @Basic(fetch = LAZY))
+            for (ValueEntity sv : work.sourceValues) {
+                Hibernate.initialize(sv.data);
+            }
             //looping over values works for Jq / Js nodes but what about cross test comparison
             //calculateValue should probably accept all sourceValues and leave it to the node function to decide
             List<ValueEntity> calculated = nodeService.calculateValues(work.activeNode,work.sourceValues);

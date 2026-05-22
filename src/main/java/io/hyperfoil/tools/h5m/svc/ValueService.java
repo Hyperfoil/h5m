@@ -554,6 +554,14 @@ public class ValueService implements ValueServiceInterface {
         return ValueEntity.find("node.id",node.id).list();
     }
 
+    @Override
+    @Transactional
+    public List<Value> getNodeValues(Long nodeId){
+        CycleAvoidingContext cycleContext = new CycleAvoidingContext();
+        List<ValueEntity> entities = ValueEntity.find("node.id", nodeId).list();
+        return entities.stream().map(entity -> apiMapper.toValue(entity, cycleContext)).toList();
+    }
+
 
     @Transactional
     public int deleteDescendantValues(ValueEntity root, NodeEntity node){

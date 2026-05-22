@@ -6,6 +6,7 @@ import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
+import io.hyperfoil.tools.h5m.svc.WorkService;
 import io.restassured.specification.RequestSpecification;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -26,6 +27,9 @@ public class RestEndpointTest extends FreshDb {
 
     @Inject
     TransactionManager tm;
+
+    @Inject
+    WorkService workService;
 
     private void createFolder(String name) {
         given()
@@ -381,7 +385,7 @@ public class RestEndpointTest extends FreshDb {
     // -- End-to-end: upload + computed values --
 
     @Test
-    public void upload_and_verify_jq_values_via_rest() {
+    public void upload_and_verify_jq_values_via_rest() throws InterruptedException {
         createFolder("e2e-test");
         Long groupId = getGroupId("e2e-test");
         Long jqNodeId = createNode(groupId, "extract", ".key");
@@ -395,17 +399,20 @@ public class RestEndpointTest extends FreshDb {
                 .then()
                 .statusCode(204);
 
-        // The root node gets an auto-generated ID from folder creation;
-        // query the group to find the root node for descendant lookup
-        String nodesResponse = given()
-                .queryParam("name", "extract")
-                .queryParam("groupId", groupId)
-                .when().get("/api/node/find")
+        // Wait for the work queue to finish processing the upload
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        assertTrue(workService.isIdle(), "Work queue should be idle after processing");
+
+        // Verify the JQ node computed a value from the uploaded data via REST
+        given()
+                .when().get("/api/value/node/" + jqNodeId)
                 .then()
                 .statusCode(200)
-                .extract().asString();
-
-        assertTrue(nodesResponse.contains("extract"), "JQ node should be findable via REST");
+                .body("size()", greaterThan(0))
+                .body("[0].data", equalTo("hello"));
     }
 
     // -- OpenAPI spec --
