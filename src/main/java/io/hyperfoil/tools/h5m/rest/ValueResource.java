@@ -44,4 +44,12 @@ public class ValueResource {
     public List<JsonNode> getGroupedValues(@PathParam("nodeId") Long nodeId) {
         return valueService.getGroupedValues(nodeId);
     }
+
+    @GET
+    @Path("node/{nodeId}")
+    @PermitAll
+    @Operation(description = "Get all values produced by a specific node")
+    public List<Value> getNodeValues(@PathParam("nodeId") Long nodeId) {
+        return valueService.getNodeValues(nodeId);
+    }
 }
