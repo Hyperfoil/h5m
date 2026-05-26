@@ -91,9 +91,11 @@ record View(Long id, String name, Long folderId, List<ViewComponent> components)
 
 record ViewComponent(Long id, Long nodeId, String nodeName, String nodeType,
                      String headerName, int headerOrder)
-
-record ViewData(List<ViewComponent> columns, List<JsonNode> rows)
 ```
+
+The view data endpoint returns `List<JsonNode>` directly (same format as the existing
+`getGroupedValues()` query). Column metadata is available from the `View` record's
+components list — no need for a separate response wrapper.
 
 ## Default View Auto-Creation
 
@@ -204,7 +206,6 @@ Add a **"Data"** tab to FolderPage:
 | `entity/FolderEntity.java` | Add `views` relationship |
 | `api/View.java` | **New** API record |
 | `api/ViewComponent.java` | **New** API record |
-| `api/ViewData.java` | **New** API record |
 | `api/svc/ViewServiceInterface.java` | **New** interface |
 | `svc/ViewService.java` | **New** service |
 | `rest/ViewResource.java` | **New** REST resource |
