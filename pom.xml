@@ -566,6 +566,9 @@
                                     <finalName>${project.name}</finalName>
                                     <properties>
                                         <quarkus.http.host-enabled>false</quarkus.http.host-enabled>
+                                        <quarkus.management.enabled>true</quarkus.management.enabled>
+                                        <quarkus.management.port>8080</quarkus.management.port>
+                                        <!-- port does not appear to work, it still defaults to 9000 -->
                                         <quarkus.native.enabled>${h5m.cli.native}</quarkus.native.enabled>
                                         <quarkus.profile>cli</quarkus.profile>
                                         <quarkus.package.output-directory>cli</quarkus.package.output-directory>
