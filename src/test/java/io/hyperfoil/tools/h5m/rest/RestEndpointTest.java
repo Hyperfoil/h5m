@@ -1,11 +1,14 @@
 package io.hyperfoil.tools.h5m.rest;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
+import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import io.restassured.specification.RequestSpecification;
 import io.quarkus.test.junit.QuarkusTest;
@@ -14,6 +17,8 @@ import jakarta.transaction.*;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.List;
 
 import static io.restassured.RestAssured.given;
@@ -30,6 +35,9 @@ public class RestEndpointTest extends FreshDb {
 
     @Inject
     WorkService workService;
+
+    @Inject
+    FolderService folderService;
 
     private void createFolder(String name) {
         given()
@@ -413,6 +421,108 @@ public class RestEndpointTest extends FreshDb {
                 .statusCode(200)
                 .body("size()", greaterThan(0))
                 .body("[0].data", equalTo("hello"));
+    }
+
+    // -- Dashboard summaries --
+
+    @Test
+    public void dashboard_returns_empty_list_when_no_folders() {
+        given()
+                .when().get("/api/folder/dashboard")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(0));
+    }
+
+    @Test
+    public void dashboard_returns_folder_summary_with_rhivos_upload() throws Exception {
+        // Import rhivos node graph and upload a run
+        folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+
+        try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
+            JsonNode runData = mapper.readTree(is);
+            folderService.upload("rhivos-perf-comprehensive", "$", runData);
+        }
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100);
+        }
+
+        given()
+                .when().get("/api/folder/dashboard")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(1))
+                .body("[0].name", equalTo("rhivos-perf-comprehensive"))
+                .body("[0].uploadCount", equalTo(1))
+                .body("[0].nodeCount", greaterThan(100))
+                .body("[0].lastUpload", notNullValue());
+    }
+
+    @Test
+    public void dashboard_counts_multiple_uploads() throws Exception {
+        // Import rhivos node graph and upload two runs
+        folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+
+        for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
+            try (InputStream is = getClass().getResourceAsStream(runFile)) {
+                JsonNode runData = mapper.readTree(is);
+                folderService.upload("rhivos-perf-comprehensive", "$", runData);
+            }
+
+            long deadline = System.currentTimeMillis() + 30_000;
+            while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(100);
+            }
+        }
+
+        given()
+                .when().get("/api/folder/dashboard")
+                .then()
+                .statusCode(200)
+                .body("[0].uploadCount", equalTo(2));
+    }
+
+    // -- Value data endpoint --
+
+    @Test
+    public void value_data_returns_json_for_uploaded_rhivos_run() throws Exception {
+        // Import rhivos node graph and upload a run
+        folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+
+        try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
+            JsonNode runData = mapper.readTree(is);
+            folderService.upload("rhivos-perf-comprehensive", "$", runData);
+        }
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100);
+        }
+
+        // Find the root value ID — the upload itself
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
+        List<ValueEntity> rootValues = ValueEntity.find("node.id", folder.group.root.id).list();
+        Long valueId = rootValues.get(0).id;
+        tm.commit();
+
+        // Verify the endpoint returns the uploaded JSON data
+        given()
+                .when().get("/api/value/" + valueId)
+                .then()
+                .statusCode(200)
+                // rhivos runs have metadata with user and uuid fields
+                .body("metadata.user", notNullValue());
+    }
+
+    @Test
+    public void value_data_returns_404_for_nonexistent_value() {
+        given()
+                .when().get("/api/value/999999")
+                .then()
+                .statusCode(404);
     }
 
     // -- OpenAPI spec --
