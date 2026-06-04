@@ -27,6 +27,27 @@ public class JsNodeTest {
         assertTrue(JsNode.isNullEmptyOrIdentityFunction("( args ) => args"));
         assertTrue(JsNode.isNullEmptyOrIdentityFunction("( args ) => { console.log(args); return args; }"));
         assertTrue(JsNode.isNullEmptyOrIdentityFunction("function( args ){ console.log(args); return args; }"));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction(null));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction(""));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction("value => value"));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction("value => { return value; }"));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction("function(value) { return value; }"));
+        assertTrue(JsNode.isNullEmptyOrIdentityFunction("function fn(value) { return value; }"));
+    }
+
+    @Test
+    public void isNullEmptyOrIdentityFunction_false_for_transforms(){
+        // Property access after return <arg> — not identity (issue #78)
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => { return value[\"results\"].reduce((a,b) => a+b) }"));
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => { return value.foo }"));
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => { return value[\"key\"] }"));
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("function(value) { return value.foo; }"));
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("function(value) { return value[\"results\"]; }"));
+        // Conditional return — not identity
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => { if (value[\"workload\"] != \"x\") return null; return value[\"foo\"] }"));
+        // Actual transformation
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => value.split(',')"));
+        assertFalse(JsNode.isNullEmptyOrIdentityFunction("value => value + 1"));
     }
 
     @Test
