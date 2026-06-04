@@ -139,9 +139,13 @@ public class JsNode extends NodeEntity {
         return
             input==null ||
             input.isEmpty() ||
+            // arrow expression: value => value
             input.matches("\\s*\\(?\\s*(?<arg>[a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\)?\\s*=>\\s*\\k<arg>\\s*") ||
-            input.matches("\\s*\\(?\\s*(?<arg>[a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\)?\\s*=>.*?return\\s+\\k<arg>.*") ||
-            input.matches("\\s*function\\*?\\s*\\w*\\s*\\(\\s*(?<arg>[a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\)\\s*\\{.*?return\\s+\\k<arg>.*")
+            // arrow block: value => { return value; } — require return <arg> followed by ; or }
+            // to avoid false matches like: value => { return value["results"].reduce(...) }
+            input.matches("\\s*\\(?\\s*(?<arg>[a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\)?\\s*=>.*?return\\s+\\k<arg>\\s*[;}].*") ||
+            // traditional function: function(value) { return value; }
+            input.matches("\\s*function\\*?\\s*\\w*\\s*\\(\\s*(?<arg>[a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\)\\s*\\{.*?return\\s+\\k<arg>\\s*[;}].*")
             ;
     }
 
