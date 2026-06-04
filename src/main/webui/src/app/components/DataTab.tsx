@@ -1,8 +1,11 @@
 import type { View, ViewComponent } from '@client/types.gen.ts';
 
+import { ViewConfigModal } from '@app/components/ViewConfigModal';
 import {
+  Button,
   DataTable,
   Dropdown,
+  ErrorBoundary,
   InlineLoading,
   SkeletonText,
   Table,
@@ -14,7 +17,7 @@ import {
 } from '@carbon/react';
 import { getViewDataOptions, getViewsOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 
 function formatCellValue(value: unknown): string {
   if (value == null) return '';
@@ -80,24 +83,26 @@ const ViewDataTable = ({
   );
 };
 
-export const DataTab = ({ folderName }: { folderName: string }) => {
+export const DataTab = ({ folderName, groupId }: { folderName: string; groupId: number }) => {
   const { data: views, isLoading: viewsLoading } = useQuery(
     getViewsOptions({ path: { name: folderName } }),
   );
   const [selectedViewId, setSelectedViewId] = useState<number | null>(null);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [editingView, setEditingView] = useState<View | null>(null);
 
-  const selectedView = useMemo(() => {
+  const selectedView = useMemo((): View | null => {
     if (!views || views.length === 0) return null;
     if (selectedViewId != null) {
-      return views.find((v: View) => v.id === selectedViewId) ?? views[0];
+      return views.find((v: View) => v.id === selectedViewId) ?? views[0] ?? null;
     }
     // Prefer the "Default" view if it has components, otherwise pick the first view with components
-    const defaultView = views.find((v: View) => v.name === 'Default');
+    const defaultView = views.find((v: View) => v.name === 'Default') ?? null;
     if (defaultView && defaultView.components && defaultView.components.length > 0) {
       return defaultView;
     }
-    const viewWithComponents = views.find((v: View) => v.components && v.components.length > 0);
-    return viewWithComponents ?? defaultView ?? views[0];
+    const viewWithComponents = views.find((v: View) => v.components && v.components.length > 0) ?? null;
+    return viewWithComponents ?? defaultView ?? views[0] ?? null;
   }, [views, selectedViewId]);
 
   if (viewsLoading) return <SkeletonText paragraph={true} lineCount={3} />;
@@ -110,22 +115,49 @@ export const DataTab = ({ folderName }: { folderName: string }) => {
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--cds-spacing-05)', maxWidth: '300px' }}>
-        <Dropdown
-          id="view-selector"
-          titleText="View"
-          label="Select a view"
-          items={dropdownItems}
-          selectedItem={selectedView ? { id: String(selectedView.id), text: selectedView.name } : undefined}
-          itemToString={(item: { id: string; text: string }) => item?.text ?? ''}
-          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } }) => {
-            setSelectedViewId(Number(selectedItem.id));
-          }}
-        />
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--cds-spacing-03)', marginBottom: 'var(--cds-spacing-05)' }}>
+        <div style={{ maxWidth: '300px', flex: 1 }}>
+          <Dropdown
+            id="view-selector"
+            titleText="View"
+            label="Select a view"
+            items={dropdownItems}
+            selectedItem={selectedView ? { id: String(selectedView.id), text: selectedView.name } : undefined}
+            itemToString={(item: { id: string; text: string }) => item?.text ?? ''}
+            onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+              setSelectedViewId(selectedItem ? Number(selectedItem.id) : null);
+            }}
+          />
+        </div>
+        <Button
+          kind="ghost"
+          size="md"
+          onClick={() => { setEditingView(selectedView); setConfigModalOpen(true); }}
+        >
+          Configure
+        </Button>
+        <Button
+          kind="ghost"
+          size="md"
+          onClick={() => { setEditingView(null); setConfigModalOpen(true); }}
+        >
+          New View
+        </Button>
       </div>
       {selectedView && (
         <ViewDataTable folderName={folderName} view={selectedView} />
       )}
+      <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load modal" />}>
+        <Suspense fallback={<SkeletonText paragraph={true} lineCount={3} />}>
+          <ViewConfigModal
+            open={configModalOpen}
+            onClose={() => setConfigModalOpen(false)}
+            folderName={folderName}
+            groupId={groupId}
+            view={editingView}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   );
 };
