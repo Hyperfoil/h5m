@@ -82,8 +82,8 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
       </TabList>
       <TabPanels>
         <TabPanel>
-          {folder.name ? (
-            <DataTab folderName={folder.name} />
+          {folder.name && folder.groupId != null ? (
+            <DataTab folderName={folder.name} groupId={folder.groupId} />
           ) : (
             <p>Folder name not available</p>
           )}
