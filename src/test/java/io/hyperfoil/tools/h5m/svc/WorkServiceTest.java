@@ -1,4 +1,4 @@
-package io.hyperfoil.tools.h5m.svc;
+    package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -34,9 +34,7 @@ public class WorkServiceTest extends FreshDb {
         two.persist();
 
         Work wOne = new Work(one,null, null);
-        wOne.persist();
         Work wTwo = new Work(two,null, null);
-        wTwo.persist();
         tm.commit();
 
         assertTrue(workService.dependsOn(wTwo,wOne));
@@ -52,7 +50,6 @@ public class WorkServiceTest extends FreshDb {
         two.persist();
 
         Work wOne = new Work(one,null, null);
-        wOne.persist();
         tm.commit();
 
         assertFalse(workService.dependsOn(wOne,wOne));
@@ -72,9 +69,7 @@ public class WorkServiceTest extends FreshDb {
         ValueEntity value = new ValueEntity(null,root);
         value.persist();
         Work wOne = new Work(one,null, List.of(value));
-        wOne.persist();
         Work wTwo = new Work(two,null, List.of(value));
-        wTwo.persist();
 
         tm.commit();
         assertTrue(workService.dependsOn(wTwo,wOne));
@@ -96,9 +91,7 @@ public class WorkServiceTest extends FreshDb {
         value2.persist();
 
         Work wOne = new Work(one,null, List.of(value1));
-        wOne.persist();
         Work wTwo = new Work(two,null, List.of(value2));
-        wTwo.persist();
 
         tm.commit();
 
