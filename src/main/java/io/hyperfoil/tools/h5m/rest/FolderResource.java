@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
@@ -26,6 +27,9 @@ public class FolderResource {
 
     @Inject
     FolderServiceInterface folderService;
+
+    @Inject
+    ValueServiceInterface valueService;
 
     @GET
     @PermitAll
@@ -103,4 +107,17 @@ public class FolderResource {
     public Json structure(@PathParam("name") String name) {
         return folderService.structure(name);
     }
+
+    @GET
+    @Path("{id}/labelValues")
+    @PermitAll
+    @Operation(description = "Get metrics labels Values")
+    public List<JsonNode>getLabelValues(
+                    @PathParam("id") Long folderId,
+                    @QueryParam("groupById") Long groupById,
+                    @QueryParam("nodeIds") List<Long> nodeIds,
+                    @QueryParam("sortById") Long sortById)
+            {
+                return valueService.getLabelValues(folderId, groupById,nodeIds,sortById);
+            }
 }

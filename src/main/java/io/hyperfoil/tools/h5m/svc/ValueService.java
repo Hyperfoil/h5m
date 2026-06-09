@@ -3,6 +3,7 @@ package io.hyperfoil.tools.h5m.svc;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
+import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
@@ -14,6 +15,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.NotFoundException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.Session;
 import org.hibernate.query.NativeQuery;
@@ -422,6 +424,7 @@ public class ValueService implements ValueServiceInterface {
 
 
 
+
     /**
      * Returns grouped values for a node, optionally filtered to specific node IDs.
      * One row per upload, with keys being node names.
@@ -433,48 +436,7 @@ public class ValueService implements ValueServiceInterface {
     @Override
     @Transactional
     public List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds){
-        String nodeFilter = filterNodeIds != null ? "where node_id in (:nodeIds)" : "";
-        var query = em.unwrap(Session.class).createNativeQuery(
-            switch(dbKind) {
-                case "sqlite" ->
-                    """
-                    with recursive tree(id,node_id,root_id,idx,data) as (
-                        select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
-                            from value_edge ve left join value v on ve.child_id = v.id
-                            where ve.parent_id in (select id from value where node_id = :nodeId)
-                        union
-                        select v.id,v.node_id,t.root_id,v.idx,v.data
-                            from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
-                    ), bynode as (
-                        select node_id,root_id,json_group_array(json(data)) as data
-                            from tree NODE_FILTER group by node_id,root_id order by idx
-                    )
-                    select json_group_object(n.name,json( ( case when json_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
-                        from bynode b join node n on b.node_id = n.id group by root_id;
-                    """.replace("NODE_FILTER", nodeFilter);
-                case "postgresql" ->
-                    """
-                    with recursive tree(id,node_id,root_id,idx,data) as (
-                        select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
-                            from value_edge ve left join value v on ve.child_id = v.id
-                            where ve.parent_id in (select id from value where node_id = :nodeId)
-                        union
-                        select v.id,v.node_id,t.root_id,v.idx,v.data
-                            from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
-                    ), bynode as (
-                        select node_id,root_id,jsonb_agg(to_jsonb(data)) as data
-                            from tree NODE_FILTER group by node_id,root_id,idx order by idx
-                    )
-                    select jsonb_object_agg(n.name,to_jsonb( ( case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
-                    from bynode b join node n on b.node_id = n.id group by root_id;
-                    """.replace("NODE_FILTER", nodeFilter);
-                default -> "";
-            }, JsonNode.class
-        ).setParameter("nodeId", nodeId);
-        if (filterNodeIds != null) {
-            query.setParameter("nodeIds", filterNodeIds);
-        }
-        return query.getResultList();
+        return getGroupedValues(nodeId,filterNodeIds,null);
     }
 
     @Override
@@ -482,6 +444,71 @@ public class ValueService implements ValueServiceInterface {
     public List<JsonNode> getGroupedValues(Long nodeId){
         return getGroupedValues(nodeId, null);
     }
+
+
+    @Override
+    @Transactional
+    public List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId) {
+        String nodeFilter = filterNodeIds != null && !filterNodeIds.isEmpty() ? "where node_id in (:nodeIds)" : "";
+        String sortCte = sortByNodeId != null ? switch (dbKind) {
+            case "sqlite"     -> "root_sort as (select root_id, min(case when typeof(json_extract(data,'$')) in ('integer','real') then cast(data as real) end) as sort_num,min(data) as sort_txt from tree where node_id = :sortNodeId group by root_id),";
+            case "postgresql" -> "root_sort as (select root_id, min(case when jsonb_typeof(data) = 'number' then (data::text)::numeric end) as sort_num, min(data::text) as sort_txt from tree where node_id = :sortNodeId group by root_id),";
+            default -> "";
+        } : "";
+        String sortJoin    = sortByNodeId != null ? "left join root_sort rs on b.root_id = rs.root_id" : "";
+        String sortGroupBy = sortByNodeId != null ? ", rs.sort_num, rs.sort_txt" : "";
+        String sortOrder   = sortByNodeId != null ? "order by rs.sort_num asc nulls last, rs.sort_txt asc" : "";
+
+        var query = em.unwrap(Session.class).createNativeQuery(
+                switch (dbKind) {
+                    case "sqlite" ->
+                            """
+                            with recursive tree(id,node_id,root_id,idx,data) as (
+                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
+                                    from value_edge ve left join value v on ve.child_id = v.id
+                                    where ve.parent_id in (select id from value where node_id = :nodeId)
+                                union
+                                select v.id,v.node_id,t.root_id,v.idx,v.data
+                                    from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
+                            ),
+                            SORT_CTE
+                            bynode as (
+                                select node_id,root_id,json_group_array(json(data)) as data
+                                    from tree NODE_FILTER group by node_id,root_id order by idx
+                            )
+                            select json_group_object(n.name,json((case when json_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
+                                from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
+                            """
+                                    .replace("NODE_FILTER", nodeFilter).replace("SORT_CTE", sortCte)
+                                    .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
+                    case "postgresql" ->
+                            """
+                            with recursive tree(id,node_id,root_id,idx,data) as (
+                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
+                                    from value_edge ve left join value v on ve.child_id = v.id
+                                    where ve.parent_id in (select id from value where node_id = :nodeId)
+                                union
+                                select v.id,v.node_id,t.root_id,v.idx,v.data
+                                    from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
+                            ),
+                            SORT_CTE
+                            bynode as (
+                                select node_id,root_id,jsonb_agg(to_jsonb(data)) as data
+                                    from tree NODE_FILTER group by node_id,root_id,idx order by idx
+                            )
+                            select jsonb_object_agg(n.name,to_jsonb((case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
+                                from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
+                            """
+                                    .replace("NODE_FILTER", nodeFilter).replace("SORT_CTE", sortCte)
+                                    .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
+                    default -> "";
+                }, JsonNode.class
+        ).setParameter("nodeId", nodeId);
+        if (filterNodeIds != null && !filterNodeIds.isEmpty()) query.setParameter("nodeIds", filterNodeIds);
+        if (sortByNodeId != null)  query.setParameter("sortNodeId", sortByNodeId);
+        return query.getResultList();
+    }
+
     /**
      * get all value that have a value from node as an ancestor
      * @param nodeId
@@ -585,6 +612,26 @@ public class ValueService implements ValueServiceInterface {
         CycleAvoidingContext cycleContext = new CycleAvoidingContext();
         List<ValueEntity> entities = ValueEntity.find("node.id", nodeId).list();
         return entities.stream().map(entity -> apiMapper.toValue(entity, cycleContext)).toList();
+    }
+
+    @Override
+    @Transactional
+    public List<JsonNode> getLabelValues(Long folderId, Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId) {
+        FolderEntity folder = FolderEntity.findById(folderId);
+        if (folder == null) {
+            throw new  NotFoundException("Folder not found: " + folderId);
+        }
+        Long rootNodeId=folder.group.root.id;
+        List<Long> filterNodeIds = new ArrayList<>();
+        if(nodeIds != null ){filterNodeIds.addAll(nodeIds);}
+        if(groupByNodeId != null){
+            filterNodeIds.add(groupByNodeId);
+        }
+        if(sortByNodeId != null){
+            filterNodeIds.add(sortByNodeId);
+        }
+        return getGroupedValues(rootNodeId, filterNodeIds.isEmpty() ? null : filterNodeIds, sortByNodeId);
+
     }
 
 

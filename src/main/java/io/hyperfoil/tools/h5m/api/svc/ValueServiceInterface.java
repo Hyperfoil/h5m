@@ -48,4 +48,17 @@ public interface ValueServiceInterface {
      */
     List<Value> getNodeValues(Long nodeId);
 
+    /**
+         * Returns one row per upload for a folder, with each row containing the values of the requested nodes.
+         * groupByNodeId and sortByNodeId are always included in every row regardless of nodeIds.
+         * @param folderId Folder Id to query.
+         * @param nodeIds Node IDs to include as columns (null/empty list = all nodes).
+         * @param groupByNodeId Node whose value identifies the series (e.g. config fingerprint).
+         * @param sortByNodeId  Node whose value orders the rows (acts as X-axis).
+       */
+      List<JsonNode> getLabelValues(Long folderId,Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId);
+
+      List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId);
+
+
 }
