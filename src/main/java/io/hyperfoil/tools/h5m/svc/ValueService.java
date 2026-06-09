@@ -661,6 +661,86 @@ public class ValueService implements ValueServiceInterface {
 
     }
 
+    /**
+     * Nulls out value.data for values whose nodes have ephemeral=true,
+     * scoped to descendants of the given root value. Called after upload
+     * processing completes to reclaim storage.
+     *
+     * Only touches nodes with ephemeral=true (explicitly set). Nodes with
+     * ephemeral=null (auto) or ephemeral=false are not affected. To resolve
+     * null states into ephemeral=true based on graph structure, call
+     * {@link #markAutoEphemeral(long)} first.
+     *
+     * Value rows and edges are always preserved for ancestry queries.
+     *
+     * @return the number of values whose data was nulled
+     */
+    @Transactional
+    public int nullifyEphemeralData(long rootValueId) {
+        return em.createNativeQuery("""
+            WITH RECURSIVE descendants (v_id) AS (
+                SELECT ve.child_id FROM value_edge ve WHERE ve.parent_id = :rootId
+                UNION ALL
+                SELECT ve.child_id FROM value_edge ve JOIN descendants d ON ve.parent_id = d.v_id
+            )
+            UPDATE value SET data = NULL
+            WHERE id IN (SELECT v_id FROM descendants)
+              AND node_id IN (
+                -- Only nullify nodes explicitly set to ephemeral (true)
+                -- Nodes with ephemeral=null (auto) or ephemeral=false are not touched
+                -- Auto-detection is handled separately via markAutoEphemeral()
+                -- Root and detection nodes are excluded as a safety net
+                SELECT id FROM node WHERE ephemeral = true
+                  AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
+              )
+              AND data IS NOT NULL
+            """)
+            .setParameter("rootId", rootValueId)
+            .executeUpdate();
+    }
 
+    /**
+     * Marks nodes as auto-ephemeral based on graph structure.
+     * Nodes with ephemeral=null that have non-detection children
+     * (i.e., intermediate nodes) are set to ephemeral=true.
+     * Nodes with ephemeral=false (user override) are not touched.
+     * Root and detection nodes are never marked ephemeral.
+     *
+     * @param groupId the node group to evaluate
+     * @return number of nodes marked as ephemeral
+     */
+    @Transactional
+    public int markAutoEphemeral(long groupId) {
+        return em.createNativeQuery("""
+            UPDATE node SET ephemeral = true
+            WHERE group_id = :groupId
+              AND ephemeral IS NULL
+              AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
+              AND EXISTS (
+                SELECT 1 FROM node_edge ne
+                JOIN node child ON child.id = ne.child_id
+                WHERE ne.parent_id = node.id
+                  AND child.type NOT IN ('ft', 'rd', 'sd', 'ed')
+              )
+            """)
+            .setParameter("groupId", groupId)
+            .executeUpdate();
+    }
+
+    /**
+     * Nulls out all existing value data for a specific node.
+     * Called when a user explicitly sets ephemeral = true on a node.
+     *
+     * @return the number of values whose data was nulled
+     */
+    @Transactional
+    public int nullifyNodeData(long nodeId) {
+        return em.createNativeQuery("""
+            UPDATE value SET data = NULL
+            WHERE node_id = :nodeId AND data IS NOT NULL
+            """)
+            .setParameter("nodeId", nodeId)
+            .executeUpdate();
+    }
 
 }

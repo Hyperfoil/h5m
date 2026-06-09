@@ -29,6 +29,18 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
     public MultiIterationType multiType = MultiIterationType.Length;
     public ScalarVariableMethod scalarMethod = ScalarVariableMethod.First;
 
+    /**
+     * Controls whether value data for this node is nulled out after upload
+     * processing completes to save storage.
+     *
+     * null  = auto: ephemeral if node has non-detection children (intermediate node)
+     * true  = user explicitly wants data discarded
+     * false = user explicitly wants data kept
+     *
+     * The value rows and edges are always preserved for ancestry queries.
+     */
+    public Boolean ephemeral;
+
     @ManyToOne(cascade = { CascadeType.PERSIST }, fetch = FetchType.LAZY )
     @JoinColumn(name = "group_id")
     @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "group_id")

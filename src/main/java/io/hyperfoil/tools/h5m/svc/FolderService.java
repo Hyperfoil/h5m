@@ -105,6 +105,7 @@ public class FolderService implements FolderServiceInterface {
                             if (entity != null) {
                                 entity.completed = true;
                             }
+                            valueService.nullifyEphemeralData(rootValue.id);
                         });
                     });
                 } else {
@@ -342,12 +343,17 @@ public class FolderService implements FolderServiceInterface {
             }
 
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(newValue.id));
-            // Mark completed when all work finishes
+            // Mark completed and null out ephemeral data when all work finishes
             future.whenComplete((v, t) -> {
                 QuarkusTransaction.requiringNew().run(() -> {
                     UploadProcessingEntity entity = UploadProcessingEntity.find("rootValueId", newValue.id).firstResult();
                     if (entity != null) {
                         entity.completed = true;
+                    }
+                    // Null out data for ephemeral nodes to reclaim storage
+                    int nullified = valueService.nullifyEphemeralData(newValue.id);
+                    if (nullified > 0) {
+                        Log.debugf("Nullified data for %d ephemeral values (upload %d)", nullified, newValue.id);
                     }
                 });
             });

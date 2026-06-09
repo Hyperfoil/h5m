@@ -4,9 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
+import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
@@ -25,6 +28,9 @@ public class NodeResource {
 
     @Inject
     NodeServiceInterface nodeService;
+
+    @Inject
+    ValueService valueService;
 
     @POST
     @Authenticated
@@ -62,6 +68,33 @@ public class NodeResource {
     @Operation(description = "Delete a node by its ID")
     public void delete(@PathParam("id") Long nodeId) {
         nodeService.delete(nodeId);
+    }
+
+    @PUT
+    @Path("{id}/ephemeral")
+    @Authenticated
+    @Transactional
+    @Operation(description = "Set ephemeral mode: true=discard data, false=keep data, auto=system decides based on children")
+    public void setEphemeral(
+            @PathParam("id") Long nodeId,
+            @QueryParam("mode") @Parameter(description = "true, false, or auto") @DefaultValue("true") String mode) {
+        NodeEntity node = NodeEntity.findById(nodeId);
+        if (node == null) {
+            throw new NotFoundException("Node not found: " + nodeId);
+        }
+        if ("true".equalsIgnoreCase(mode) && (node.isDetection() || node.type() == NodeType.ROOT)) {
+            throw new BadRequestException("Detection and root nodes cannot be set to ephemeral");
+        }
+        switch (mode.toLowerCase()) {
+            case "true" -> {
+                node.ephemeral = true;
+                // Immediately null out existing data
+                valueService.nullifyNodeData(nodeId);
+            }
+            case "false" -> node.ephemeral = false;
+            case "auto" -> node.ephemeral = null;
+            default -> throw new BadRequestException("Invalid mode: " + mode + ". Use true, false, or auto");
+        }
     }
 
     @GET
