@@ -891,4 +891,56 @@ public class RestEndpointTest extends FreshDb {
                 .body(containsString("/api/value"));
     }
 
+    @Test
+    public void labelValues_returns_grouped_values() throws InterruptedException {
+        Long folderId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .when().post("/api/folder/lv-test")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        Long groupId = getGroupId("lv-test");
+        Long throughputId=createNode(groupId, "throughput", ".throughput");
+        Long buildId= createNode(groupId, "build_id", ".build_id");
+
+        given().contentType(MediaType.APPLICATION_JSON)
+                .body("{\"throughput\": 115, \"build_id\": 201}")
+                .when().post("/api/folder/lv-test/upload")
+                .then().statusCode(204);
+
+        given().contentType(MediaType.APPLICATION_JSON)
+                .body("{\"throughput\": 100, \"build_id\": 202}")
+                .when().post("/api/folder/lv-test/upload")
+                .then().statusCode(204);
+
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        assertTrue(workService.isIdle(), "Work queue should be idle");
+
+        given().when().get("/api/folder/"+folderId+"/labelValues")
+                .then().statusCode(200)
+                .body("size()", equalTo(2))
+                .body("throughput", hasItems(100,115))
+                .body("build_id", hasItems(201,202));
+
+        given().queryParam("sortById", throughputId)
+                .queryParam("nodeIds",throughputId)
+                .when().get("/api/folder/"+folderId+"/labelValues")
+                .then().statusCode(200)
+                .body("size()", equalTo(2))
+                .body("[0].throughput", equalTo(100))
+                .body("[1].throughput", equalTo(115));
+    }
+
+    @Test
+    public void labelValues_folder_not_found_returns_404() {
+        given()
+                .when().get("/api/folder/123/labelValues")
+                .then()
+                .statusCode(404);
+    }
+
 }

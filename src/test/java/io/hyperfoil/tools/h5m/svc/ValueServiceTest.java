@@ -7,14 +7,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Value;
+import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
-import io.hyperfoil.tools.h5m.entity.node.FingerprintNode;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -23,9 +24,6 @@ import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 
@@ -1284,4 +1282,195 @@ public class ValueServiceTest extends FreshDb {
         assertEquals(2,found.size(),"expect to see 2 entry: "+found);
         assertFalse(found.contains(bravobravoValue),"should not contain bravobravo["+bravobravoValue.id+"]'s value: "+found);
     }
+
+
+    @Test
+    public void getGroupedValues_filtered() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity buildIdNode = new JqNode("build_id");
+        buildIdNode.sources = List.of(rootNode);
+        buildIdNode.persist();
+
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        root1.persist();
+        ValueEntity t1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        t1.sources = List.of(root1);
+        t1.persist();
+        ValueEntity b1 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        b1.sources = List.of(root1);
+        b1.persist();
+        tm.commit();
+
+        List<JsonNode> results = valueService.getGroupedValues(rootNode.id, List.of(throughputNode.id));
+
+        assertEquals(1, results.size(), "expect one row: " + results);
+        assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));
+        assertFalse(results.get(0).has("build_id"), "row should not have build_id when filtered out: " + results.get(0));
+    }
+
+    @Test
+    public void getGroupedValues_sorted() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException
+    {
+        ObjectMapper om = new ObjectMapper();
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity buildIdNode = new JqNode("build_id");
+        buildIdNode.sources = List.of(rootNode);
+        buildIdNode.persist();
+
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        root1.persist();
+        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        throughputv1.sources = List.of(root1);
+        throughputv1.persist();
+        ValueEntity buildv1 = new ValueEntity(null, buildIdNode, new TextNode("202"));
+        buildv1.sources = List.of(root1);
+        buildv1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        root2.persist();
+        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, new TextNode("101"));
+        throughputv2.sources = List.of(root2);
+        throughputv2.persist();
+        ValueEntity buildv2 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        buildv2.sources = List.of(root2);
+        buildv2.persist();
+
+        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("r3"));
+        root3.persist();
+        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, new TextNode("102"));
+        throughputv3.sources = List.of(root3);
+        throughputv3.persist();
+        ValueEntity buildv3 = new ValueEntity(null, buildIdNode, new TextNode("200"));
+        buildv3.sources = List.of(root3);
+        buildv3.persist();
+        tm.commit();
+
+        List<JsonNode> results = valueService.getGroupedValues(
+                rootNode.id,
+                List.of(throughputNode.id, buildIdNode.id),
+                buildIdNode.id
+        );
+
+        assertEquals(3, results.size(), "expect 3 rows: " + results);
+        assertEquals(200, results.get(0).get("build_id").asInt(), "first row should be build_id 200: " + results);
+        assertEquals(201, results.get(1).get("build_id").asInt(), "second row should be build_id 201: " + results);
+        assertEquals(202, results.get(2).get("build_id").asInt(), "third row should be build_id 202: " + results);
+    }
+
+    @Test
+    public void getGroupedValues_empty_filterNodeIds_returns_all_nodes() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException
+    {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity buildNode = new JqNode("build_id");
+        buildNode.sources = List.of(rootNode);
+        buildNode.persist();
+
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        root1.persist();
+        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        throughputv1.sources = List.of(root1);
+        throughputv1.persist();
+        ValueEntity buildv1 = new ValueEntity(null, buildNode, new TextNode("101"));
+        buildv1.sources = List.of(root1);
+        buildv1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        root2.persist();
+        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, new TextNode("200"));
+        throughputv2.sources = List.of(root2);
+        throughputv2.persist();
+        ValueEntity buildv2 = new ValueEntity(null, buildNode, new TextNode("201"));
+        buildv2.sources = List.of(root2);
+        buildv2.persist();
+
+        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("r3"));
+        root3.persist();
+        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, new TextNode("300"));
+        throughputv3.sources = List.of(root3);
+        throughputv3.persist();
+        ValueEntity buildv3 = new ValueEntity(null, buildNode, new TextNode("301"));
+        buildv3.sources = List.of(root3);
+        buildv3.persist();
+        tm.commit();
+
+        List<JsonNode> results = valueService.getGroupedValues(rootNode.id, List.of());
+
+        assertEquals(3, results.size(), "expect 3 rows: " + results);
+        assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));
+        assertTrue(results.get(0).has("build_id"), "row should have build_id: " + results.get(0));
+        assertTrue(results.get(1).has("throughput"), "row should have throughput: " + results.get(1));
+        assertTrue(results.get(1).has("build_id"), "row should have build_id: " + results.get(1));
+        assertTrue(results.get(2).has("throughput"), "row should have throughput: " + results.get(2));
+        assertTrue(results.get(2).has("build_id"), "row should have build_id: " + results.get(2));
+
+
+    }
+
+    @Test
+    public void getLabelValues_empty_filterNodeIds_returns_all_nodes() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException
+    {
+        tm.begin();
+        NodeGroupEntity group = new NodeGroupEntity();
+        group.persist();
+        FolderEntity folder = new FolderEntity();
+        folder.name = "lv-null-test";
+        folder.group = group;
+        folder.persist();
+
+        NodeEntity rootNode = group.root;
+
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity buildIdNode = new JqNode("build_id");
+        buildIdNode.sources = List.of(rootNode);
+        buildIdNode.persist();
+
+        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        root1.persist();
+        ValueEntity t1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        t1.sources = List.of(root1);
+        t1.persist();
+        ValueEntity b1 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        b1.sources = List.of(root1);
+        b1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        root2.persist();
+        ValueEntity t2 = new ValueEntity(null, throughputNode, new TextNode("200"));
+        t2.sources = List.of(root2);
+        t2.persist();
+        ValueEntity b2 = new ValueEntity(null, buildIdNode, new TextNode("202"));
+        b2.sources = List.of(root2);
+        b2.persist();
+
+        tm.commit();
+
+        List<JsonNode> results = valueService.getLabelValues(folder.id, null, null, null);
+
+        assertEquals(2, results.size(), "expect two rows: " + results);
+        assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));
+        assertTrue(results.get(0).has("build_id"), "row should have build_id: " + results.get(0));
+        assertTrue(results.get(1).has("throughput"), "row should have throughput: " + results.get(1));
+        assertTrue(results.get(1).has("build_id"), "row should have build_id: " + results.get(1));
+
+    }
+
 }
+
+
