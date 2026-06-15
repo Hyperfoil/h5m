@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -218,69 +219,69 @@ public class FolderServiceTest extends FreshDb {
     // -- Ephemeral value data --
 
     @Test
-    public void ephemeral_true_data_nulled_after_upload() throws Exception {
-        // ephemeral=true: data should be nulled after upload
+    public void ephemeral_discard_data_nulled_after_upload() throws Exception {
+        // ephemeral=DISCARD: data should be nulled after upload
         tm.begin();
-        long folderId = folderService.create("ephemeral-true-test");
+        long folderId = folderService.create("ephemeral-discard-test");
         FolderEntity folder = folderService.read(folderId);
 
         JqNode node = new JqNode("extract", ".key", folder.group.root);
         node.group = folder.group;
-        node.ephemeral = true; // explicitly ephemeral
+        node.ephemeral = EphemeralMode.DISCARD;
         node.persist();
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-true-test", "$",
+        folderService.upload("ephemeral-discard-test", "$",
                 mapper.readTree("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
         List<ValueEntity> values = ValueEntity.find("node.id", nodeId).list();
         assertFalse(values.isEmpty(), "Node should still have value rows");
-        assertNull(values.get(0).data, "ephemeral=true: data should be null after upload");
+        assertNull(values.get(0).data, "ephemeral=DISCARD: data should be null after upload");
         tm.commit();
     }
 
     @Test
-    public void ephemeral_false_data_preserved_after_upload() throws Exception {
-        // ephemeral=false: data should always be preserved
+    public void ephemeral_keep_data_preserved_after_upload() throws Exception {
+        // ephemeral=KEEP: data should always be preserved
         tm.begin();
-        long folderId = folderService.create("ephemeral-false-test");
+        long folderId = folderService.create("ephemeral-keep-test");
         FolderEntity folder = folderService.read(folderId);
 
         JqNode node = new JqNode("extract", ".key", folder.group.root);
         node.group = folder.group;
-        node.ephemeral = false; // explicitly materialized
+        node.ephemeral = EphemeralMode.KEEP;
         node.persist();
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-false-test", "$",
+        folderService.upload("ephemeral-keep-test", "$",
                 mapper.readTree("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
         List<ValueEntity> values = ValueEntity.find("node.id", nodeId).list();
         assertFalse(values.isEmpty(), "Node should have values");
-        assertNotNull(values.get(0).data, "ephemeral=false: data should be preserved");
+        assertNotNull(values.get(0).data, "ephemeral=KEEP: data should be preserved");
         assertEquals("k1", values.get(0).data.asText());
         tm.commit();
     }
 
     @Test
-    public void ephemeral_null_auto_intermediate_data_nulled() throws Exception {
-        // ephemeral=null (auto): intermediate node (has non-detection child) should be nulled
+    public void ephemeral_auto_intermediate_data_nulled() throws Exception {
+        // ephemeral=AUTO: intermediate node (has non-detection child) should be nulled
         // Node graph: root → parent (.key) → child ({parent}:.length)
         // parent is intermediate because child depends on it
         tm.begin();
         long folderId = folderService.create("ephemeral-auto-test");
         FolderEntity folder = folderService.read(folderId);
 
-        // Parent node — ephemeral=null (auto), will have a non-detection child
+        // Parent node — ephemeral=AUTO (default), will have a non-detection child
         JqNode parent = new JqNode("parent", ".key", folder.group.root);
         parent.group = folder.group;
-        // ephemeral defaults to null — auto mode
+        // ephemeral defaults to AUTO
         parent.persist();
 
         // Child node — depends on parent, making parent intermediate
@@ -309,7 +310,7 @@ public class FolderServiceTest extends FreshDb {
         List<ValueEntity> parentValues = ValueEntity.find("node.id", parentId).list();
         assertFalse(parentValues.isEmpty(), "Parent should have value rows");
         assertNull(parentValues.get(0).data,
-                "ephemeral=null with non-detection child: data should be auto-nulled");
+                "ephemeral=AUTO with non-detection child: data should be auto-nulled");
 
         // Child (leaf, auto) should have data preserved
         List<ValueEntity> childValues = ValueEntity.find("node.id", childId).list();
@@ -319,15 +320,15 @@ public class FolderServiceTest extends FreshDb {
     }
 
     @Test
-    public void ephemeral_null_leaf_data_preserved() throws Exception {
-        // ephemeral=null (auto): leaf node (no children) should keep data
+    public void ephemeral_auto_leaf_data_preserved() throws Exception {
+        // ephemeral=AUTO: leaf node (no children) should keep data
         tm.begin();
         long folderId = folderService.create("ephemeral-leaf-test");
         FolderEntity folder = folderService.read(folderId);
 
         JqNode leaf = new JqNode("leaf", ".key", folder.group.root);
         leaf.group = folder.group;
-        // ephemeral defaults to null — auto mode, but no children = leaf
+        // ephemeral defaults to AUTO, but no children = leaf
         leaf.persist();
         long leafId = leaf.id;
         tm.commit();
@@ -340,7 +341,7 @@ public class FolderServiceTest extends FreshDb {
         List<ValueEntity> values = ValueEntity.find("node.id", leafId).list();
         assertFalse(values.isEmpty(), "Leaf should have values");
         assertNotNull(values.get(0).data,
-                "ephemeral=null with no children: leaf data should be preserved");
+                "ephemeral=AUTO with no children: leaf data should be preserved");
         tm.commit();
     }
 
