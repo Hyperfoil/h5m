@@ -14,7 +14,7 @@ public record Node(
         @Schema(description = "Node group ID") Long groupId,
         @Schema(description = "Node operation (jq filter, JS function, etc.)") String operation,
         @Schema(description = "Source dependency nodes") List<Node> sources,
-        @Schema(description = "Whether value data is ephemeral: null=auto (based on children), true=always discard, false=always keep") Boolean ephemeral) {
+        @Schema(description = "Ephemeral mode: AUTO (system decides), DISCARD (always discard data), KEEP (always keep data)") EphemeralMode ephemeral) {
 
     @Override
     public int hashCode() {

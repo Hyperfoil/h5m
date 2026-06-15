@@ -662,13 +662,13 @@ public class ValueService implements ValueServiceInterface {
     }
 
     /**
-     * Nulls out value.data for values whose nodes have ephemeral=true,
+     * Nulls out value.data for values whose nodes have ephemeral=DISCARD,
      * scoped to descendants of the given root value. Called after upload
      * processing completes to reclaim storage.
      *
-     * Only touches nodes with ephemeral=true (explicitly set). Nodes with
-     * ephemeral=null (auto) or ephemeral=false are not affected. To resolve
-     * null states into ephemeral=true based on graph structure, call
+     * Only touches nodes with ephemeral=DISCARD (explicitly set). Nodes with
+     * ephemeral=AUTO or ephemeral=KEEP are not affected. To resolve
+     * AUTO states into DISCARD based on graph structure, call
      * {@link #markAutoEphemeral(long)} first.
      *
      * Value rows and edges are always preserved for ancestry queries.
@@ -686,11 +686,11 @@ public class ValueService implements ValueServiceInterface {
             UPDATE value SET data = NULL
             WHERE id IN (SELECT v_id FROM descendants)
               AND node_id IN (
-                -- Only nullify nodes explicitly set to ephemeral (true)
-                -- Nodes with ephemeral=null (auto) or ephemeral=false are not touched
+                -- Only nullify nodes explicitly set to DISCARD
+                -- Nodes with AUTO or KEEP are not touched
                 -- Auto-detection is handled separately via markAutoEphemeral()
                 -- Root and detection nodes are excluded as a safety net
-                SELECT id FROM node WHERE ephemeral = true
+                SELECT id FROM node WHERE ephemeral = 'DISCARD'
                   AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
               )
               AND data IS NOT NULL
@@ -701,9 +701,9 @@ public class ValueService implements ValueServiceInterface {
 
     /**
      * Marks nodes as auto-ephemeral based on graph structure.
-     * Nodes with ephemeral=null that have non-detection children
-     * (i.e., intermediate nodes) are set to ephemeral=true.
-     * Nodes with ephemeral=false (user override) are not touched.
+     * Nodes with ephemeral=AUTO that have non-detection children
+     * (i.e., intermediate nodes) are set to ephemeral=DISCARD.
+     * Nodes with ephemeral=KEEP (user override) are not touched.
      * Root and detection nodes are never marked ephemeral.
      *
      * @param groupId the node group to evaluate
@@ -712,9 +712,9 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public int markAutoEphemeral(long groupId) {
         return em.createNativeQuery("""
-            UPDATE node SET ephemeral = true
+            UPDATE node SET ephemeral = 'DISCARD'
             WHERE group_id = :groupId
-              AND ephemeral IS NULL
+              AND ephemeral = 'AUTO'
               AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
               AND EXISTS (
                 SELECT 1 FROM node_edge ne
@@ -729,7 +729,7 @@ public class ValueService implements ValueServiceInterface {
 
     /**
      * Nulls out all existing value data for a specific node.
-     * Called when a user explicitly sets ephemeral = true on a node.
+     * Called when a user explicitly sets ephemeral to DISCARD on a node.
      *
      * @return the number of values whose data was nulled
      */

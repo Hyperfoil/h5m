@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.entity;
 
 import com.fasterxml.jackson.annotation.*;
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
@@ -30,16 +31,17 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
     public ScalarVariableMethod scalarMethod = ScalarVariableMethod.First;
 
     /**
-     * Controls whether value data for this node is nulled out after upload
+     * Controls whether value data for this node is discarded after upload
      * processing completes to save storage.
      *
-     * null  = auto: ephemeral if node has non-detection children (intermediate node)
-     * true  = user explicitly wants data discarded
-     * false = user explicitly wants data kept
+     * AUTO    = system decides based on graph structure (intermediate nodes get discarded)
+     * DISCARD = user explicitly wants data discarded
+     * KEEP    = user explicitly wants data kept
      *
      * The value rows and edges are always preserved for ancestry queries.
      */
-    public Boolean ephemeral;
+    @Enumerated(EnumType.STRING)
+    public EphemeralMode ephemeral = EphemeralMode.AUTO;
 
     @ManyToOne(cascade = { CascadeType.PERSIST }, fetch = FetchType.LAZY )
     @JoinColumn(name = "group_id")

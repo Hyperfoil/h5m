@@ -1,10 +1,12 @@
 package io.hyperfoil.tools.h5m.rest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.UploadProcessingEntity;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
@@ -74,26 +76,33 @@ public class NodeResource {
     @Path("{id}/ephemeral")
     @Authenticated
     @Transactional
-    @Operation(description = "Set ephemeral mode: true=discard data, false=keep data, auto=system decides based on children")
+    @Operation(description = "Set ephemeral mode: DISCARD=discard data, KEEP=keep data, AUTO=system decides based on children")
     public void setEphemeral(
             @PathParam("id") Long nodeId,
-            @QueryParam("mode") @Parameter(description = "true, false, or auto") @DefaultValue("true") String mode) {
+            @QueryParam("mode") @Parameter(description = "DISCARD, KEEP, or AUTO") @DefaultValue("DISCARD") String mode) {
         NodeEntity node = NodeEntity.findById(nodeId);
         if (node == null) {
             throw new NotFoundException("Node not found: " + nodeId);
         }
-        if ("true".equalsIgnoreCase(mode) && (node.isDetection() || node.type() == NodeType.ROOT)) {
+        EphemeralMode ephemeralMode;
+        try {
+            ephemeralMode = EphemeralMode.valueOf(mode.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid mode: " + mode + ". Use DISCARD, KEEP, or AUTO");
+        }
+        if (ephemeralMode == EphemeralMode.DISCARD && (node.isDetection() || node.type() == NodeType.ROOT)) {
             throw new BadRequestException("Detection and root nodes cannot be set to ephemeral");
         }
-        switch (mode.toLowerCase()) {
-            case "true" -> {
-                node.ephemeral = true;
-                // Immediately null out existing data
+        node.ephemeral = ephemeralMode;
+        if (ephemeralMode == EphemeralMode.DISCARD) {
+            // Only nullify existing data if no uploads are in progress for this folder
+            String folderName = node.group.name;
+            long inFlight = UploadProcessingEntity.count("folderName = ?1 and completed = false", folderName);
+            if (inFlight == 0) {
                 valueService.nullifyNodeData(nodeId);
             }
-            case "false" -> node.ephemeral = false;
-            case "auto" -> node.ephemeral = null;
-            default -> throw new BadRequestException("Invalid mode: " + mode + ". Use true, false, or auto");
+            // If uploads are in progress, data will be nullified when they complete
+            // via nullifyEphemeralData() in FolderService.upload() whenComplete callback
         }
     }
 
