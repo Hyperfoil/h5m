@@ -14,28 +14,39 @@ Other changes:
 
 
 ## Getting started
+
 ### 1. Build the project (CLI mode) 
+
+You can build the CLI as a native executable or as a standard Java JAR. After building, set up a temporary alias for 
+your terminal session to simplify the commands in the following steps.
+
+**Option A: Build as a native executable**
 ```shell
 mvn clean package -Pcli
+alias h5m="./target/cli/h5m"
 ```
-or you can just build a jar 
+
+**Option B: Build as a Java JAR**
+
 ```shell
 mvn clean package -Pcli -Dh5m.cli.native=false 
+alias h5m="java -jar target/cli/h5m.jar"
 ```
-and substitute `java -jar /target/cli/h5m.jar` wherever you see `target/cli/h5m` in the following steps
 
 ### 2. Create a Folder
+
 ```shell
 TEMP_DIR=$(mktemp -d)
-target/cli/h5m add folder test
+h5m add folder test
 ```
 
-### 3. create jq nodes for the test
+### 3. Create jq nodes for the test
+
 ```shell
-target/cli/h5m add jq to test foo .foo[]
-target/cli/h5m add jq to test name {foo}:.name
-target/cli/h5m add jq to test bar {foo}:.bar
-target/cli/h5m add jq to test biz '{bar}:.biz[] + "-it"'
+h5m add jq to test foo .foo[]
+h5m add jq to test name {foo}:.name
+h5m add jq to test bar {foo}:.bar
+h5m add jq to test biz '{bar}:.biz[] + "-it"'
 ```
 The `foo` node's operation is a `jq` filter. The `name`,`bar`,`biz` nodes' operations are `jq` filters with a prefix 
 to indicate the node gets input from another node. The `{name}:` prefix creates the edges that connect nodes in the 
@@ -43,7 +54,7 @@ computation graph.
 
 ### 4. List the nodes 
 ```shell
-target/cli/h5m list test nodes
+h5m list test nodes
 ┌──────┬──────┬───────────┬────────────────┬───────────────────────────┐
 │ name │ type │   fqdn    │   operation    │         encoding          │
 ├──────┼──────┼───────────┼────────────────┼───────────────────────────┤
@@ -60,11 +71,11 @@ can cause duplicates so we are considering a "fully qualified name" as a way to 
 ### 5. Create and upload sample run
 ```shell
 echo '{"foo":[{"name":"primero","bar":{"biz":["one","first"]}},{"name":"segundo","bar":{"biz":["two","second"]}}]}' > $TEMP_DIR/first.json
-target/cli/h5m upload $TEMP_DIR to test
+h5m upload $TEMP_DIR to test
 ```
 ### 6. List the values
 ```shell
-target/cli/h5m list test values
+h5m list test values
 Count: 10
 ┌────┬───────────────────────────────────────────────────┬─────────┐
 │ id │                       data                        │ node.id │
@@ -88,7 +99,7 @@ h5m sees the separate result as a separate values similar to how a schema transf
 The values can also be grouped into json based on a "source node." This acts like getting the label values for datasets.
 
 ```shell
-target/cli/h5m list test values by foo
+h5m list test values by foo
 ┌────────────────────────────────────────────────────────────────────────────────┐
 │                                      data                                      │
 ├────────────────────────────────────────────────────────────────────────────────┤
@@ -98,7 +109,7 @@ target/cli/h5m list test values by foo
 ```
 or separate each node as a separate column with `as table`
 ```shell
-target/cli/h5m list test values by foo as table
+h5m list test values by foo as table
 ┌──────────────────────────┬────────────────────────┬───────────┐
 │           bar            │          biz           │   name    │
 ├──────────────────────────┼────────────────────────┼───────────┤
@@ -109,7 +120,7 @@ target/cli/h5m list test values by foo as table
 
 That sums up most of what exists in the h5m cli. You can further explore with
 ```shell
-target/cli/h5m help
+h5m help
 ```
 The database will default to ~/h5m.db (plus associated -shm and -wal files) but the location can be controlled with `H5M_PATH` environment variable.
 
