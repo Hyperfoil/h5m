@@ -104,7 +104,7 @@ public class ValueEntity extends PanacheEntity {
     """)
     @SQLUpdate(sql= """
         with from_hibernate_update (parent_id,child_id,idx) as (values(?,?,?)),
-        existing (parent_id,child_id,idx) as (select ne.parent_id,ne.child_id,ne.idx from vale_edge ne join from_hibernate_update hu on ne.child_id = hu.child_id and ne.idx = hu.idx where ne.depth = 1),
+        existing (parent_id,child_id,idx) as (select ne.parent_id,ne.child_id,ne.idx from value_edge ne join from_hibernate_update hu on ne.child_id = hu.child_id and ne.idx = hu.idx where ne.depth = 1),
         --delete the existing 
         delete_target_edge as (select ne.child_id,ne.parent_id,ne.depth,ne.count from value_edge ne join existing e on ne.child_id = e.child_id and ne.idx = e.idx where ne.depth = 1),
         delete_selected_edge as (
