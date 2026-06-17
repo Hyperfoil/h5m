@@ -51,19 +51,13 @@ public class DatasourceConfiguration {
     public DatasourceConfiguration() {
     }
 
-    public static String getPath(){
+    public static String getPath() {
         String rtrn = "";
-        if(System.getenv("H5M_PATH") !=null ){
+        if (System.getenv("H5M_PATH") != null) {
             rtrn = System.getenv("H5M_PATH");
         } else {
-            //check local directory
-            Path currentRelativePath = Paths.get("");
-            String s = currentRelativePath.toAbsolutePath().toString()+ File.separator+"h5m.db";
-            if((new File(s).exists())){
-                rtrn = s;
-            }else{
-                rtrn = System.getProperty("user.home")+File.separator+"h5m.db";
-            }
+            // Use current working directory only
+            rtrn = System.getProperty("user.dir") + File.separator + "h5m.db";
         }
         return rtrn;
     }

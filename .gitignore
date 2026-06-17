@@ -10,3 +10,7 @@ dependency-reduced-pom.xml
 perf_test/states.yaml
 perf_test/qDup.jar
 jmh-result.*
+
+/h5m.db
+/h5m.db-shm
+/h5m.db-wal
