@@ -111,9 +111,20 @@ That sums up most of what exists in the h5m cli. You can further explore with
 ```shell
 target/cli/h5m help
 ```
-The database will default to ~/h5m.db (plus associated -shm and -wal files) but the location can be controlled with `H5M_PATH` environment variable.
+### Database
 
-Delete the 3 database files to reset h5m.
+By default, the CLI uses SQLite and stores data at `~/h5m.db` (plus associated `-shm` and `-wal` files). 
+The location can be controlled with the `H5M_PATH` environment variable. Delete the 3 database files to reset h5m.
+
+To use PostgreSQL instead of SQLite, pass the datasource properties on the command line:
+```shell
+java -Dquarkus.profile=cli \
+     -Dquarkus.datasource.db-kind=postgresql \
+     -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/h5m \
+     -Dquarkus.datasource.username=h5m \
+     -Dquarkus.datasource.password=h5m \
+     -jar target/cli/h5m.jar add folder test
+```
 
 ## Design
 
