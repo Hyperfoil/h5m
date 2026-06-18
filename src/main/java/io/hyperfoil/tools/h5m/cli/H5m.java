@@ -84,43 +84,69 @@ public class H5m implements QuarkusApplication {
         }
         return 0;
     }
-    @CommandLine.Command(name="upload",description = "")
+    @CommandLine.Command(name="upload", description = "Uploads a JSON file, a directory of JSON files or a JSON string")
     public int upload(
-            @CommandLine.Parameters(index="0")
-            String path,
-            @CommandLine.Option(names = {"to"},description = "grouping node" ,arity = "1")
+            @CommandLine.Parameters(index="0", description="File path, directory path or raw JSON string")
+            String source,
+            @CommandLine.Option(names = {"to"}, description = "grouping node", arity = "1")
             String folderName
-    ){
+    ) {
         Folder folder = folderService.byName(folderName);
-        if(folder == null){
-            System.err.println("could not find folder "+folderName);
+        if (folder == null) {
+            System.err.println("could not find folder " + folderName);
             return 1;
         }
-        File pathFile  = new File(path);
-        if(!pathFile.exists()){
-            System.err.println("upload path does not exist: "+path);
-            return 1;
-        }
-        List<File> todo = pathFile.isDirectory() ? List.of(pathFile.listFiles(s->s.toString().endsWith(".json") && !s.getName().startsWith("."))): List.of(pathFile);
+
         ObjectMapper objectMapper = new ObjectMapper();
-        for( File f : todo){
-            try {
-                if( todo.size()>1) {
-                    System.out.println(f.getName());
+        File sourceFile = new File(source);
+
+        // SCENARIO 1 & 2: File or Directory
+        if (sourceFile.exists()) {
+            List<File> todo = sourceFile.isDirectory()
+                    ? List.of(sourceFile.listFiles(s -> s.toString().endsWith(".json") && !s.getName().startsWith(".")))
+                    : List.of(sourceFile);
+
+            for (File f : todo) {
+                try {
+                    if (todo.size() > 1) {
+                        System.out.println(f.getName());
+                    }
+                    JsonNode read = objectMapper.readTree(f);
+                    if (read != null) {
+                        try {
+                            folderService.upload(folderName, f.getPath(), read);
+                        } catch (NoResultException e) {
+                            System.err.println("could not find folder " + folderName);
+                            return 1;
+                        }
+                    } else {
+                        System.err.println(f.getPath() + " could not be loaded as json");
+                    }
+                } catch (IOException e) {
+                    System.err.println("failure trying to read " + f.getPath() + "\n" + e.getMessage());
+                    return 1;
                 }
-                JsonNode read = objectMapper.readTree(f);
-                if(read!=null){
+            }
+        }
+        // SCENARIO 3: Raw JSON String
+        else {
+            try {
+                JsonNode read = objectMapper.readTree(source);
+                if (read != null) {
                     try {
-                        folderService.upload(folderName, f.getPath(), read);
+                        // Passing "inline-json" as a placeholder since there is no file path
+                        folderService.upload(folderName, "inline-json", read);
                     } catch (NoResultException e) {
                         System.err.println("could not find folder " + folderName);
                         return 1;
                     }
-                }else{
-                    System.err.println(f.getPath()+" could not be loaded as json");
+                } else {
+                    System.err.println("Provided string could not be loaded as json");
+                    return 1;
                 }
             } catch (IOException e) {
-                System.err.println("failure trying to read "+f.getPath()+"\n"+e.getMessage());
+                // If it fails here, it wasn't a valid file path AND wasn't valid JSON.
+                System.err.println("Input does not exist as a file/directory and could not be parsed as a valid JSON string: " + source);
                 return 1;
             }
         }
