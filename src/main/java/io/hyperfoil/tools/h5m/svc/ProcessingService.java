@@ -255,7 +255,8 @@ public class ProcessingService {
                 throw new IllegalArgumentException("Node " + nodeId + " has no group");
             }
             FolderEntity folder = findFolderByGroupId(targetNode.group.id);
-            Set<NodeEntity> startNodes = findRecomputationStartNodes(targetNode, folder.group.root);
+            List<NodeEntity> allGroupNodes = List.copyOf(folder.group.sources);
+            Set<NodeEntity> startNodes = findRecomputationStartNodes(targetNode, folder.group.root, allGroupNodes);
             return doRecalculate(folder, nodeId, ProcessingType.RECALCULATE_NODE, startNodes);
         });
     }
@@ -354,26 +355,34 @@ public class ProcessingService {
 
     /**
      * Walks up the source chain from the target node to find the nodes where
-     * recomputation should start. Ephemeral nodes (DISCARD or AUTO with
+     * recomputation should start. Ephemeral nodes (DISCARD, or AUTO with
      * non-detection children) will have their data nullified, so the pipeline
      * must be restarted from an ancestor whose data is available.
      *
-     * The algorithm:
-     * - If the target node's sources all have available data (KEEP, or root),
-     *   return just the target node.
-     * - If any source is ephemeral, recursively walk up to that source's sources.
-     * - Stop at root nodes (always have data) or KEEP nodes.
-     * - Return the set of nodes that should be queued as Work items.
-     *   The cascade mechanism handles recomputing everything between the
-     *   start nodes and the target.
+     * <p>The algorithm:</p>
+     * <ul>
+     *   <li>If the target node's sources all have available data (KEEP, root,
+     *       or detection sources), return just the target node.</li>
+     *   <li>If any source is ephemeral (data nullified), recursively walk up
+     *       to that source's sources.</li>
+     *   <li>Stop at root nodes (always have data) or KEEP nodes.</li>
+     *   <li>Return the set of nodes that should be queued as Work items.
+     *       The cascade mechanism handles recomputing everything between the
+     *       start nodes and the target.</li>
+     * </ul>
+     *
+     * @param allGroupNodes all nodes in the folder's group (already loaded via
+     *                      JOIN FETCH), used to check graph structure in-memory
      */
-    Set<NodeEntity> findRecomputationStartNodes(NodeEntity targetNode, NodeEntity rootNode) {
+    Set<NodeEntity> findRecomputationStartNodes(NodeEntity targetNode, NodeEntity rootNode,
+                                                  List<NodeEntity> allGroupNodes) {
         Set<NodeEntity> startNodes = new LinkedHashSet<>();
-        findStartNodes(targetNode, rootNode, startNodes, new HashSet<>());
+        findStartNodes(targetNode, rootNode, allGroupNodes, startNodes, new HashSet<>());
         return startNodes;
     }
 
     private void findStartNodes(NodeEntity node, NodeEntity rootNode,
+                                 List<NodeEntity> allGroupNodes,
                                  Set<NodeEntity> startNodes, Set<Long> visited) {
         if (!visited.add(node.getId())) {
             return; // avoid cycles
@@ -386,10 +395,10 @@ public class ProcessingService {
                     // Root always has data — this source is fine
                     continue;
                 }
-                if (isEphemeral(source)) {
+                if (isEphemeral(source, allGroupNodes)) {
                     // This source's data is nullified — walk up further
                     allSourcesHaveData = false;
-                    findStartNodes(source, rootNode, startNodes, visited);
+                    findStartNodes(source, rootNode, allGroupNodes, startNodes, visited);
                 }
                 // KEEP or detection sources have data — no need to walk up
             }
@@ -406,13 +415,31 @@ public class ProcessingService {
 
     /**
      * Checks if a node's value data has been ephemeral-nullified.
-     * Only DISCARD nodes are considered ephemeral here — matching the behavior
-     * of nullifyEphemeralData() which only nullifies DISCARD nodes.
-     * AUTO nodes are NOT treated as ephemeral on this branch because
-     * markAutoEphemeral() (which resolves AUTO → DISCARD) is not called
-     * during upload/recalculate. AUTO handling is addressed in PR #143.
+     * Matches the nullifyEphemeralData() SQL logic:
+     * <ul>
+     *   <li>KEEP — never ephemeral</li>
+     *   <li>DISCARD — always ephemeral</li>
+     *   <li>AUTO — ephemeral only if the node has non-detection children
+     *       and is not itself a direct source of a detection node</li>
+     * </ul>
+     * Uses the already-loaded group nodes to check graph structure in-memory.
      */
-    private boolean isEphemeral(NodeEntity node) {
-        return node.ephemeral == EphemeralMode.DISCARD;
+    private boolean isEphemeral(NodeEntity node, List<NodeEntity> allGroupNodes) {
+        if (node.ephemeral == EphemeralMode.KEEP) return false;
+        if (node.ephemeral == EphemeralMode.DISCARD) return true;
+        // AUTO: check graph structure to determine if data was nullified
+        boolean hasNonDetectionChild = false;
+        boolean isDetectionSource = false;
+        for (NodeEntity other : allGroupNodes) {
+            if (other.sources != null && other.sources.stream()
+                    .anyMatch(s -> s.getId().equals(node.getId()))) {
+                if (other.type().isDetection()) {
+                    isDetectionSource = true;
+                } else {
+                    hasNonDetectionChild = true;
+                }
+            }
+        }
+        return hasNonDetectionChild && !isDetectionSource;
     }
 }

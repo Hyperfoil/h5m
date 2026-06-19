@@ -725,15 +725,23 @@ public class ValueService implements ValueServiceInterface {
     }
 
     /**
-     * Nulls out value.data for values whose nodes have ephemeral=DISCARD,
-     * scoped to descendants of the given root value. Called after upload
-     * processing completes to reclaim storage.
+     * Nulls out value.data for ephemeral nodes scoped to descendants of the
+     * given root value. Called after upload processing completes to reclaim storage.
      *
-     * Only touches nodes with ephemeral=DISCARD (explicitly set). Nodes with
-     * ephemeral=AUTO or ephemeral=KEEP are not affected. To resolve
-     * AUTO states into DISCARD based on graph structure, call
-     * {@link #markAutoEphemeral(long)} first.
+     * Ephemeral cleanup happens in two places:
+     * 1. At upload completion (this method) — nullifies intermediate values
+     *    created during the upload, resolved inline based on current graph structure.
+     * 2. At node creation (NodeService.nullifyEphemeralSources) — immediately
+     *    nullifies existing historical data for source nodes that become intermediate
+     *    when a child node is added.
      *
+     * Handles both explicit DISCARD and AUTO nodes:
+     * - DISCARD: always nullified (user explicitly wants data discarded)
+     * - AUTO with non-detection children: nullified (intermediate node, system decides)
+     * - AUTO without children (leaf): kept
+     * - KEEP: never nullified (user explicitly wants data kept)
+     *
+     * Root and detection nodes are excluded as a safety net.
      * Value rows and edges are always preserved for ancestry queries.
      *
      * @return the number of values whose data was nulled
@@ -749,12 +757,24 @@ public class ValueService implements ValueServiceInterface {
             UPDATE value SET data = NULL
             WHERE id IN (SELECT v_id FROM descendants)
               AND node_id IN (
-                -- Only nullify nodes explicitly set to DISCARD
-                -- Nodes with AUTO or KEEP are not touched
-                -- Auto-detection is handled separately via markAutoEphemeral()
-                -- Root and detection nodes are excluded as a safety net
-                SELECT id FROM node WHERE ephemeral = 'DISCARD'
+                SELECT id FROM node WHERE
+                  (ephemeral = 'DISCARD'
+                   OR (ephemeral = 'AUTO' AND EXISTS (
+                     SELECT 1 FROM node_edge ne
+                     JOIN node child ON child.id = ne.child_id
+                     WHERE ne.parent_id = node.id
+                       AND child.type NOT IN ('ft', 'rd', 'sd', 'ed')
+                   )))
                   AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
+                  -- Protect nodes that are sources of detection nodes.
+                  -- Range, domain, and fingerprint nodes need their data
+                  -- for historical change detection queries.
+                  AND NOT EXISTS (
+                    SELECT 1 FROM node_edge ne2
+                    JOIN node det ON det.id = ne2.child_id
+                    WHERE ne2.parent_id = node.id
+                      AND det.type IN ('ft', 'rd', 'sd', 'ed')
+                  )
               )
               AND data IS NOT NULL
             """)

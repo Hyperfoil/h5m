@@ -28,4 +28,14 @@ public enum NodeType {
         return display;
     }
 
+    /**
+     * Returns true if this node type is a change detection node.
+     * Detection nodes (ft, rd, sd, ed) are never ephemeral-nullified
+     * and their source nodes are protected from nullification.
+     */
+    public boolean isDetection() {
+        return this == FIXED_THRESHOLD || this == RELATIVE_DIFFERENCE
+            || this == STDDEV_ANOMALY || this == EDIVISIVE;
+    }
+
 }

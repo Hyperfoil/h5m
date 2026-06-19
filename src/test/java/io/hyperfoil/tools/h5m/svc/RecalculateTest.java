@@ -227,9 +227,11 @@ public class RecalculateTest extends FreshDb {
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .orTimeout(30, TimeUnit.SECONDS).join();
 
-        // Verify initial values
+        // Verify initial values — nodeA is intermediate (AUTO), so its data
+        // is nullified by ephemeral cleanup. nodeB and nodeC are leaves, data preserved.
         tm.begin();
-        assertEquals("hello", ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data.asText());
+        assertNull(ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data,
+                "A (intermediate AUTO) should have nullified data");
         assertEquals("\"hello_b\"", ValueEntity.find("node.id", nodeBId).<ValueEntity>list().get(0).data.toString());
         assertEquals("world", ValueEntity.find("node.id", nodeCId).<ValueEntity>list().get(0).data.asText());
         tm.commit();
@@ -238,9 +240,11 @@ public class RecalculateTest extends FreshDb {
         folderService.recalculateNode(nodeAId).getFuture()
                 .orTimeout(30, TimeUnit.SECONDS).join();
 
-        // Values should be unchanged (same data, dedup preserves them)
+        // nodeA data is nullified again after recalculation (AUTO ephemeral cleanup).
+        // nodeB and nodeC should be unchanged (dedup preserves identical values).
         tm.begin();
-        assertEquals("hello", ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data.asText());
+        assertNull(ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data,
+                "A (intermediate AUTO) should still have nullified data after recalculation");
         assertEquals("\"hello_b\"", ValueEntity.find("node.id", nodeBId).<ValueEntity>list().get(0).data.toString());
         assertEquals("world", ValueEntity.find("node.id", nodeCId).<ValueEntity>list().get(0).data.asText());
         tm.commit();
@@ -627,7 +631,7 @@ public class RecalculateTest extends FreshDb {
 
         // Verify findRecomputationStartNodes walks up the chain correctly
         Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(
-                NodeEntity.findById(nodeCId), folder.group.root);
+                NodeEntity.findById(nodeCId), folder.group.root, List.copyOf(folder.group.sources));
         assertEquals(1, startNodes.size(),
                 "Should find 1 start node (A, whose source is root)");
         assertTrue(startNodes.stream().anyMatch(n -> n.getId().equals(nodeAId)),
@@ -708,7 +712,7 @@ public class RecalculateTest extends FreshDb {
 
         // Selective recalculate of C — must walk up B (ephemeral) but not A (KEEP)
         Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(
-                NodeEntity.findById(nodeCId), folder.group.root);
+                NodeEntity.findById(nodeCId), folder.group.root, List.copyOf(folder.group.sources));
         // A has data → no walk needed. B is DISCARD → walk up to B (source is root).
         // So start nodes should include B (and possibly C if A is fine)
         assertTrue(startNodes.stream().anyMatch(n -> n.getId().equals(nodeBId)),
@@ -783,7 +787,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Both A and B are KEEP — recalculating B should start from B itself
-        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeB, folder.group.root);
+        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeB, folder.group.root, List.copyOf(folder.group.sources));
         assertEquals(1, startNodes.size(), "Should start from target node when sources have data");
         assertTrue(startNodes.contains(nodeB), "Start node should be the target node B");
     }
@@ -811,7 +815,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // A is DISCARD → recalculating B should start from A (walk past A to root)
-        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeB, folder.group.root);
+        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeB, folder.group.root, List.copyOf(folder.group.sources));
         assertEquals(1, startNodes.size(), "Should walk up to A (whose source is root)");
         assertTrue(startNodes.contains(nodeA), "Start node should be A (source is root, data available)");
     }
@@ -845,7 +849,7 @@ public class RecalculateTest extends FreshDb {
         folder.group.persist();
         tm.commit();
 
-        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeC, folder.group.root);
+        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeC, folder.group.root, List.copyOf(folder.group.sources));
         assertEquals(1, startNodes.size(), "Should walk all the way up to A");
         assertTrue(startNodes.contains(nodeA), "Start node should be A (source is root)");
     }
@@ -1272,7 +1276,7 @@ public class RecalculateTest extends FreshDb {
         folder.group.persist();
         tm.commit();
 
-        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeC, folder.group.root);
+        Set<NodeEntity> startNodes = processingService.findRecomputationStartNodes(nodeC, folder.group.root, List.copyOf(folder.group.sources));
 
         // A is DISCARD → walk up to A (source is root, has data).
         // B is KEEP → has data, no walk needed.

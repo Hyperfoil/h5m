@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
@@ -62,6 +63,11 @@ public class ViewService implements ViewServiceInterface {
                 if (node == null) {
                     throw new NotFoundException("Node not found: " + vc.nodeId());
                 }
+                // Nodes referenced by views must keep their data.
+                // Only upgrade AUTO → KEEP. Don't override explicit DISCARD.
+                if (node.ephemeral == EphemeralMode.AUTO) {
+                    node.ephemeral = EphemeralMode.KEEP;
+                }
                 ViewComponentEntity component = new ViewComponentEntity(
                     entity, node,
                     vc.headerName() != null ? vc.headerName() : node.name,
@@ -96,6 +102,11 @@ public class ViewService implements ViewServiceInterface {
                 NodeEntity node = NodeEntity.findById(vc.nodeId());
                 if (node == null) {
                     throw new NotFoundException("Node not found: " + vc.nodeId());
+                }
+                // Nodes referenced by views must keep their data.
+                // Only upgrade AUTO → KEEP. Don't override explicit DISCARD.
+                if (node.ephemeral == EphemeralMode.AUTO) {
+                    node.ephemeral = EphemeralMode.KEEP;
                 }
                 ViewComponentEntity component = new ViewComponentEntity(
                     entity, node,

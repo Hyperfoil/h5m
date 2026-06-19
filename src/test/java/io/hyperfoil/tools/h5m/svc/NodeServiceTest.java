@@ -2542,9 +2542,10 @@ public class NodeServiceTest extends FreshDb {
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
-        // root -> jq1 extracts .key
+        // root -> jq1 extracts .key (marked KEEP so test can verify computed data)
         JqNode jq1 = new JqNode("extract", ".key", root);
         jq1.group = folder.group;
+        jq1.ephemeral = io.hyperfoil.tools.h5m.api.EphemeralMode.KEEP;
         jq1.persist();
         folder.group.sources.add(jq1);
 
