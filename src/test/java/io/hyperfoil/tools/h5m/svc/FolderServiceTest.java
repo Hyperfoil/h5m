@@ -294,14 +294,10 @@ public class FolderServiceTest extends FreshDb {
 
         long parentId = parent.id;
         long childId = child.id;
-        long groupId = folder.group.id;
         tm.commit();
 
-        // Mark auto-ephemeral nodes before uploading
-        tm.begin();
-        int marked = valueService.markAutoEphemeral(groupId);
-        assertTrue(marked > 0, "Parent should be auto-marked as ephemeral");
-        tm.commit();
+        // No need to call markAutoEphemeral — the inlined AUTO logic in
+        // nullifyEphemeralData resolves AUTO nodes based on graph structure
 
         folderService.upload("ephemeral-auto-test", "$",
                 JqValues.parse("{\"key\": \"k1\"}"))

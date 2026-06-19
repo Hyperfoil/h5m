@@ -825,16 +825,11 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void view_data_returns_filtered_rhivos_values() throws Exception {
-        // Import rhivos nodes and upload a run
+        // Import rhivos nodes
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
 
-        try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                    .orTimeout(30, TimeUnit.SECONDS).join();
-        }
-
-        // Find node IDs for nodes that produce values with rhivos data
+        // Create the view BEFORE uploading — nodes referenced by views are
+        // excluded from ephemeral nullification, so this must happen first
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
         Long startTimeNodeId = folder.group.sources.stream()
@@ -860,13 +855,20 @@ public class RestEndpointTest extends FreshDb {
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
 
+        // Upload a run — ephemeral nullification will skip start_time/end_time
+        // because they are referenced by the view
+        try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
+            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
+            folderService.upload("rhivos-perf-comprehensive", "$", runData)
+                    .orTimeout(30, TimeUnit.SECONDS).join();
+        }
+
         // Get view data — should return filtered results with only start_time and end_time columns
         given()
                 .when().get("/api/folder/rhivos-perf-comprehensive/view/" + viewId + "/data")
                 .then()
                 .statusCode(200)
                 .body("size()", greaterThan(0))
-                // Each row should have the selected node columns
                 .body("[0].start_time", notNullValue())
                 .body("[0].end_time", notNullValue());
     }
@@ -875,16 +877,8 @@ public class RestEndpointTest extends FreshDb {
     public void view_data_with_multiple_uploads() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
 
-        // Upload two runs
-        for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
-            try (InputStream is = getClass().getResourceAsStream(runFile)) {
-                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                        .orTimeout(30, TimeUnit.SECONDS).join();
-            }
-        }
-
-        // Create a view with start_time
+        // Create the view BEFORE uploading — nodes referenced by views are
+        // excluded from ephemeral nullification
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
         Long startTimeNodeId = folder.group.sources.stream()
@@ -903,6 +897,15 @@ public class RestEndpointTest extends FreshDb {
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
+
+        // Upload two runs — start_time data preserved because it's in a view
+        for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
+            try (InputStream is = getClass().getResourceAsStream(runFile)) {
+                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
+                folderService.upload("rhivos-perf-comprehensive", "$", runData)
+                        .orTimeout(30, TimeUnit.SECONDS).join();
+            }
+        }
 
         // View data should have one row per upload
         given()
