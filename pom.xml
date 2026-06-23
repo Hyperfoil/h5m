@@ -89,6 +89,8 @@
         <!-- testcontainers -->
         <testcontainers.junit.version>2.0.3</testcontainers.junit.version>
         <testcontainers.postgresql.version>1.21.4</testcontainers.postgresql.version>
+
+        <zstd-jni.version>1.5.7-11</zstd-jni.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -547,6 +549,13 @@
                     <name>cli</name>
                 </property>
             </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.github.luben</groupId>
+                    <artifactId>zstd-jni</artifactId>
+                    <version>${zstd-jni.version}</version>
+                </dependency>
+            </dependencies>
             <build>
                 <plugins>
                     <plugin>
@@ -570,6 +579,7 @@
                                         <quarkus.management.port>8080</quarkus.management.port>
                                         <!-- port does not appear to work, it still defaults to 9000 -->
                                         <quarkus.native.enabled>${h5m.cli.native}</quarkus.native.enabled>
+                                        <quarkus.native.additional-build-args>--add-exports=jdk.internal.vm.ci/jdk.vm.ci.meta=org.graalvm.truffle.runtime,--add-exports=jdk.internal.vm.ci/jdk.vm.ci.code=org.graalvm.truffle.runtime,--add-exports=jdk.internal.vm.ci/jdk.vm.ci.runtime=org.graalvm.truffle.runtime,--add-exports=jdk.internal.vm.ci/jdk.vm.ci.code.stack=org.graalvm.truffle.runtime</quarkus.native.additional-build-args>
                                         <quarkus.profile>cli</quarkus.profile>
                                         <quarkus.package.output-directory>cli</quarkus.package.output-directory>
                                     </properties>
