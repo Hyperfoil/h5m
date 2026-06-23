@@ -1,0 +1,75 @@
+baseURL = 'https://h5m-docs.example.com/'
+title = 'h5m Documentation'
+
+contentDir = "content/en"
+defaultContentLanguage = "en"
+defaultContentLanguageInSubdir = false
+enableMissingTranslationPlaceholders = true
+
+enableRobotsTXT = true
+enableGitInfo = true
+
+pygmentsCodeFences = true
+pygmentsUseClasses = false
+pygmentsStyle = "tango"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.parser]
+      [markup.goldmark.parser.attribute]
+        block = true
+    [markup.goldmark.renderer]
+      unsafe = true
+  [markup.highlight]
+    style = "tango"
+    noClasses = false
+
+[outputs]
+  home = ["HTML", "RSS"]
+  section = ["HTML", "RSS", "print"]
+
+[languages]
+  [languages.en]
+    label = "English"
+    title = "h5m Documentation"
+    [languages.en.params]
+      description = "Lightweight performance data repository powered by a DAG computation engine"
+
+[params]
+  github_repo = "https://github.com/hyperfoil/h5m"
+  github_project_repo = "https://github.com/hyperfoil/h5m"
+  github_branch = "main"
+  offlineSearch = true
+
+  [params.copyright]
+    authors = "h5m Contributors"
+    from_year = 2024
+
+  [params.ui]
+    breadcrumb_disable = false
+    navbar_logo = false
+    sidebar_menu_foldable = true
+    sidebar_menu_compact = false
+    sidebar_search_disable = false
+    showLightDarkModeMenu = true
+    [params.ui.feedback]
+      enable = false
+    [params.ui.readingtime]
+      enable = false
+
+  [params.mermaid]
+    enable = true
+
+  [[params.links.developer]]
+    name = "GitHub"
+    url = "https://github.com/hyperfoil/h5m"
+    icon = "fab fa-github"
+    desc = "h5m source code"
+
+[module]
+  [module.hugoVersion]
+    extended = true
+    min = "0.110.0"
+  [[module.imports]]
+    path = "github.com/google/docsy"
+    disable = false
