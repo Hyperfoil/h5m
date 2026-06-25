@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.api.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Value;
 
 import java.util.List;
@@ -29,7 +29,7 @@ public interface ValueServiceInterface {
      * @param nodeId The ID of the node.
      * @return A list of JSON nodes representing the grouped values.
      */
-    List<JsonNode> getGroupedValues(Long nodeId);
+    List<JqValue> getGroupedValues(Long nodeId);
 
     /**
      * Retrieves grouped values for a specific node, optionally filtered to specific node IDs.
@@ -38,7 +38,7 @@ public interface ValueServiceInterface {
      * @param filterNodeIds Optional list of node IDs to include. If null, all nodes are included.
      * @return A list of JSON nodes representing the grouped values.
      */
-    List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds);
+    List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds);
 
     /**
      * Retrieves all values produced by a specific node.
@@ -56,9 +56,9 @@ public interface ValueServiceInterface {
          * @param groupByNodeId Node whose value identifies the series (e.g. config fingerprint).
          * @param sortByNodeId  Node whose value orders the rows (acts as X-axis).
        */
-      List<JsonNode> getLabelValues(Long folderId,Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId);
+      List<JqValue> getLabelValues(Long folderId,Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId);
 
-      List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId);
+      List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId);
 
 
 }

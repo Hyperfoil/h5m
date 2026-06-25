@@ -1,6 +1,8 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.entity.NotificationLog;
@@ -66,7 +68,7 @@ public class NotificationService {
                 plugin -> {
                     ChangeNotification notification = new ChangeNotification(
                         folderName, event.nodeId(), event.nodeName(),
-                        nodeType, details, config.data, config.secrets, config.template
+                        nodeType, details, parseConfigJson(config.data), parseConfigJson(config.secrets), config.template
                     );
                     try {
                         plugin.send(notification);
@@ -101,15 +103,24 @@ public class NotificationService {
             .findFirst();
     }
 
+    /** Parse a JSON config string to JqObject, returning EMPTY for null/blank/non-object. */
+    private static JqObject parseConfigJson(String json) {
+        if (json == null || json.isBlank()) return JqObject.EMPTY;
+        try {
+            JqValue parsed = JqValues.parse(json);
+            return parsed instanceof JqObject obj ? obj : JqObject.EMPTY;
+        } catch (Exception e) {
+            return JqObject.EMPTY;
+        }
+    }
+
     private List<ChangeDetail> loadChangeDetails(List<Long> valueIds) {
         List<ChangeDetail> details = new ArrayList<>();
         for (Long valueId : valueIds) {
             ValueEntity value = ValueEntity.findById(valueId);
             if (value != null) {
-                JsonNode fingerprint = null;
-                if (value.data != null && value.data.has("fingerprint")) {
-                    fingerprint = value.data.get("fingerprint");
-                }
+                JqValue fingerprint = value.data != null && value.data.has("fingerprint")
+                        ? value.data.getField("fingerprint") : null;
                 details.add(new ChangeDetail(valueId, value.data, fingerprint));
             }
         }

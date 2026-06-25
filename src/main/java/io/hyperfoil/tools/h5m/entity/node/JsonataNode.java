@@ -1,13 +1,12 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
-import com.api.jsonata4java.expressions.Expressions;
-import com.api.jsonata4java.expressions.ParseException;
+import io.hyperfoil.tools.jjq.jsonata.JsonataCompiler;
+import io.hyperfoil.tools.jjq.jsonata.JsonataException;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -56,8 +55,8 @@ public class JsonataNode extends NodeEntity {
             }
         }
         try{
-            Expressions expr = Expressions.parse(input);
-        } catch (ParseException|IOException e) {
+            JsonataCompiler.compile(input);
+        } catch (JsonataException e) {
             System.err.println("cannot create jsonata from operation\n"+input+"\n"+e.getLocalizedMessage());
             ok = false;
         }

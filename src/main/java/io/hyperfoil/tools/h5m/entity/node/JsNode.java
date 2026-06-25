@@ -1,11 +1,11 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.jjq.value.JqNull;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 
@@ -67,57 +67,67 @@ public class JsNode extends NodeEntity {
         return rtrn;
     }
 
-    public static List<JsonNode> createParameters(String function, Map<String, ValueEntity> sourceValues,int sourceCount){
+    public static List<JqValue> createParameters(String function, Map<String, ValueEntity> sourceValues,int sourceCount){
         List<String> params = JsNode.getParameterNames(function,false);
-        List<JsonNode> rtrn = new ArrayList<>();
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode currentNode = null;
+        List<JqValue> rtrn = new ArrayList<>();
+        JqObject.Builder currentBuilder = null;
+        int currentBuilderIndex = -1;
         for(String param : params){
             if(param.startsWith("{") && param.endsWith("}")){//sneaky but we don't care
                 param = param.substring(1,param.length()-1).trim();
             }
             if(param.startsWith("{")){
-                if(currentNode != null){
+                if(currentBuilder != null){
                     System.err.println("nesting destructured parameters is not supported\n"+function);
                 }
-                currentNode =  mapper.createObjectNode();
-                rtrn.add(currentNode);
+                currentBuilder = JqObject.builder();
+                rtrn.add(null); // placeholder — will be replaced when builder completes
+                currentBuilderIndex = rtrn.size() - 1;
                 param = param.substring(1).trim();
                 if(sourceValues.containsKey(param)){
-                    currentNode.set(param,sourceValues.get(param).data);
+                    JqValue data = sourceValues.get(param).data;
+                    currentBuilder.put(param, data != null ? data : JqNull.NULL);
                 }else{
                     System.err.println("unable to find parameter value for " + param);
                 }
             }else if(param.endsWith("}")){
-                if(currentNode == null){
+                if(currentBuilder == null){
                     System.err.println("closing a nested destructured parameters is not supported\n"+function);
                 }else{
                     param = param.substring(0,param.length()-1).trim();
                     if(!sourceValues.containsKey(param)){
                         System.err.println("unable to find parameter value for " + param);
                     }else{
-                        currentNode.set(param,sourceValues.get(param).data);
+                        JqValue data = sourceValues.get(param).data;
+                        currentBuilder.put(param, data != null ? data : JqNull.NULL);
                     }
-                    currentNode = null;
+                    rtrn.set(currentBuilderIndex, currentBuilder.build());
+                    currentBuilder = null;
+                    currentBuilderIndex = -1;
                 }
             }else{
                 if(!sourceValues.containsKey(param)){
                     if(params.size() ==1 && !sourceValues.isEmpty()){
                         if(sourceCount == 1){
-                            rtrn.add(sourceValues.values().iterator().next().data);
+                            JqValue data = sourceValues.values().iterator().next().data;
+                            rtrn.add(data != null ? data : JqNull.NULL);
                         }else{
-                            ObjectNode obj = mapper.createObjectNode();
-                            sourceValues.forEach((k,v) -> obj.set(k, v.data));
-                            rtrn.add(obj);
+                            JqObject.Builder obj = JqObject.builder();
+                            sourceValues.forEach((k,v) -> {
+                                JqValue d = v.data;
+                                obj.put(k, d != null ? d : JqNull.NULL);
+                            });
+                            rtrn.add(obj.build());
                         }
                     }else{
                         System.err.println("unable to find parameter value for " + param);
                     }
                 }else{
-                    if(currentNode != null){
-                        currentNode.set(param,sourceValues.get(param).data);
+                    JqValue data = sourceValues.get(param).data;
+                    if(currentBuilder != null){
+                        currentBuilder.put(param, data != null ? data : JqNull.NULL);
                     }else{
-                        rtrn.add(sourceValues.get(param).data);
+                        rtrn.add(data != null ? data : JqNull.NULL);
                     }
                 }
             }
@@ -125,11 +135,15 @@ public class JsNode extends NodeEntity {
         //if no parameter names match but there are input values and params
         if(rtrn.isEmpty() && !sourceValues.isEmpty() && !params.isEmpty()){
             if(sourceValues.size()==1){
-                rtrn.add(sourceValues.get(sourceValues.keySet().iterator().next()).data);
+                JqValue data = sourceValues.get(sourceValues.keySet().iterator().next()).data;
+                rtrn.add(data != null ? data : JqNull.NULL);
             }else{
-                ObjectNode node = mapper.createObjectNode();
-                sourceValues.forEach((k,v)->{node.set(k,v.data);});
-                rtrn.add(node);
+                JqObject.Builder builder = JqObject.builder();
+                sourceValues.forEach((k,v) -> {
+                    JqValue d = v.data;
+                    builder.put(k, d != null ? d : JqNull.NULL);
+                });
+                rtrn.add(builder.build());
             }
         }
         return rtrn;

@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.entity;
 
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.entity.node.FingerprintNode;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
@@ -21,8 +21,8 @@ public class WorkTest {
     public void hashCode_relativeDifference(){
         NodeEntity rootNode = new JqNode("root",".root");
         NodeEntity relativeDifference = new RelativeDifference();
-        ValueEntity rootValue1 = new ValueEntity(null,rootNode,new TextNode("text1"));
-        ValueEntity rootValue2 = new ValueEntity(null,rootNode,new TextNode("text2"));
+        ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        ValueEntity rootValue2 = new ValueEntity(null,rootNode,JqValues.parse("\"text2\""));
 
         Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1));
         Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2));
@@ -37,7 +37,7 @@ public class WorkTest {
         NodeEntity activeNode = new JqNode("active");
         activeNode.sources=List.of(rootNode);
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse("\"root\""));
 
         Work work1 = new Work(activeNode,activeNode.sources,List.of(rootValue));
         Work work2 = new Work(activeNode,activeNode.sources,List.of(rootValue));
@@ -57,7 +57,7 @@ public class WorkTest {
         NodeEntity range = new JqNode("range");
         range.sources = List.of(rootNode);
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse("\"root\""));
 
         FingerprintNode fingerprintNode = new FingerprintNode();
         fingerprintNode.sources = List.of(fingerprint1,fingerprint2);

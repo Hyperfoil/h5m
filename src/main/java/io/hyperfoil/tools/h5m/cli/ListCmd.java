@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.NumericNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.JqNull;
+import io.hyperfoil.tools.jjq.value.JqNumber;
+import io.hyperfoil.tools.jjq.value.JqString;
 import io.hyperfoil.tools.yaup.AsciiArt;
 import picocli.CommandLine;
 
@@ -295,12 +295,12 @@ public class ListCmd implements Callable<Integer> {
             List<Object> rowCells = new ArrayList<>();
             for(int a=0; a<columnCount; a++){
                 Object c = accessors.get(a).apply(value);
-                if( c instanceof TextNode){
-                    c = ((TextNode)c).textValue();
-                }else if (c instanceof NumericNode){
-                    c = ((NumericNode) c).numberValue();
+                if( c instanceof JqString s){
+                    c = s.stringValue();
+                }else if (c instanceof JqNumber n){
+                    c = n.isIntegral() ? (Object) n.longValue() : n.doubleValue();
                 }
-                if( c == null || c instanceof NullNode){
+                if( c == null || c instanceof JqNull){
                     c = "null";
                 }else if( c instanceof Long || c instanceof Integer){
                     if(columnFormats[a]==null){

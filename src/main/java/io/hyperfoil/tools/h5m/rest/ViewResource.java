@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.quarkus.security.Authenticated;
@@ -65,7 +65,7 @@ public class ViewResource {
     @Path("/{viewId}/data")
     @PermitAll
     @Operation(description = "Get filtered pivoted data for a view")
-    public List<JsonNode> getViewData(@PathParam("name") String folderName, @PathParam("viewId") Long viewId) {
+    public List<JqValue> getViewData(@PathParam("name") String folderName, @PathParam("viewId") Long viewId) {
         return viewService.getViewData(folderName, viewId);
     }
 }

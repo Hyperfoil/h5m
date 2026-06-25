@@ -1,9 +1,9 @@
 package io.hyperfoil.tools.h5m.pasted;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Value;
 
@@ -27,50 +27,59 @@ import java.util.Map;
  */
 public class ShimFetch implements ShimThenable {
 
-    private static ObjectNode getDefaults(){
-        ObjectNode rtrn = JsonNodeFactory.instance.objectNode();
-        rtrn.put("method","GET");
-        rtrn.put("mode","cors");
-        rtrn.put("cache","no-cache");
-        rtrn.put("credentials","same-origin");
-        ObjectNode headers = JsonNodeFactory.instance.objectNode();
-        headers.put("Content-Type","application/json");
-        rtrn.set("headers",headers);
-        rtrn.put("redirect","follow");
-        rtrn.put("referrer","no-referrer");
-        rtrn.put("body","");
-        return rtrn;
+    private static JqObject getDefaults(){
+        return JqObject.of(
+            "method", JqString.of("GET"),
+            "mode", JqString.of("cors"),
+            "cache", JqString.of("no-cache"),
+            "credentials", JqString.of("same-origin"),
+            "headers", JqObject.of("Content-Type", "application/json"),
+            "redirect", JqString.of("follow"),
+            "referrer", JqString.of("no-referrer"),
+            "body", JqString.of("")
+        );
     }
-    private static void mergeObjectNodes(ObjectNode destination, ObjectNode source,boolean override){
-        source.fields().forEachRemaining((entry)->{
+
+    /**
+     * Merge source fields into destination. If override is false, existing keys
+     * in destination are preserved. JqObject is immutable so we build a new one.
+     */
+    private static JqObject mergeObjects(JqObject destination, JqObject source, boolean override){
+        JqObject.Builder builder = JqObject.builder();
+        // Start with all destination fields
+        for (Map.Entry<String, JqValue> entry : destination.entries()) {
+            builder.put(entry.getKey(), entry.getValue());
+        }
+        // Merge source fields
+        for (Map.Entry<String, JqValue> entry : source.entries()) {
             String key = entry.getKey();
-            JsonNode value = entry.getValue();
-            if(override || !destination.has(key)){
-                destination.set(key,value);
-            }else{
-                if(destination.get(key).isArray()){
-                    ArrayNode destinationArray = (ArrayNode) destination.get(key);
-                    if(value.isArray()){
-                        ((ArrayNode)value).forEach(destinationArray::add);
-                    }else{
-                        destinationArray.add(value);
+            JqValue value = entry.getValue();
+            if (override || !destination.has(key)) {
+                builder.put(key, value);
+            } else {
+                JqValue destVal = destination.get(key);
+                if (destVal instanceof JqArray destArr) {
+                    if (value instanceof JqArray srcArr) {
+                        // Concatenate arrays
+                        JqValue[] combined = new JqValue[destArr.length() + srcArr.length()];
+                        for (int i = 0; i < destArr.length(); i++) combined[i] = destArr.get(i);
+                        for (int i = 0; i < srcArr.length(); i++) combined[destArr.length() + i] = srcArr.get(i);
+                        builder.put(key, JqArray.of(combined));
+                    } else {
+                        builder.put(key, destArr.append(value));
                     }
-                }else if(destination.get(key).isObject()){
-                    ObjectNode destinationObject = (ObjectNode) destination.get(key);
-                    if(value.isObject()){
-                        mergeObjectNodes(destinationObject,(ObjectNode) value,override);
-                    }else{
-                        //turn destination[key] into [destination[key],value]
-                        ArrayNode newArray = JsonNodeFactory.instance.arrayNode();
-                        newArray.add(destinationObject);
-                        newArray.add(value);
-                        destination.set(key,newArray);
+                } else if (destVal instanceof JqObject destObj) {
+                    if (value instanceof JqObject srcObj) {
+                        builder.put(key, mergeObjects(destObj, srcObj, override));
+                    } else {
+                        // turn destination[key] into [destination[key], value]
+                        builder.put(key, JqArray.of(destVal, value));
                     }
-                }else{
-                    //do nothing because not override
                 }
+                // else: not override, keep destination value (already in builder)
             }
-        });
+        }
+        return builder.build();
     }
 
     private Value config;
@@ -112,16 +121,16 @@ public class ShimFetch implements ShimThenable {
     }
 
     @HostAccess.Export
-    public Object apply(Value url,Value options){
+    public Object apply(Value url, Value options){
         String urlString = url.isString() ? url.asString() : url.toString();
-        ObjectNode optionsNode = Util.convertMapping(options);
-        mergeObjectNodes(optionsNode,getDefaults(),false);
-        return apply(urlString,optionsNode,false);
+        JqObject optionsObj = Util.convertToJqObject(options);
+        optionsObj = mergeObjects(optionsObj, getDefaults(), false);
+        return apply(urlString, optionsObj, false);
     }
-    public Object apply(String url,ObjectNode options,boolean redirected){
+    public Object apply(String url, JqObject options, boolean redirected){
         try {
             //if the request is set to ignore tls checking
-            if ("ignore".equalsIgnoreCase(options.has("tls") ? options.get("tls").textValue() : "")) {
+            if ("ignore".equalsIgnoreCase(options.has("tls") ? options.get("tls").asString("") : "")) {
                 TrustManager[] trustAllCerts = new TrustManager[]{
                         new X509TrustManager() {
                             public X509Certificate[] getAcceptedIssuers() {
@@ -153,23 +162,25 @@ public class ShimFetch implements ShimThenable {
                     }
                 });
             }
-            String requestMethod = options.has("method") ? options.get("method").asText("GET") : "GET";
-            boolean followRedirect = options.has("follow") && "redirect".equalsIgnoreCase(options.get("follow").asText(""));
+            String requestMethod = options.has("method") ? options.get("method").asString("GET") : "GET";
+            boolean followRedirect = options.has("follow") && "redirect".equalsIgnoreCase(options.get("follow").asString(""));
             con.setRequestMethod(requestMethod);
             con.setInstanceFollowRedirects(followRedirect);
             con.setConnectTimeout(30_000);//TODO add configuration for 30 seconds timeout
             con.setReadTimeout(30_000);//30 seconds
-            ((ObjectNode)options.get("headers")).fields().forEachRemaining(entry->{
-                String key = entry.getKey();
-                JsonNode value = entry.getValue();
-                if(value.isTextual()){
-                    con.setRequestProperty(key,value.asText());
+            JqValue headersVal = options.get("headers");
+            if (headersVal instanceof JqObject headersObj) {
+                for (Map.Entry<String, JqValue> entry : headersObj.entries()) {
+                    if (entry.getValue() instanceof JqString str) {
+                        con.setRequestProperty(entry.getKey(), str.stringValue());
+                    }
                 }
-            });
+            }
             //set the body if the request is post (also put?)
             if("POST".equalsIgnoreCase(requestMethod)){
                 con.setDoOutput(true);
-                String body = options.has("body") && options.get("body").isTextual() ? options.get("body").asText() : "";
+                String body = options.has("body") && options.get("body") instanceof JqString
+                    ? options.get("body").asString("") : "";
                 try(OutputStream os = con.getOutputStream()){
                     byte[] input = body.getBytes(StandardCharsets.UTF_8);
                     os.write(input,0,input.length);
@@ -203,15 +214,14 @@ public class ShimFetch implements ShimThenable {
 
             Map<String, List<String>> headerFields = con.getHeaderFields();
 
-            ObjectNode headers = JsonNodeFactory.instance.objectNode();
+            JqObject.Builder headersBuilder = JqObject.builder();
             for (Map.Entry<String, List<String>> entries : headerFields.entrySet()) {
-                String values = "";
                 for (String value : entries.getValue()) {
-                    values += value + ",";
-                    headers.put(entries.getKey() == null ? "" : entries.getKey(), value);
+                    headersBuilder.put(entries.getKey() == null ? "" : entries.getKey(), value);
                 }
             }
-            String type = options.get("mode").asText("basic"); //not certain this is the correct place to read the type
+            JqObject headers = headersBuilder.build();
+            String type = options.get("mode").asString("basic"); //not certain this is the correct place to read the type
             //https://developer.mozilla.org/en-US/docs/Web/API/Response/type
             return new ShimResponse(content.toString(),status,con.getResponseMessage(),headers,redirected,type,url);
         }catch (SocketTimeoutException e){

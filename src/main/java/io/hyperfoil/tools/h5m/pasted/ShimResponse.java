@@ -1,9 +1,8 @@
 package io.hyperfoil.tools.h5m.pasted;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Value;
 
@@ -20,7 +19,7 @@ public class ShimResponse {
     @HostAccess.Export
     public final String statusText;
     @HostAccess.Export
-    public final ObjectNode headers;
+    public final JqObject headers;
     @HostAccess.Export
     public final boolean ok;
     @HostAccess.Export
@@ -31,7 +30,7 @@ public class ShimResponse {
     public final String url;
 
 
-    public ShimResponse(String content, int status, String statusText, ObjectNode headers,boolean redirected,String type, String url){
+    public ShimResponse(String content, int status, String statusText, JqObject headers,boolean redirected,String type, String url){
         this.content = content;
         this.status = status;
         this.statusText = statusText;
@@ -50,7 +49,8 @@ public class ShimResponse {
     @HostAccess.Export
     public Object json(){
         try {
-            Object wrapped = ProxyJackson.wrap(new ObjectMapper().readTree(content));
+            JqValue parsed = JqValues.parse(content);
+            Object wrapped = ProxyJq.wrap(parsed);
             return new ShimThenable(){
 
                 @Override
@@ -74,10 +74,10 @@ public class ShimResponse {
                     }
                 }
             };
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             //throw new RuntimeException(e);
         }
-        return JsonNodeFactory.instance.objectNode();
+        return ProxyJq.wrap(JqObject.EMPTY);
     }
 
     @Override

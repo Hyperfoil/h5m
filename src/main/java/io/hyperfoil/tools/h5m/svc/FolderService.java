@@ -1,9 +1,12 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqNull;
+import io.hyperfoil.tools.jjq.value.JqNumber;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
@@ -21,7 +24,6 @@ import jakarta.annotation.Priority;
 import jakarta.enterprise.event.Observes;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -38,8 +40,6 @@ import java.util.*;
 
 @ApplicationScoped
 public class FolderService implements FolderServiceInterface {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static LocalDateTime toLocalDateTime(Object value) {
         if (value == null) return null;
@@ -106,6 +106,8 @@ public class FolderService implements FolderServiceInterface {
                                 entity.completed = true;
                             }
                             valueService.nullifyEphemeralData(rootValue.id);
+                            // Evict cached ValueEntity instances since data was nullified via native SQL
+                            em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
                         });
                     });
                 } else {
@@ -125,18 +127,6 @@ public class FolderService implements FolderServiceInterface {
         createDefaultView(entity);
         return entity.id;
     }
-
-    /*        if(!value.isPersistent()){
-            ValueEntity merged = em.merge(value);
-            em.flush();
-            value.id = merged.id;
-            return merged;
-        }else{
-            value.persist();
-        }
-        return value;
-
-     */
 
     @Transactional
     public long create(FolderEntity entity){
@@ -269,20 +259,22 @@ public class FolderService implements FolderServiceInterface {
 
     @Override
     @Transactional
-    public Json structure(String name) {
+    public JqValue structure(String name) {
         FolderEntity folder = em.createQuery(
                 "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
                 FolderEntity.class
         ).setParameter("name", name).getSingleResult();
 
-        Json fullStructure = Json.typeStructure(new Json(false));
         NodeEntity root = folder.group.root;
         List<ValueEntity> uploads = valueService.getValues(root);
-        for(ValueEntity upload : uploads){
-            Json json = Json.fromJsonNode(upload.data);
-            fullStructure.add(json);
+        JqValue merged = JqObject.EMPTY;
+        for (ValueEntity upload : uploads) {
+            if (upload.data != null) {
+                JqValue schema = JqValues.typeStructure(upload.data);
+                merged = JqValues.mergeTypeStructures(merged, schema);
+            }
         }
-        return fullStructure;
+        return merged;
     }
 
 
@@ -318,7 +310,7 @@ public class FolderService implements FolderServiceInterface {
      * return types (Quarkus defers commit waiting for the future to complete).
      */
     @Override
-    public CompletableFuture<Void> upload(String name, String path, JsonNode data){
+    public CompletableFuture<Void> upload(String name, String path, JqValue data){
         return QuarkusTransaction.requiringNew().call(() -> {
             FolderEntity folder = em.createQuery(
                     "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
@@ -354,6 +346,8 @@ public class FolderService implements FolderServiceInterface {
                     int nullified = valueService.nullifyEphemeralData(newValue.id);
                     if (nullified > 0) {
                         Log.debugf("Nullified data for %d ephemeral values (upload %d)", nullified, newValue.id);
+                        // Evict cached ValueEntity instances since data was nullified via native SQL
+                        em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
                     }
                 });
             });
@@ -374,24 +368,24 @@ public class FolderService implements FolderServiceInterface {
             FolderEntity.class
         ).setParameter("name", folderName).getSingleResult();
 
-        ObjectNode root = MAPPER.createObjectNode();
-        root.put("folder", folderName);
-        ArrayNode nodesArray = root.putArray("nodes");
-
         // Root node first, then remaining nodes ordered by id.
         // Auto-increment ids ensure parents are always created before children,
         // so ORDER BY id is a valid topological order.
         NodeEntity rootNode = folder.group.root;
-        nodesArray.add(serializeNode(rootNode));
+        java.util.List<JqValue> nodeList = new java.util.ArrayList<>();
+        nodeList.add(serializeNode(rootNode));
 
         em.createQuery("SELECT n FROM node n WHERE n.group.id = ?1 AND n.id != ?2 ORDER BY n.id", NodeEntity.class)
             .setParameter(1, folder.group.id)
             .setParameter(2, rootNode.id)
             .getResultList()
-            .forEach(n -> nodesArray.add(serializeNode(n)));
+            .forEach(n -> nodeList.add(serializeNode(n)));
 
-        Files.writeString(outputPath, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
-        Log.infof("Exported folder '%s' with %d nodes to %s", folderName, nodesArray.size(), outputPath);
+        JqObject root = JqObject.of("folder", JqString.of(folderName),
+            "nodes", JqArray.of(nodeList.toArray(new JqValue[0])));
+
+        Files.writeString(outputPath, JqValues.toPrettyJsonString(root));
+        Log.infof("Exported folder '%s' with %d nodes to %s", folderName, nodeList.size(), outputPath);
     }
 
     /**
@@ -403,9 +397,18 @@ public class FolderService implements FolderServiceInterface {
      */
     @Transactional
     public String importFolder(Path inputPath, boolean overwrite) throws IOException {
-        JsonNode root = MAPPER.readTree(inputPath.toFile());
-        String folderName = root.get("folder").asText();
-        JsonNode nodeArray = root.get("nodes");
+        JqValue root = JqValues.parse(Files.readString(inputPath));
+        if (!(root instanceof JqObject rootObj)) {
+            throw new IllegalArgumentException("Import file must contain a JSON object, got: " + root.getClass().getSimpleName());
+        }
+        String folderName = rootObj.get("folder").asString("");
+        if (folderName.isBlank()) {
+            throw new IllegalArgumentException("Import file must contain a non-empty 'folder' field");
+        }
+        JqValue nodesValue = rootObj.get("nodes");
+        if (!(nodesValue instanceof JqArray nodeArray)) {
+            throw new IllegalArgumentException("Import file must contain a 'nodes' array, got: " + (nodesValue != null ? nodesValue.getClass().getSimpleName() : "null"));
+        }
 
         FolderEntity existing = em.createQuery(
             "SELECT f FROM folder f WHERE f.name = :name", FolderEntity.class
@@ -424,24 +427,27 @@ public class FolderService implements FolderServiceInterface {
         NodeGroupEntity group = folder.group;
 
         Map<Long, NodeEntity> idMap = new HashMap<>();
-        idMap.put(nodeArray.get(0).get("id").asLong(), group.root);
+        JqObject firstNode = (JqObject) nodeArray.get(0);
+        idMap.put(firstNode.get("id").asLong(0), group.root);
 
-        for (int i = 1; i < nodeArray.size(); i++) {
-            JsonNode n = nodeArray.get(i);
-            long exportedId = n.get("id").asLong();
-            String name = n.get("name").asText();
-            String type = n.get("type").asText();
+        for (int i = 1; i < nodeArray.length(); i++) {
+            JqObject n = (JqObject) nodeArray.get(i);
+            long exportedId = n.get("id").asLong(0);
+            String name = n.get("name").asString("");
+            String type = n.get("type").asString("");
             String operation = n.has("operation") && !n.get("operation").isNull()
-                ? n.get("operation").asText() : "";
+                ? n.get("operation").asString("") : "";
 
             List<NodeEntity> sources = new ArrayList<>();
             if (n.has("sources") && !n.get("sources").isNull()) {
-                for (JsonNode srcId : n.get("sources")) {
-                    NodeEntity src = idMap.get(srcId.asLong());
+                JqArray srcArray = (JqArray) n.get("sources");
+                for (int j = 0; j < srcArray.length(); j++) {
+                    long srcId = srcArray.get(j).asLong(0);
+                    NodeEntity src = idMap.get(srcId);
                     if (src != null) {
                         sources.add(src);
                     } else {
-                        Log.warnf("Could not resolve source id %d for node '%s'", srcId.asLong(), name);
+                        Log.warnf("Could not resolve source id %d for node '%s'", srcId, name);
                     }
                 }
             }
@@ -482,7 +488,7 @@ public class FolderService implements FolderServiceInterface {
         em.flush();
         em.merge(group);
 
-        Log.infof("Imported folder '%s' with %d nodes from %s", folderName, nodeArray.size(), inputPath);
+        Log.infof("Imported folder '%s' with %d nodes from %s", folderName, nodeArray.length(), inputPath);
         return folderName;
     }
 
@@ -496,23 +502,25 @@ public class FolderService implements FolderServiceInterface {
         folder.views.add(view);
     }
 
-    private ObjectNode serializeNode(NodeEntity node) {
-        ObjectNode n = MAPPER.createObjectNode();
-        n.put("id", node.id);
-        n.put("name", node.name != null ? node.name : "");
-        n.put("type", discriminatorValue(node));
+    private JqObject serializeNode(NodeEntity node) {
+        JqObject.Builder builder = JqObject.builder();
+        builder.put("id", node.id);
+        builder.put("name", node.name != null ? node.name : "");
+        builder.put("type", discriminatorValue(node));
         if (node.operation != null && !node.operation.isBlank()) {
-            n.put("operation", node.operation);
+            builder.put("operation", node.operation);
         } else {
-            n.putNull("operation");
+            builder.put("operation", JqNull.NULL);
         }
-        ArrayNode sources = n.putArray("sources");
-        if (node.sources != null) {
-            for (NodeEntity source : node.sources) {
-                sources.add(source.id);
-            }
+        if (node.sources != null && !node.sources.isEmpty()) {
+            JqValue[] srcIds = node.sources.stream()
+                .map(s -> (JqValue) JqNumber.of(s.id))
+                .toArray(JqValue[]::new);
+            builder.put("sources", JqArray.of(srcIds));
+        } else {
+            builder.put("sources", JqArray.of());
         }
-        return n;
+        return builder.build();
     }
 
     /** Returns the JPA discriminator value for a node (e.g. "jq", "ecma", "sqlall"). */

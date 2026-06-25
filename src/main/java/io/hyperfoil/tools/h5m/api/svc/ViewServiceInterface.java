@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.api.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.View;
 
 import java.util.List;
@@ -59,5 +59,5 @@ public interface ViewServiceInterface {
      * @param viewId The view ID.
      * @return A list of JSON objects, one per upload.
      */
-    List<JsonNode> getViewData(String folderName, Long viewId);
+    List<JqValue> getViewData(String folderName, Long viewId);
 }

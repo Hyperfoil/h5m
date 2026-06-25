@@ -1,9 +1,7 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.mailer.MockMailbox;
 import io.quarkus.test.junit.QuarkusTest;
@@ -17,8 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class EmailPluginTest {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Inject
     EmailPlugin plugin;
@@ -96,7 +92,8 @@ public class EmailPluginTest {
         assertTrue(body.contains("test-folder"), "Text body should contain folder name");
         assertTrue(body.contains("threshold-node"), "Text body should contain node name");
         assertTrue(body.contains("95.3"), "Text body should contain the detection value");
-        assertTrue(body.contains("90.0"), "Text body should contain the bound");
+        // jjq serializes integer-valued doubles without decimal suffix (90.0 → 90)
+        assertTrue(body.contains("90"), "Text body should contain the bound");
         // Check HTML body exists
         String html = sent.getFirst().getHtml();
         assertNotNull(html, "HTML body should be present");
@@ -161,26 +158,28 @@ public class EmailPluginTest {
 
     @Test
     public void send_formats_relative_difference_data() {
-        ObjectNode data = MAPPER.createObjectNode();
-        data.set("value", new DoubleNode(750.0));
-        data.set("ratio", new DoubleNode(-25.0));
-        data.set("previous", new DoubleNode(1000.0));
-        data.set("last", new DoubleNode(750.0));
+        JqValue data = JqObject.builder()
+                .put("value", 750.0)
+                .put("ratio", -25.0)
+                .put("previous", 1000.0)
+                .put("last", 750.0)
+                .build();
         ChangeDetail detail = new ChangeDetail(42L, data, null);
 
         ChangeNotification notification = new ChangeNotification(
             "test-folder", 1L, "regression-node", "rd",
             List.of(detail),
-            "{\"to\": \"team@example.com\"}",
-            null, null
+            parseObj("{\"to\": \"team@example.com\"}"),
+            JqObject.EMPTY, null
         );
 
         plugin.send(notification);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         String body = sent.getFirst().getText();
-        assertTrue(body.contains("-25.0"), "Body should contain ratio for rd type");
-        assertTrue(body.contains("1000.0"), "Body should contain previous value");
+        // jjq serializes integer-valued doubles without decimal suffix (-25.0 → -25)
+        assertTrue(body.contains("-25"), "Body should contain ratio for rd type");
+        assertTrue(body.contains("1000"), "Body should contain previous value");
     }
 
     @Test
@@ -191,19 +190,27 @@ public class EmailPluginTest {
     // === Helpers ===
 
     private ChangeNotification createTestNotification(String configData, String template) {
-        ObjectNode detectionData = MAPPER.createObjectNode();
-        detectionData.set("value", new DoubleNode(95.3));
-        detectionData.set("bound", new DoubleNode(90.0));
-        detectionData.put("direction", "above");
+        JqValue detectionData = JqObject.builder()
+                .put("value", 95.3)
+                .put("bound", 90.0)
+                .put("direction", "above")
+                .build();
 
-        ObjectNode fingerprint = MAPPER.createObjectNode();
-        fingerprint.put("testName", "perf-test");
+        JqValue fingerprint = JqObject.builder()
+                .put("testName", "perf-test")
+                .build();
 
         ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
 
         return new ChangeNotification(
             "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), configData, null, template
+            List.of(detail), parseObj(configData), JqObject.EMPTY, template
         );
+    }
+
+    private static JqObject parseObj(String json) {
+        if (json == null || json.isBlank()) return JqObject.EMPTY;
+        JqValue v = JqValues.parse(json);
+        return v instanceof JqObject obj ? obj : JqObject.EMPTY;
     }
 }

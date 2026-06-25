@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.api.Folder;
@@ -59,7 +59,6 @@ public class LoadLegacyRuns implements Callable<Integer> {
                 .get());
 
         Map<Long,String> tests = new HashMap<>();
-        ObjectMapper mapper = new ObjectMapper();
         try(Connection connection = ds.getConnection()){
             if(testId!=null && testId > -1){
                 try(PreparedStatement statement = connection.prepareStatement("select name from test where id = ?")){
@@ -121,7 +120,14 @@ public class LoadLegacyRuns implements Callable<Integer> {
                         while(rs.next()){
                             Long id = rs.getLong(1);
                             System.out.println(name+" "+id);
-                            JsonNode data = mapper.readTree(rs.getCharacterStream("data"));
+                            java.io.Reader reader = rs.getCharacterStream("data");
+                            StringBuilder sb = new StringBuilder();
+                            char[] buf = new char[8192];
+                            int charsRead;
+                            while ((charsRead = reader.read(buf)) != -1) {
+                                sb.append(buf, 0, charsRead);
+                            }
+                            JqValue data = JqValues.parse(sb.toString());
                             batchFutures.add(folderService.upload(folder.name(),null,data));
                             count++;
                             batchCount++;

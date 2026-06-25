@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
@@ -9,7 +9,7 @@ import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.svc.*;
-import io.hyperfoil.tools.yaup.json.Json;
+
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.configuration.ConfigUtils;
@@ -23,6 +23,7 @@ import picocli.CommandLine;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -66,8 +67,8 @@ public class H5m implements QuarkusApplication {
     @CommandLine.Command(name="structure",description = "use yaup to compute the structure of a folder",aliases = {"shape"}, mixinStandardHelpOptions = true)
     public int structure(String folderName){
         try {
-            Json structure = folderService.structure(folderName);
-            System.out.println(structure.toString(2));
+            JqValue structure = folderService.structure(folderName);
+            System.out.println(JqValues.toPrettyJsonString(structure));
         } catch (NoResultException e) {
             System.err.println("could not find folder "+folderName);
             return 1;
@@ -102,13 +103,12 @@ public class H5m implements QuarkusApplication {
             return 1;
         }
         List<File> todo = pathFile.isDirectory() ? List.of(pathFile.listFiles(s->s.toString().endsWith(".json") && !s.getName().startsWith("."))): List.of(pathFile);
-        ObjectMapper objectMapper = new ObjectMapper();
         for( File f : todo){
             try {
                 if( todo.size()>1) {
                     System.out.println(f.getName());
                 }
-                JsonNode read = objectMapper.readTree(f);
+                JqValue read = JqValues.parse(Files.readString(f.toPath()));
                 if(read!=null){
                     try {
                         folderService.upload(folderName, f.getPath(), read);

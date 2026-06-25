@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.h5m.api.svc;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 
@@ -31,9 +30,9 @@ public interface NodeServiceInterface {
      * @param sources       A list of source node IDs.
      * @param configuration The configuration object for the node.
      * @return The ID of the created node.
-     * @throws JsonProcessingException If there is an error processing the configuration JSON.
+     * @throws IllegalArgumentException If the configuration is invalid for the given node type.
      */
-    Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException;
+    Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration);
 
     /**
      * Deletes a node by its ID.

@@ -1,11 +1,8 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpServer;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -24,7 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 public class SlackPluginTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MOCK_PORT = 19876;
 
     @Inject
@@ -110,12 +106,12 @@ public class SlackPluginTest {
         assertNotNull(lastReceivedBody.get(), "Server should have received a request");
         assertEquals("Bearer xoxb-test-token", lastReceivedAuth.get());
 
-        JsonNode payload = MAPPER.readTree(lastReceivedBody.get());
-        assertEquals("#perf-alerts", payload.get("channel").asText());
+        JqValue payload = JqValues.parse(lastReceivedBody.get());
+        assertEquals("#perf-alerts", payload.getField("channel").asString(""));
         assertTrue(payload.has("blocks"));
         assertTrue(payload.has("text"));
-        assertEquals("header", payload.get("blocks").get(0).get("type").asText());
-        assertTrue(payload.get("blocks").get(0).get("text").get("text").asText().contains("test-folder"));
+        assertEquals("header", payload.getField("blocks").getElement(0).getField("type").asString(""));
+        assertTrue(payload.getField("blocks").getElement(0).getField("text").getField("text").asString("").contains("test-folder"));
     }
 
     @Test
@@ -126,8 +122,8 @@ public class SlackPluginTest {
             "Regression in *{folderName}* by `{nodeName}`: {changeCount} change(s). cc @perf-team"
         ));
 
-        JsonNode payload = MAPPER.readTree(lastReceivedBody.get());
-        String sectionText = payload.get("blocks").get(1).get("text").get("text").asText();
+        JqValue payload = JqValues.parse(lastReceivedBody.get());
+        String sectionText = payload.getField("blocks").getElement(1).getField("text").getField("text").asString("");
         assertEquals(
             "Regression in *test-folder* by `threshold-node`: 1 change(s). cc @perf-team",
             sectionText
@@ -156,20 +152,27 @@ public class SlackPluginTest {
     // === Helpers ===
 
     private ChangeNotification createTestNotification(String configData, String secrets, String template) {
-        ObjectNode detectionData = MAPPER.createObjectNode();
-        detectionData.set("value", new DoubleNode(95.3));
-        detectionData.set("bound", new DoubleNode(90.0));
-        detectionData.put("direction", "above");
+        JqValue detectionData = JqObject.builder()
+                .put("value", 95.3)
+                .put("bound", 90.0)
+                .put("direction", "above")
+                .build();
 
-        ObjectNode fingerprint = MAPPER.createObjectNode();
-        fingerprint.put("testName", "perf-test");
+        JqValue fingerprint = JqObject.builder()
+                .put("testName", "perf-test")
+                .build();
 
         ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
 
         return new ChangeNotification(
             "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), configData, secrets, template
+            List.of(detail), parseObj(configData), parseObj(secrets), template
         );
     }
 
+    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
+        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        io.hyperfoil.tools.jjq.value.JqValue v = JqValues.parse(json);
+        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+    }
 }

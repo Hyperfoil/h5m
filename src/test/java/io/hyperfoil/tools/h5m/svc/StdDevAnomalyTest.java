@@ -1,8 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -74,13 +73,13 @@ public class StdDevAnomalyTest extends FreshDb {
                 """
                 { "split": [ { "fingerprint": "%s", "domain": %s, "y": %s } ] }
                 """, fingerprint, domain, range);
-        ValueEntity root = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        ValueEntity root = new ValueEntity(null, t.root, JqValues.parse(json));
         root.persist();
-        ValueEntity split = new ValueEntity(null, t.split, root.data.get("split").get(0), List.of(root));
+        ValueEntity split = new ValueEntity(null, t.split, root.data.getField("split").getElement(0), List.of(root));
         split.persist();
-        new ValueEntity(null, t.domain, split.data.get("domain"), List.of(split)).persist();
-        new ValueEntity(null, t.range, split.data.get("y"), List.of(split)).persist();
-        new ValueEntity(null, t.fingerprint, split.data.get("fingerprint"), List.of(split)).persist();
+        new ValueEntity(null, t.domain, split.data.getField("domain"), List.of(split)).persist();
+        new ValueEntity(null, t.range, split.data.getField("y"), List.of(split)).persist();
+        new ValueEntity(null, t.fingerprint, split.data.getField("fingerprint"), List.of(split)).persist();
         tm.commit();
         return root;
     }
@@ -105,13 +104,13 @@ public class StdDevAnomalyTest extends FreshDb {
         List<ValueEntity> changes = nodeService.calculateStdDevAnomalyValues(t.sd, anomalyRoot, 0);
 
         assertEquals(1, changes.size(), "Step function should detect 1 anomaly");
-        JsonNode changeData = changes.get(0).data;
-        assertEquals(200.0, changeData.get("value").asDouble(), 0.01);
-        assertEquals(100.0, changeData.get("mean").asDouble(), 0.01);
-        assertEquals("above", changeData.get("direction").asText());
-        assertNotNull(changeData.get("stddev"));
-        assertNotNull(changeData.get("deviations"));
-        assertNotNull(changeData.get("threshold"));
+        JqValue changeData = changes.get(0).data;
+        assertEquals(200.0, changeData.getField("value").asDouble(0.0), 0.01);
+        assertEquals(100.0, changeData.getField("mean").asDouble(0.0), 0.01);
+        assertEquals("above", changeData.getField("direction").asString(""));
+        assertNotNull(changeData.getField("stddev"));
+        assertNotNull(changeData.getField("deviations"));
+        assertNotNull(changeData.getField("threshold"));
     }
 
     @Test
@@ -150,13 +149,13 @@ public class StdDevAnomalyTest extends FreshDb {
         ValueEntity jumpRoot = uploadDataPoint(t, "alpha", 12, 200.0);
         List<ValueEntity> jumpChanges = nodeService.calculateStdDevAnomalyValues(t.sd, jumpRoot, 0);
         assertEquals(1, jumpChanges.size(), "UPPER direction should detect increases");
-        JsonNode jumpData = jumpChanges.get(0).data;
-        assertEquals("above", jumpData.get("direction").asText());
-        assertEquals(200.0, jumpData.get("value").asDouble(), 0.01, "Detected value should be 200");
-        assertNotNull(jumpData.get("mean"), "Output should contain mean");
-        assertNotNull(jumpData.get("stddev"), "Output should contain stddev");
-        assertNotNull(jumpData.get("threshold"), "Output should contain threshold");
-        assertTrue(jumpData.get("threshold").asDouble() < 200.0,
+        JqValue jumpData = jumpChanges.get(0).data;
+        assertEquals("above", jumpData.getField("direction").asString(""));
+        assertEquals(200.0, jumpData.getField("value").asDouble(0.0), 0.01, "Detected value should be 200");
+        assertNotNull(jumpData.getField("mean"), "Output should contain mean");
+        assertNotNull(jumpData.getField("stddev"), "Output should contain stddev");
+        assertNotNull(jumpData.getField("threshold"), "Output should contain threshold");
+        assertTrue(jumpData.getField("threshold").asDouble(0.0) < 200.0,
                 "Upper threshold should be below 200 (baseline is ~100)");
     }
 
@@ -178,13 +177,13 @@ public class StdDevAnomalyTest extends FreshDb {
         ValueEntity dropRoot = uploadDataPoint(t, "alpha", 12, 10.0);
         List<ValueEntity> dropChanges = nodeService.calculateStdDevAnomalyValues(t.sd, dropRoot, 0);
         assertEquals(1, dropChanges.size(), "LOWER direction should detect extreme decreases");
-        JsonNode dropData = dropChanges.get(0).data;
-        assertEquals("below", dropData.get("direction").asText());
-        assertEquals(10.0, dropData.get("value").asDouble(), 0.01, "Detected value should be 10");
-        assertNotNull(dropData.get("mean"), "Output should contain mean");
-        assertNotNull(dropData.get("stddev"), "Output should contain stddev");
-        assertNotNull(dropData.get("threshold"), "Output should contain threshold");
-        assertTrue(dropData.get("threshold").asDouble() > 10.0,
+        JqValue dropData = dropChanges.get(0).data;
+        assertEquals("below", dropData.getField("direction").asString(""));
+        assertEquals(10.0, dropData.getField("value").asDouble(0.0), 0.01, "Detected value should be 10");
+        assertNotNull(dropData.getField("mean"), "Output should contain mean");
+        assertNotNull(dropData.getField("stddev"), "Output should contain stddev");
+        assertNotNull(dropData.getField("threshold"), "Output should contain threshold");
+        assertTrue(dropData.getField("threshold").asDouble(0.0) > 10.0,
                 "Lower threshold should be above 10 (baseline is ~100)");
     }
 
@@ -253,13 +252,13 @@ public class StdDevAnomalyTest extends FreshDb {
 
         assertEquals(1, changes3.size(),
                 "Value 120 (3.44σ) should trigger at 3 sigma (threshold ≈ 117.44)");
-        JsonNode changeData3 = changes3.get(0).data;
-        assertEquals(120.0, changeData3.get("value").asDouble(), 0.01, "Detected value should be 120");
-        assertEquals(100.0, changeData3.get("mean").asDouble(), 1.0, "Mean should be ~100");
-        assertTrue(changeData3.get("stddev").asDouble() > 4.0 && changeData3.get("stddev").asDouble() < 7.0,
-                "Stddev should be ~5.81, got: " + changeData3.get("stddev").asDouble());
-        assertEquals("above", changeData3.get("direction").asText());
-        assertTrue(changeData3.get("threshold").asDouble() < 120.0,
+        JqValue changeData3 = changes3.get(0).data;
+        assertEquals(120.0, changeData3.getField("value").asDouble(0.0), 0.01, "Detected value should be 120");
+        assertEquals(100.0, changeData3.getField("mean").asDouble(0.0), 1.0, "Mean should be ~100");
+        assertTrue(changeData3.getField("stddev").asDouble(0.0) > 4.0 && changeData3.getField("stddev").asDouble(0.0) < 7.0,
+                "Stddev should be ~5.81, got: " + changeData3.getField("stddev").asDouble(0.0));
+        assertEquals("above", changeData3.getField("direction").asString(""));
+        assertTrue(changeData3.getField("threshold").asDouble(0.0) < 120.0,
                 "3σ threshold should be below 120");
 
         assertEquals(0, changes4.size(),
@@ -342,10 +341,10 @@ public class StdDevAnomalyTest extends FreshDb {
         List<ValueEntity> betaChanges = nodeService.calculateStdDevAnomalyValues(t.sd, betaRoot, 0);
 
         assertEquals(1, betaChanges.size(), "Beta (jumped from 200 to 500) should have 1 anomaly");
-        JsonNode betaData = betaChanges.get(0).data;
-        assertEquals("beta", betaData.get("fingerprint").asText());
-        assertEquals(500.0, betaData.get("value").asDouble(), 0.01);
-        assertEquals(200.0, betaData.get("mean").asDouble(), 0.01,
+        JqValue betaData = betaChanges.get(0).data;
+        assertEquals("beta", betaData.getField("fingerprint").asString(""));
+        assertEquals(500.0, betaData.getField("value").asDouble(0.0), 0.01);
+        assertEquals(200.0, betaData.getField("mean").asDouble(0.0), 0.01,
                 "Mean should be 200 (beta's baseline), not contaminated by alpha's 100");
     }
 
@@ -374,7 +373,7 @@ public class StdDevAnomalyTest extends FreshDb {
         assertEquals(1, outOfOrderChanges.size(),
                 "Out-of-order upload with anomalous value should still be detected. " +
                 "The algorithm should check the current upload's value (500), not the latest by domain order (100).");
-        assertEquals(500.0, outOfOrderChanges.get(0).data.get("value").asDouble(), 0.01);
+        assertEquals(500.0, outOfOrderChanges.get(0).data.getField("value").asDouble(0.0), 0.01);
     }
 
     @Test
@@ -430,8 +429,8 @@ public class StdDevAnomalyTest extends FreshDb {
 
         assertEquals(first.size(), second.size(), "Same data should produce same number of anomalies");
         if (!first.isEmpty()) {
-            assertEquals(first.get(0).data.get("value").asDouble(),
-                    second.get(0).data.get("value").asDouble(), 0.01,
+            assertEquals(first.get(0).data.getField("value").asDouble(0.0),
+                    second.get(0).data.getField("value").asDouble(0.0), 0.01,
                     "Same data should produce same anomaly value");
         }
     }
@@ -452,7 +451,7 @@ public class StdDevAnomalyTest extends FreshDb {
 
         // Upload with BOTH fingerprints: alpha normal (y=100), beta anomalous (y=500)
         tm.begin();
-        ValueEntity root = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+        ValueEntity root = new ValueEntity(null, t.root, JqValues.parse(
                 """
                 { "split": [
                     { "fingerprint": "alpha", "domain": 6, "y": 100.0 },
@@ -461,14 +460,14 @@ public class StdDevAnomalyTest extends FreshDb {
                 """));
         root.persist();
         // Create both datasets
-        com.fasterxml.jackson.databind.JsonNode splitArr = root.data.get("split");
-        for (int i = 0; i < splitArr.size(); i++) {
-            com.fasterxml.jackson.databind.JsonNode ds = splitArr.get(i);
+        JqValue splitArr = root.data.getField("split");
+        for (int i = 0; i < splitArr.length(); i++) {
+            JqValue ds = splitArr.getElement(i);
             ValueEntity split = new ValueEntity(null, t.split, ds, List.of(root));
             split.persist();
-            new ValueEntity(null, t.domain, ds.get("domain"), List.of(split)).persist();
-            new ValueEntity(null, t.range, ds.get("y"), List.of(split)).persist();
-            new ValueEntity(null, t.fingerprint, ds.get("fingerprint"), List.of(split)).persist();
+            new ValueEntity(null, t.domain, ds.getField("domain"), List.of(split)).persist();
+            new ValueEntity(null, t.range, ds.getField("y"), List.of(split)).persist();
+            new ValueEntity(null, t.fingerprint, ds.getField("fingerprint"), List.of(split)).persist();
         }
         tm.commit();
 
@@ -478,7 +477,7 @@ public class StdDevAnomalyTest extends FreshDb {
         // Beta (y=500 vs baseline of 200) SHOULD trigger
         assertEquals(1, changes.size(),
                 "Only beta should trigger anomaly. Alpha matches its baseline.");
-        assertEquals("beta", changes.get(0).data.get("fingerprint").asText(),
+        assertEquals("beta", changes.get(0).data.getField("fingerprint").asString(""),
                 "The anomaly should be for the beta fingerprint");
     }
 
@@ -495,7 +494,7 @@ public class StdDevAnomalyTest extends FreshDb {
         // Build up history: 5 uploads, each with BOTH datasets
         for (int i = 1; i <= 5; i++) {
             tm.begin();
-            ValueEntity root = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+            ValueEntity root = new ValueEntity(null, t.root, JqValues.parse(
                     String.format("""
                     { "split": [
                         { "fingerprint": "alpha", "domain": %d, "y": 100.0 },
@@ -503,21 +502,21 @@ public class StdDevAnomalyTest extends FreshDb {
                     ] }
                     """, i, i + 100)));
             root.persist();
-            com.fasterxml.jackson.databind.JsonNode splitArr = root.data.get("split");
-            for (int j = 0; j < splitArr.size(); j++) {
-                com.fasterxml.jackson.databind.JsonNode ds = splitArr.get(j);
+            JqValue splitArr = root.data.getField("split");
+            for (int j = 0; j < splitArr.length(); j++) {
+                JqValue ds = splitArr.getElement(j);
                 ValueEntity split = new ValueEntity(null, t.split, ds, List.of(root));
                 split.persist();
-                new ValueEntity(null, t.domain, ds.get("domain"), List.of(split)).persist();
-                new ValueEntity(null, t.range, ds.get("y"), List.of(split)).persist();
-                new ValueEntity(null, t.fingerprint, ds.get("fingerprint"), List.of(split)).persist();
+                new ValueEntity(null, t.domain, ds.getField("domain"), List.of(split)).persist();
+                new ValueEntity(null, t.range, ds.getField("y"), List.of(split)).persist();
+                new ValueEntity(null, t.fingerprint, ds.getField("fingerprint"), List.of(split)).persist();
             }
             tm.commit();
         }
 
         // Upload 6: alpha anomalous (y=500), beta normal (y=1000)
         tm.begin();
-        ValueEntity root6 = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+        ValueEntity root6 = new ValueEntity(null, t.root, JqValues.parse(
                 """
                 { "split": [
                     { "fingerprint": "alpha", "domain": 6, "y": 500.0 },
@@ -525,14 +524,14 @@ public class StdDevAnomalyTest extends FreshDb {
                 ] }
                 """));
         root6.persist();
-        com.fasterxml.jackson.databind.JsonNode splitArr6 = root6.data.get("split");
-        for (int j = 0; j < splitArr6.size(); j++) {
-            com.fasterxml.jackson.databind.JsonNode ds = splitArr6.get(j);
+        JqValue splitArr6 = root6.data.getField("split");
+        for (int j = 0; j < splitArr6.length(); j++) {
+            JqValue ds = splitArr6.getElement(j);
             ValueEntity split = new ValueEntity(null, t.split, ds, List.of(root6));
             split.persist();
-            new ValueEntity(null, t.domain, ds.get("domain"), List.of(split)).persist();
-            new ValueEntity(null, t.range, ds.get("y"), List.of(split)).persist();
-            new ValueEntity(null, t.fingerprint, ds.get("fingerprint"), List.of(split)).persist();
+            new ValueEntity(null, t.domain, ds.getField("domain"), List.of(split)).persist();
+            new ValueEntity(null, t.range, ds.getField("y"), List.of(split)).persist();
+            new ValueEntity(null, t.fingerprint, ds.getField("fingerprint"), List.of(split)).persist();
         }
         tm.commit();
 
@@ -542,9 +541,9 @@ public class StdDevAnomalyTest extends FreshDb {
         assertEquals(1, changes.size(),
                 "Only alpha should trigger. If baselines cross-contaminate, " +
                 "the combined mean (~550) would make 500 look normal.");
-        assertEquals("alpha", changes.get(0).data.get("fingerprint").asText());
-        assertEquals(500.0, changes.get(0).data.get("value").asDouble(), 0.01);
-        assertEquals(100.0, changes.get(0).data.get("mean").asDouble(), 0.01,
+        assertEquals("alpha", changes.get(0).data.getField("fingerprint").asString(""));
+        assertEquals(500.0, changes.get(0).data.getField("value").asDouble(0.0), 0.01);
+        assertEquals(100.0, changes.get(0).data.getField("mean").asDouble(0.0), 0.01,
                 "Mean should be 100 (alpha's baseline), not ~550 (combined)");
     }
 
@@ -563,7 +562,7 @@ public class StdDevAnomalyTest extends FreshDb {
         // History with both datasets at y=100
         for (int i = 1; i <= 5; i++) {
             tm.begin();
-            ValueEntity root = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+            ValueEntity root = new ValueEntity(null, t.root, JqValues.parse(
                     String.format("""
                     { "split": [
                         { "fingerprint": "alpha", "domain": %d, "y": 100.0 },
@@ -571,21 +570,21 @@ public class StdDevAnomalyTest extends FreshDb {
                     ] }
                     """, i, i + 100)));
             root.persist();
-            com.fasterxml.jackson.databind.JsonNode splitArr = root.data.get("split");
-            for (int j = 0; j < splitArr.size(); j++) {
-                com.fasterxml.jackson.databind.JsonNode ds = splitArr.get(j);
+            JqValue splitArr = root.data.getField("split");
+            for (int j = 0; j < splitArr.length(); j++) {
+                JqValue ds = splitArr.getElement(j);
                 ValueEntity split = new ValueEntity(null, t.split, ds, List.of(root));
                 split.persist();
-                new ValueEntity(null, t.domain, ds.get("domain"), List.of(split)).persist();
-                new ValueEntity(null, t.range, ds.get("y"), List.of(split)).persist();
-                new ValueEntity(null, t.fingerprint, ds.get("fingerprint"), List.of(split)).persist();
+                new ValueEntity(null, t.domain, ds.getField("domain"), List.of(split)).persist();
+                new ValueEntity(null, t.range, ds.getField("y"), List.of(split)).persist();
+                new ValueEntity(null, t.fingerprint, ds.getField("fingerprint"), List.of(split)).persist();
             }
             tm.commit();
         }
 
         // Upload 6: both datasets normal
         tm.begin();
-        ValueEntity root6 = new ValueEntity(null, t.root, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+        ValueEntity root6 = new ValueEntity(null, t.root, JqValues.parse(
                 """
                 { "split": [
                     { "fingerprint": "alpha", "domain": 6, "y": 100.0 },
@@ -593,14 +592,14 @@ public class StdDevAnomalyTest extends FreshDb {
                 ] }
                 """));
         root6.persist();
-        com.fasterxml.jackson.databind.JsonNode splitArr6 = root6.data.get("split");
-        for (int j = 0; j < splitArr6.size(); j++) {
-            com.fasterxml.jackson.databind.JsonNode ds = splitArr6.get(j);
+        JqValue splitArr6 = root6.data.getField("split");
+        for (int j = 0; j < splitArr6.length(); j++) {
+            JqValue ds = splitArr6.getElement(j);
             ValueEntity split = new ValueEntity(null, t.split, ds, List.of(root6));
             split.persist();
-            new ValueEntity(null, t.domain, ds.get("domain"), List.of(split)).persist();
-            new ValueEntity(null, t.range, ds.get("y"), List.of(split)).persist();
-            new ValueEntity(null, t.fingerprint, ds.get("fingerprint"), List.of(split)).persist();
+            new ValueEntity(null, t.domain, ds.getField("domain"), List.of(split)).persist();
+            new ValueEntity(null, t.range, ds.getField("y"), List.of(split)).persist();
+            new ValueEntity(null, t.fingerprint, ds.getField("fingerprint"), List.of(split)).persist();
         }
         tm.commit();
 
@@ -651,12 +650,12 @@ public class StdDevAnomalyTest extends FreshDb {
         assertEquals(1, changes5.size(),
                 "Upload 5: y=200 vs baseline ~100, should detect anomaly");
 
-        JsonNode changeData = changes5.get(0).data;
-        assertEquals(200.0, changeData.get("value").asDouble(), 0.01, "Anomalous value should be 200");
-        assertTrue(changeData.get("mean").asDouble() < 110, "Mean of baseline should be close to 100");
-        assertEquals("above", changeData.get("direction").asText(), "200 > mean, direction should be 'above'");
-        assertEquals("alpha", changeData.get("fingerprint").asText(), "Fingerprint should be alpha");
-        assertEquals(5, changeData.get("domainvalue").asInt(), "Domain value should be 5 (current upload)");
+        JqValue changeData = changes5.get(0).data;
+        assertEquals(200.0, changeData.getField("value").asDouble(0.0), 0.01, "Anomalous value should be 200");
+        assertTrue(changeData.getField("mean").asDouble(0.0) < 110, "Mean of baseline should be close to 100");
+        assertEquals("above", changeData.getField("direction").asString(""), "200 > mean, direction should be 'above'");
+        assertEquals("alpha", changeData.getField("fingerprint").asString(""), "Fingerprint should be alpha");
+        assertEquals(5, changeData.getField("domainvalue").asInt(0), "Domain value should be 5 (current upload)");
     }
 
     @Test
@@ -679,9 +678,9 @@ public class StdDevAnomalyTest extends FreshDb {
         assertEquals(1, midChanges.size(),
                 "Mid-sequence upload at domain=4 with y=500 should detect anomaly. " +
                 "Baseline (domain <= 4) is [100,100,100,100], so 500 is clearly anomalous.");
-        assertEquals(500.0, midChanges.get(0).data.get("value").asDouble(), 0.01);
+        assertEquals(500.0, midChanges.get(0).data.getField("value").asDouble(0.0), 0.01);
         // The domain value in the output should be 4 (the current upload's domain)
-        assertEquals(4, midChanges.get(0).data.get("domainvalue").asInt(),
+        assertEquals(4, midChanges.get(0).data.getField("domainvalue").asInt(0),
                 "Output should report the current upload's domain value (4), not the latest (10)");
     }
 
@@ -758,7 +757,7 @@ public class StdDevAnomalyTest extends FreshDb {
                 "minDataPoints=6 should be met and anomaly detected. " +
                 "If the query fetches windowSize instead of windowSize+1, only 5 values " +
                 "reach the calculator, failing the minDataPoints check.");
-        assertEquals(500.0, changes.get(0).data.get("value").asDouble(), 0.01);
+        assertEquals(500.0, changes.get(0).data.getField("value").asDouble(0.0), 0.01);
     }
 
     @Test
@@ -813,7 +812,7 @@ public class StdDevAnomalyTest extends FreshDb {
                 "should still have exactly 1 anomaly (y=500). " +
                 "If changes accumulated, cleanup is broken. " +
                 "Found: " + finalPersisted.size());
-        assertEquals(500.0, finalPersisted.get(0).data.get("value").asDouble(), 0.01,
+        assertEquals(500.0, finalPersisted.get(0).data.getField("value").asDouble(0.0), 0.01,
                 "The persisted anomaly should be for y=500");
         tm.commit();
     }

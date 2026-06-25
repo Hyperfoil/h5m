@@ -1,8 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -243,14 +242,13 @@ public class LoadLegacyTestsTest {
     }
 
     @Test
-    public void createFolder_changeDetection_threshold() throws JsonProcessingException {
+    public void createFolder_changeDetection_threshold() {
         LoadLegacyTests.Extractor extractor1 = new LoadLegacyTests.Extractor("extractor","$.one",false);
         LoadLegacyTests.Label label1 = new LoadLegacyTests.Label(-1,"label1","foo=>foo",List.of(extractor1));
         LoadLegacyTests.Fingerprint fingerprint = new LoadLegacyTests.Fingerprint(List.of(label1.name()),null,List.of(),"");
         HashedSets<String,LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
         schemaPaths.put("$.\"$schema\"",label1);
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = (ObjectNode) mapper.readTree("""
+        JqObject config = (JqObject) JqValues.parse("""
                 {
                     "max" : { "inclusive" : true, "enabled" : true, "value" : 10 },
                     "min" : { "inclusive" : true, "enabled" : true, "value" : 5 }

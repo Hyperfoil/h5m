@@ -1,10 +1,7 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class GitHubIssuePluginTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private final GitHubIssuePlugin plugin = new GitHubIssuePlugin();
 
     // === Validation tests ===
@@ -76,19 +72,27 @@ public class GitHubIssuePluginTest {
     // === Helpers ===
 
     private ChangeNotification createTestNotification(String configData, String secrets, String template) {
-        ObjectNode detectionData = MAPPER.createObjectNode();
-        detectionData.set("value", new DoubleNode(95.3));
-        detectionData.set("bound", new DoubleNode(90.0));
-        detectionData.put("direction", "above");
+        JqValue detectionData = JqObject.builder()
+                .put("value", 95.3)
+                .put("bound", 90.0)
+                .put("direction", "above")
+                .build();
 
-        ObjectNode fingerprint = MAPPER.createObjectNode();
-        fingerprint.put("testName", "perf-test");
+        JqValue fingerprint = JqObject.builder()
+                .put("testName", "perf-test")
+                .build();
 
         ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
 
         return new ChangeNotification(
             "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), configData, secrets, template
+            List.of(detail), parseObj(configData), parseObj(secrets), template
         );
+    }
+
+    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
+        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        io.hyperfoil.tools.jjq.value.JqValue v = io.hyperfoil.tools.jjq.value.JqValues.parse(json);
+        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
     }
 }

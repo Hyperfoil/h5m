@@ -1,11 +1,10 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
-import io.hyperfoil.tools.yaup.json.Json;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
@@ -85,7 +84,7 @@ public class FolderResource {
     public void upload(
             @PathParam("name") String name,
             @QueryParam("path") @Parameter(description = "Path within the folder") String path,
-            JsonNode data) {
+            JqValue data) {
         folderService.upload(name, path, data);
         // The upload() now returns a CompletableFuture, but the REST endpoint
         // doesn't need to wait for it — the caller can poll for results.
@@ -104,7 +103,7 @@ public class FolderResource {
     @Path("{name}/structure")
     @PermitAll
     @Operation(description = "Get the structural representation of a folder")
-    public Json structure(@PathParam("name") String name) {
+    public JqValue structure(@PathParam("name") String name) {
         return folderService.structure(name);
     }
 
@@ -112,7 +111,7 @@ public class FolderResource {
     @Path("{id}/labelValues")
     @PermitAll
     @Operation(description = "Get metrics labels Values")
-    public List<JsonNode>getLabelValues(
+    public List<JqValue>getLabelValues(
                     @PathParam("id") Long folderId,
                     @QueryParam("groupById") Long groupById,
                     @QueryParam("nodeIds") List<Long> nodeIds,

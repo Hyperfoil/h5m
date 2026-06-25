@@ -1,9 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.TextNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -60,16 +57,14 @@ public class ChangeDetectionTest extends FreshDb {
         NodeEntity rangeNode = new JqNode("range", ".y");
         rangeNode.persist();
 
-        ValueEntity rootVal = new ValueEntity(null, rootNode, new TextNode("root1"));
+        ValueEntity rootVal = new ValueEntity(null, rootNode, JqValues.parse("\"root1\""));
         rootVal.persist();
 
-        ValueEntity rv = new ValueEntity(null, rangeNode, DoubleNode.valueOf(rangeValue));
+        ValueEntity rv = new ValueEntity(null, rangeNode, JqNumber.of(rangeValue));
         rv.sources = List.of(rootVal);
         rv.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode fpData = mapper.createObjectNode();
-        fpData.put("env", "test");
+        JqValue fpData = JqObject.builder().put("env", "test").build();
         ValueEntity fpValue = new ValueEntity(null, fingerprintNode, fpData);
         fpValue.sources = List.of(rootVal);
         fpValue.persist();
@@ -138,7 +133,7 @@ public class ChangeDetectionTest extends FreshDb {
         JqNode jqNode = new JqNode("extract", ".y", rootNode);
         jqNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null, rootNode, new TextNode("{\"y\": 42}"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse("{\"y\": 42}"));
         rootValue.persist();
         tm.commit();
 

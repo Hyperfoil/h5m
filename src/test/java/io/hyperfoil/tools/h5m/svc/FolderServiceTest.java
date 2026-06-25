@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -21,8 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class FolderServiceTest extends FreshDb {
-
-    private static final ObjectMapper mapper = new ObjectMapper();
 
     @Inject
     TransactionManager tm;
@@ -73,7 +71,7 @@ public class FolderServiceTest extends FreshDb {
         tm.begin();
         FolderEntity folder2 = FolderEntity.find("name", "recovery-test").firstResult();
         ValueEntity rootValue = new ValueEntity(folder2, folder2.group.root,
-                mapper.readTree("{\"key\": \"recovered\"}"));
+                JqValues.parse("{\"key\": \"recovered\"}"));
         valueService.create(rootValue);
 
         // Create an incomplete tracking record (simulating crash before completion)
@@ -130,7 +128,7 @@ public class FolderServiceTest extends FreshDb {
         long folderId = folderService.create("temp-folder");
         FolderEntity folder = folderService.read(folderId);
         ValueEntity rootValue = new ValueEntity(folder, folder.group.root,
-                mapper.readTree("{\"key\": \"orphaned\"}"));
+                JqValues.parse("{\"key\": \"orphaned\"}"));
         valueService.create(rootValue);
         long rootValueId = rootValue.id;
 
@@ -176,15 +174,15 @@ public class FolderServiceTest extends FreshDb {
         tm.begin();
         FolderEntity f = FolderEntity.find("name", "already-computed").firstResult();
         ValueEntity rootValue = new ValueEntity(f, f.group.root,
-                mapper.readTree("{\"key\": \"k1\", \"value\": \"v1\"}"));
+                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}"));
         valueService.create(rootValue);
 
         // Both nodes already have their computed values
-        ValueEntity keyValue = new ValueEntity(f, extractKey, mapper.readTree("\"k1\""));
+        ValueEntity keyValue = new ValueEntity(f, extractKey, JqValues.parse("\"k1\""));
         keyValue.sources = List.of(rootValue);
         valueService.create(keyValue);
 
-        ValueEntity valValue = new ValueEntity(f, extractValue, mapper.readTree("\"v1\""));
+        ValueEntity valValue = new ValueEntity(f, extractValue, JqValues.parse("\"v1\""));
         valValue.sources = List.of(rootValue);
         valueService.create(valValue);
 
@@ -233,7 +231,7 @@ public class FolderServiceTest extends FreshDb {
         tm.commit();
 
         folderService.upload("ephemeral-discard-test", "$",
-                mapper.readTree("{\"key\": \"k1\"}"))
+                JqValues.parse("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
@@ -258,7 +256,7 @@ public class FolderServiceTest extends FreshDb {
         tm.commit();
 
         folderService.upload("ephemeral-keep-test", "$",
-                mapper.readTree("{\"key\": \"k1\"}"))
+                JqValues.parse("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
@@ -302,7 +300,7 @@ public class FolderServiceTest extends FreshDb {
         tm.commit();
 
         folderService.upload("ephemeral-auto-test", "$",
-                mapper.readTree("{\"key\": \"k1\"}"))
+                JqValues.parse("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
@@ -334,7 +332,7 @@ public class FolderServiceTest extends FreshDb {
         tm.commit();
 
         folderService.upload("ephemeral-leaf-test", "$",
-                mapper.readTree("{\"key\": \"k1\"}"))
+                JqValues.parse("{\"key\": \"k1\"}"))
                 .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
         tm.begin();
@@ -372,7 +370,7 @@ public class FolderServiceTest extends FreshDb {
         tm.begin();
         FolderEntity f = FolderEntity.find("name", "multi-node-test").firstResult();
         ValueEntity rootValue = new ValueEntity(f, f.group.root,
-                mapper.readTree("{\"key\": \"k1\", \"value\": \"v1\"}"));
+                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}"));
         valueService.create(rootValue);
 
         UploadProcessingEntity tracking = new UploadProcessingEntity(rootValue.id, "multi-node-test");

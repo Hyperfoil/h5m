@@ -1,12 +1,13 @@
 package io.hyperfoil.tools.h5m.entity;
 
-import com.fasterxml.jackson.annotation.*;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 @Entity(name = "node")
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "type", discriminatorType =  DiscriminatorType.STRING)
+@Cacheable
+@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
 public abstract class NodeEntity extends PanacheEntity implements Comparable<NodeEntity> {
 
     public static String FQDN_SEPARATOR = ":";
@@ -45,9 +48,6 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     @ManyToOne(cascade = { CascadeType.PERSIST }, fetch = FetchType.LAZY )
     @JoinColumn(name = "group_id")
-    @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "group_id")
-//    @JsonIdentityReference(alwaysAsId = true)
-    @JsonBackReference
     public NodeGroupEntity group;
 
     //making this eager causes too many joins
@@ -66,7 +66,6 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
     public List<NodeEntity> getSources() {return sources;}
 
     @Transient
-    @JsonIgnore
     private transient Set<Long> ancestorCache;
 
 

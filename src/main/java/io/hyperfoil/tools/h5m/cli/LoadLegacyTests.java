@@ -1,8 +1,9 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -166,7 +167,7 @@ public class LoadLegacyTests implements Callable<Integer> {
     //select fingerprint_labels, fingerprint_filter, timeline_labels, timeline_function
     public record Fingerprint(List<String> labels,String filter,List<String> timelineLabels, String timelineFunction){};
     //select id,variable_id,model,config
-    public record ChangeDetection(long id,long variableId,String model,ObjectNode config){};
+    public record ChangeDetection(long id,long variableId,String model,JqObject config){};
     public record Test(long id, String name, HashedSets<String,Label> schemaPaths, List<Fingerprint> fingerprints, List<ChangeDetection> changeDetections, List<Transformer> transformers, List<Variable> variables){};
     public record Extractor(String name,String jsonpath,boolean isArray){};
     public record Transformer(long id,String name,String function,String targetUri, List<Extractor> extractors,List<Label> targetSchemaLabels){
@@ -544,10 +545,10 @@ public class LoadLegacyTests implements Callable<Integer> {
                 case "relativeDifference"-> {
                     RelativeDifference difference = new RelativeDifference();
                     difference.name="rd."+variableNode.name+"."+changeDetection.id();
-                    difference.setFilter(changeDetection.config().get("filter").asText());
-                    difference.setWindow(changeDetection.config().get("window").asInt());
-                    difference.setThreshold(changeDetection.config().get("threshold").asDouble());
-                    difference.setMinPrevious(changeDetection.config().get("minPrevious").asInt());
+                    difference.setFilter(changeDetection.config().get("filter").asString(RelativeDifference.DEFAULT_FILTER));
+                    difference.setWindow(changeDetection.config().get("window").asInt(RelativeDifference.DEFAULT_WINDOW));
+                    difference.setThreshold(changeDetection.config().get("threshold").asDouble(RelativeDifference.DEFAULT_THRESHOLD));
+                    difference.setMinPrevious(changeDetection.config().get("minPrevious").asInt(RelativeDifference.DEFAULT_MIN_PREVIOUS));
                     difference.setNodes(fingerprintNode,groupBy,variableNode,null);
                     if(fingerprint_filter!=null && !fingerprint_filter.isEmpty()){
                         difference.setFingerprintFilter(fingerprint_filter);
@@ -555,18 +556,18 @@ public class LoadLegacyTests implements Callable<Integer> {
                     yield difference;
                 }
                 case "fixedThreshold" -> {
-                    ObjectNode max = (ObjectNode) changeDetection.config().get("max");
-                    ObjectNode min = (ObjectNode) changeDetection.config().get("min");
+                    JqObject max = (JqObject) changeDetection.config().get("max");
+                    JqObject min = (JqObject) changeDetection.config().get("min");
                     FixedThreshold fixedThreshold = new FixedThreshold();
                     fixedThreshold.name="ft"+changeDetection.id();
                     fixedThreshold.setNodes(fingerprintNode,groupBy,variableNode);
-                    fixedThreshold.setMaxInclusive(max.get("inclusive").asBoolean());
-                    fixedThreshold.setMinInclusive(min.get("inclusive").asBoolean());
-                    if(max.get("value") != null && max.get("enabled").asBoolean(false)) {
-                        fixedThreshold.setMax(max.get("value").asDouble());
+                    fixedThreshold.setMaxInclusive(max.get("inclusive").asBoolean(true));
+                    fixedThreshold.setMinInclusive(min.get("inclusive").asBoolean(true));
+                    if(max.has("value") && !max.get("value").isNull() && max.get("enabled").asBoolean(false)) {
+                        fixedThreshold.setMax(max.get("value").asDouble(0.0));
                     }
-                    if(min.get("value") != null && min.get("enabled").asBoolean(false)) {
-                        fixedThreshold.setMin(min.get("value").asDouble());
+                    if(min.has("value") && !min.get("value").isNull() && min.get("enabled").asBoolean(false)) {
+                        fixedThreshold.setMin(min.get("value").asDouble(0.0));
                     }
                     if(fingerprint_filter!=null && !fingerprint_filter.isEmpty()){
                         fixedThreshold.setFingerprintFilter(fingerprint_filter);
@@ -829,15 +830,14 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //load variables
                 try(PreparedStatement statement = connection.prepareStatement("select id,name,labels,calculation from variable where testid=?")) {
                     statement.setLong(1, testId);
-                    ObjectMapper mapper = new ObjectMapper();
                     try(ResultSet rs = statement.executeQuery()){
                         while(rs.next()){
                             Long id = rs.getLong("id");
                             String name = rs.getString("name");
-                            ArrayNode labels = (ArrayNode) mapper.readTree(rs.getString("labels"));
+                            JqArray labels = (JqArray) JqValues.parse(rs.getString("labels"));
                             String calculation = rs.getString("calculation");
                             Variable variable = new Variable(id,name,new ArrayList<>(),calculation);
-                            labels.forEach(v->variable.labels.add(v.asText()));
+                            for (int li = 0; li < labels.length(); li++) variable.labels.add(labels.get(li).asString(""));
                             test.variables.add(variable);
                         }
                     }
@@ -845,16 +845,15 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //load fingerprints
                 String fingerprint_filter = "";
                 try(PreparedStatement statement = connection.prepareStatement("select fingerprint_labels, fingerprint_filter, timeline_labels, timeline_function from test where id = ?")){
-                    ObjectMapper mapper = new ObjectMapper();
                     statement.setLong(1,testId);
                     try(ResultSet rs = statement.executeQuery()){
                         while(rs.next()){
-                            ArrayNode fingerprint_labels = (ArrayNode) mapper.readTree(rs.getString(1));
+                            JqArray fingerprint_labels = (JqArray) JqValues.parse(rs.getString(1));
                             fingerprint_filter = rs.getString(2);
                             String timeline_labels = rs.getString(3); // not sure how this is used atm
                             String timeline_function = rs.getString(4); // not sure how this is used atm
                             Fingerprint fingerprint = new Fingerprint(new ArrayList<>(),fingerprint_filter,new ArrayList<>(),timeline_function);
-                            fingerprint_labels.forEach(l->fingerprint.labels.add(l.toString()));
+                            for (int li = 0; li < fingerprint_labels.length(); li++) fingerprint.labels.add(fingerprint_labels.get(li).asString(""));
                             test.fingerprints.add(fingerprint);
                         }
                     }
@@ -862,7 +861,6 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //load change detections
                 try(PreparedStatement statement = connection.prepareStatement("select id,variable_id,model,config from changedetection where variable_id in (select id from variable where testid = ?)")){
                     statement.setLong(1,testId);
-                    ObjectMapper mapper = new ObjectMapper();
                     try(ResultSet rs = statement.executeQuery()){
                         while(rs.next()){
                             Long id = rs.getLong("id");
@@ -872,7 +870,7 @@ public class LoadLegacyTests implements Callable<Integer> {
                             //NodeEntity fingerprintNode = nodeTracking.hasNode(fingerPrintName) ? nodeTracking.getNodes(fingerPrintName).get(0) : null;
                             //NodeEntity groupBy = nodeTracking.hasNode("dataset") ? nodeTracking.getNodes("dataset").get(0) : folder.group.root;
                             String model = rs.getString("model");
-                            ObjectNode config = (ObjectNode) mapper.readTree(rs.getString("config"));
+                            JqObject config = (JqObject) JqValues.parse(rs.getString("config"));
                             ChangeDetection changeDetection = new ChangeDetection(id,variableId,model,config);
                             test.changeDetections().add(changeDetection);
                         }

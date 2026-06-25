@@ -1,5 +1,7 @@
 package io.hyperfoil.tools.h5m.rest;
 
+import io.hyperfoil.tools.h5m.api.NotificationConfigResponse;
+import io.hyperfoil.tools.h5m.api.NotificationLogResponse;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.entity.NotificationLog;
@@ -50,10 +52,12 @@ public class NotificationResource {
     @Path("config")
     @PermitAll
     @Operation(description = "List notification configs for a folder")
-    public List<NotificationConfig> listConfigs(
+    public List<NotificationConfigResponse> listConfigs(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId) {
-        return NotificationConfig.find("folder.id", folderId).list();
-        // secrets field is @JsonIgnore — never included in JSON responses
+        List<NotificationConfig> configs = NotificationConfig.find("folder.id", folderId).list();
+        return configs.stream().map(c -> new NotificationConfigResponse(
+                c.id, c.folder != null ? c.folder.id : null, c.method, c.data, c.template, c.enabled
+        )).toList();
     }
 
     @PUT
@@ -102,11 +106,15 @@ public class NotificationResource {
     @Path("log")
     @PermitAll
     @Operation(description = "Get notification log for a folder")
-    public List<NotificationLog> getLog(
+    public List<NotificationLogResponse> getLog(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
             @QueryParam("limit") @Parameter(description = "Max entries to return") @DefaultValue("50") int limit) {
-        return NotificationLog.find("folder.id = ?1 ORDER BY sentAt DESC", folderId)
+        List<NotificationLog> logs = NotificationLog.find("folder.id = ?1 ORDER BY sentAt DESC", folderId)
             .page(0, limit)
             .list();
+        return logs.stream().map(l -> new NotificationLogResponse(
+                l.id, l.folder != null ? l.folder.id : null, l.method, l.destination,
+                l.status, l.errorMessage, l.nodeId, l.nodeName, l.changeCount, l.sentAt
+        )).toList();
     }
 }

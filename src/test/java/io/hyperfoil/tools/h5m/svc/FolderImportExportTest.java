@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -21,8 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class FolderImportExportTest extends FreshDb {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Inject
     FolderService folderService;
@@ -62,11 +60,11 @@ public class FolderImportExportTest extends FreshDb {
             folderService.export("roundtrip-test", exportFile);
 
             // Verify export file
-            JsonNode exported = MAPPER.readTree(exportFile.toFile());
-            assertEquals("roundtrip-test", exported.get("folder").asText());
-            JsonNode nodes = exported.get("nodes");
-            assertEquals(4, nodes.size(), "Should export root + 3 nodes");
-            assertEquals("root", nodes.get(0).get("type").asText(), "First node should be root");
+            JqValue exported = JqValues.parse(Files.readString(exportFile));
+            assertEquals("roundtrip-test", exported.getField("folder").asString(""));
+            JqValue nodes = exported.getField("nodes");
+            assertEquals(4, nodes.length(), "Should export root + 3 nodes");
+            assertEquals("root", nodes.getElement(0).getField("type").asString(""), "First node should be root");
 
             // Delete the original folder
             tm.begin();
@@ -191,15 +189,15 @@ public class FolderImportExportTest extends FreshDb {
         try {
             folderService.export("types-test", exportFile);
 
-            JsonNode exported = MAPPER.readTree(exportFile.toFile());
-            JsonNode nodes = exported.get("nodes");
+            JqValue exported = JqValues.parse(Files.readString(exportFile));
+            JqValue nodes = exported.getField("nodes");
 
             // Find the jq node
-            JsonNode jq = nodes.get(1);
-            assertEquals("cpu", jq.get("name").asText());
-            assertEquals("jq", jq.get("type").asText());
-            assertEquals(".results.cpu", jq.get("operation").asText());
-            assertEquals(1, jq.get("sources").size());
+            JqValue jq = nodes.getElement(1);
+            assertEquals("cpu", jq.getField("name").asString(""));
+            assertEquals("jq", jq.getField("type").asString(""));
+            assertEquals(".results.cpu", jq.getField("operation").asString(""));
+            assertEquals(1, jq.getField("sources").length());
 
         } finally {
             Files.deleteIfExists(exportFile);

@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -105,7 +106,7 @@ public class ValueService implements ValueServiceInterface {
      * Use this for REST endpoints to avoid LazyInitializationException.
      */
     @Transactional
-    public JsonNode getValueData(Long id) {
+    public JqValue getValueData(Long id) {
         ValueEntity value = ValueEntity.findById(id);
         if (value == null) return null;
         // Access data within the transaction to initialize the lazy proxy
@@ -435,20 +436,20 @@ public class ValueService implements ValueServiceInterface {
      */
     @Override
     @Transactional
-    public List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds){
+    public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds){
         return getGroupedValues(nodeId,filterNodeIds,null);
     }
 
     @Override
     @Transactional
-    public List<JsonNode> getGroupedValues(Long nodeId){
+    public List<JqValue> getGroupedValues(Long nodeId){
         return getGroupedValues(nodeId, null);
     }
 
 
     @Override
     @Transactional
-    public List<JsonNode> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId) {
+    public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Long sortByNodeId) {
         String nodeFilter = filterNodeIds != null && !filterNodeIds.isEmpty() ? "where node_id in (:nodeIds)" : "";
         String sortCte = sortByNodeId != null ? switch (dbKind) {
             case "sqlite"     -> "root_sort as (select root_id, min(case when typeof(json_extract(data,'$')) in ('integer','real') then cast(data as real) end) as sort_num,min(data) as sort_txt from tree where node_id = :sortNodeId group by root_id),";
@@ -502,11 +503,11 @@ public class ValueService implements ValueServiceInterface {
                                     .replace("NODE_FILTER", nodeFilter).replace("SORT_CTE", sortCte)
                                     .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
                     default -> "";
-                }, JsonNode.class
+                }, String.class
         ).setParameter("nodeId", nodeId);
         if (filterNodeIds != null && !filterNodeIds.isEmpty()) query.setParameter("nodeIds", filterNodeIds);
         if (sortByNodeId != null)  query.setParameter("sortNodeId", sortByNodeId);
-        return query.getResultList();
+        return query.getResultList().stream().map(JqValues::parse).toList();
     }
 
     /**
@@ -535,11 +536,10 @@ public class ValueService implements ValueServiceInterface {
      * @return
      */
     @Transactional
+    @SuppressWarnings("unchecked")
     public List<ValueEntity> getDescendantValues(ValueEntity root, NodeEntity node){
-
-        List<ValueEntity> rtrn = new ArrayList<>();
-        //noinspection unchecked
-        rtrn.addAll(em.createNativeQuery(
+        // Query only IDs (skip JSONB data), then load via em.find() to hit 2LC
+        List<Number> ids = em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
                     SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
@@ -547,9 +547,16 @@ public class ValueService implements ValueServiceInterface {
                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr
                     ON ve.parent_id = sr.v_id
                 )
-                SELECT distinct v.* FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
-                """, ValueEntity.class
-        ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList());
+                SELECT distinct v.id FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
+                """
+        ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList();
+        List<ValueEntity> rtrn = new ArrayList<>(ids.size());
+        for (Number id : ids) {
+            ValueEntity v = em.find(ValueEntity.class, id.longValue());
+            if (v != null) {
+                rtrn.add(v);
+            }
+        }
         return rtrn;
     }
 
@@ -570,6 +577,9 @@ public class ValueService implements ValueServiceInterface {
     /**
      * Batch-fetch descendant values for multiple nodes in a single recursive CTE query.
      * Replaces N separate getDescendantValues(root, node) calls with one query.
+     *
+     * Uses an ID-only native query (skips JSONB data column transfer) then loads
+     * entities via em.find() which hits the Hibernate 2LC for cached values.
      */
     @Transactional
     @SuppressWarnings("unchecked")
@@ -581,22 +591,28 @@ public class ValueService implements ValueServiceInterface {
         for (int i = 0, size = nodes.size(); i < size; i++) {
             nodeIds.add(nodes.get(i).getId());
         }
-        List<ValueEntity> all = em.createNativeQuery("""
+        // Query only IDs + node_id (skip JSONB data column transfer).
+        // Entities are loaded via em.find() which hits the 2LC.
+        List<Object[]> rows = em.createNativeQuery("""
                 WITH RECURSIVE sourceRecursive (v_id) AS (
                     SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
                     UNION ALL
                     SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr ON ve.parent_id = sr.v_id
                 )
-                SELECT distinct v.* FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id IN (:nodeIds)
+                SELECT distinct v.id, v.node_id, v.idx FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id IN (:nodeIds)
                 ORDER BY v.idx asc
-                """, ValueEntity.class)
+                """)
                                   .setParameter("rootId", root.id)
                                   .setParameter("nodeIds", nodeIds)
                                   .getResultList();
         Map<Long, List<ValueEntity>> result = new HashMap<>();
-        for (int i = 0, size = all.size(); i < size; i++) {
-            ValueEntity v = all.get(i);
-            result.computeIfAbsent(v.node.getId(), k -> new ArrayList<>()).add(v);
+        for (Object[] row : rows) {
+            long valueId = ((Number) row[0]).longValue();
+            long nodeId = ((Number) row[1]).longValue();
+            ValueEntity v = em.find(ValueEntity.class, valueId);
+            if (v != null) {
+                result.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(v);
+            }
         }
         return result;
     }
@@ -616,7 +632,7 @@ public class ValueService implements ValueServiceInterface {
 
     @Override
     @Transactional
-    public List<JsonNode> getLabelValues(Long folderId, Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId) {
+    public List<JqValue> getLabelValues(Long folderId, Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId) {
         FolderEntity folder = FolderEntity.findById(folderId);
         if (folder == null) {
             throw new  NotFoundException("Folder not found: " + folderId);

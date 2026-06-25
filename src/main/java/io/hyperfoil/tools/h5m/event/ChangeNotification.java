@@ -1,5 +1,7 @@
 package io.hyperfoil.tools.h5m.event;
 
+import io.hyperfoil.tools.jjq.value.JqObject;
+
 import java.util.List;
 
 /**
@@ -10,8 +12,8 @@ import java.util.List;
  * @param nodeName      name of the detection node
  * @param nodeType      type discriminator of the detection node ("ft" or "rd")
  * @param changes       list of individual change details
- * @param configData    plugin-specific configuration (URL, email, channel, etc.)
- * @param configSecrets plugin-specific secrets (API tokens, passwords, etc.)
+ * @param configData    plugin-specific configuration (URL, email, channel, etc.), pre-parsed
+ * @param configSecrets plugin-specific secrets (API tokens, passwords, etc.), pre-parsed
  * @param template      user-defined message template with placeholders, or null for default
  */
 public record ChangeNotification(
@@ -20,7 +22,7 @@ public record ChangeNotification(
     String nodeName,
     String nodeType,
     List<ChangeDetail> changes,
-    String configData,
-    String configSecrets,
+    JqObject configData,
+    JqObject configSecrets,
     String template
 ) {}

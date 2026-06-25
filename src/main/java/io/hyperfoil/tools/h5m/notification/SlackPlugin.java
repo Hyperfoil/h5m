@@ -1,10 +1,10 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
@@ -35,7 +35,6 @@ import java.time.Duration;
 @ApplicationScoped
 public class SlackPlugin implements NotificationPlugin {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     @Inject
@@ -58,16 +57,22 @@ public class SlackPlugin implements NotificationPlugin {
 
     @Override
     public void send(ChangeNotification notification) {
-        String channel = extractField(notification.configData(), "channel");
-        String token = extractToken(notification.configSecrets());
+        String channel = notification.configData().get("channel").asString(null);
+        if (notification.configSecrets() == null || !notification.configSecrets().has("token")) {
+            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
+        }
+        String token = notification.configSecrets().get("token").asString(null);
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
+        }
 
-        ObjectNode payload = buildSlackPayload(channel, notification);
+        JqObject payload = buildSlackPayload(channel, notification);
 
         HttpResponse<Buffer> response = webClient.postAbs(slackApiUrl)
             .putHeader("Content-Type", "application/json; charset=utf-8")
             .putHeader("Authorization", "Bearer " + token)
             .putHeader("User-Agent", "h5m")
-            .sendBuffer(Buffer.buffer(payload.toString()))
+            .sendBuffer(Buffer.buffer(payload.toJsonString()))
             .await().atMost(TIMEOUT);
 
         if (response.statusCode() >= 400) {
@@ -76,12 +81,16 @@ public class SlackPlugin implements NotificationPlugin {
         }
         // Slack returns 200 even on errors — check the "ok" field
         try {
-            JsonNode body = MAPPER.readTree(response.bodyAsString());
-            if (!body.path("ok").asBoolean(false)) {
-                String error = body.path("error").asText("unknown error");
-                throw new RuntimeException("Slack API error: " + error);
+            JqValue body = JqValues.parse(response.bodyAsString());
+            if (body instanceof JqObject obj) {
+                if (!obj.has("ok") || !obj.get("ok").asBoolean(false)) {
+                    String error = obj.has("error") ? obj.get("error").asString("unknown error") : "unknown error";
+                    throw new RuntimeException("Slack API error: " + error);
+                }
             }
-        } catch (JsonProcessingException e) {
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
             // Can't parse response — assume success if HTTP was 2xx
         }
         Log.debugf("Slack message posted to %s", channel);
@@ -98,53 +107,44 @@ public class SlackPlugin implements NotificationPlugin {
         }
     }
 
-    private ObjectNode buildSlackPayload(String channel, ChangeNotification notification) {
-        ObjectNode payload = MAPPER.createObjectNode();
-        payload.put("channel", channel);
-
+    private JqObject buildSlackPayload(String channel, ChangeNotification notification) {
         String fallbackText = String.format("Change detected in %s by %s: %d change(s)",
             notification.folderName(), notification.nodeName(), notification.changes().size());
-        payload.put("text", fallbackText);
 
-        ArrayNode blocks = payload.putArray("blocks");
+        // Build blocks array
+        java.util.List<JqValue> blockList = new java.util.ArrayList<>();
 
         // Header block
-        ObjectNode header = blocks.addObject();
-        header.put("type", "header");
-        ObjectNode headerText = header.putObject("text");
-        headerText.put("type", "plain_text");
-        headerText.put("text", String.format("Change detected in %s", notification.folderName()));
+        blockList.add(JqObject.of("type", JqString.of("header"),
+            "text", JqObject.of("type", JqString.of("plain_text"),
+                "text", JqString.of(String.format("Change detected in %s", notification.folderName())))));
 
         // Main section with markdown
-        ObjectNode section = blocks.addObject();
-        section.put("type", "section");
-        ObjectNode sectionText = section.putObject("text");
-        sectionText.put("type", "mrkdwn");
-        sectionText.put("text", buildMarkdownBody(notification));
+        blockList.add(JqObject.of("type", JqString.of("section"),
+            "text", JqObject.of("type", JqString.of("mrkdwn"),
+                "text", JqString.of(buildMarkdownBody(notification)))));
 
         // Change details sections
         for (int i = 0; i < notification.changes().size(); i++) {
             ChangeDetail change = notification.changes().get(i);
-            ObjectNode detailSection = blocks.addObject();
-            detailSection.put("type", "section");
-            ObjectNode detailText = detailSection.putObject("text");
-            detailText.put("type", "mrkdwn");
-            detailText.put("text", formatChangeDetail(i + 1, change, notification.nodeType()));
+            blockList.add(JqObject.of("type", JqString.of("section"),
+                "text", JqObject.of("type", JqString.of("mrkdwn"),
+                    "text", JqString.of(formatChangeDetail(i + 1, change, notification.nodeType())))));
         }
 
         // Divider
-        blocks.addObject().put("type", "divider");
+        blockList.add(JqObject.of("type", JqString.of("divider")));
 
         // Context block
-        ObjectNode context = blocks.addObject();
-        context.put("type", "context");
-        ArrayNode elements = context.putArray("elements");
-        ObjectNode contextText = elements.addObject();
-        contextText.put("type", "mrkdwn");
-        contextText.put("text", String.format("Node: `%s` (%s) | Changes: %d",
-            notification.nodeName(), notification.nodeType(), notification.changes().size()));
+        blockList.add(JqObject.of("type", JqString.of("context"),
+            "elements", JqArray.of(
+                JqObject.of("type", JqString.of("mrkdwn"),
+                    "text", JqString.of(String.format("Node: `%s` (%s) | Changes: %d",
+                        notification.nodeName(), notification.nodeType(), notification.changes().size()))))));
 
-        return payload;
+        return JqObject.of("channel", JqString.of(channel),
+            "text", JqString.of(fallbackText),
+            "blocks", JqArray.of(blockList.toArray(new JqValue[0])));
     }
 
     private String buildMarkdownBody(ChangeNotification notification) {
@@ -171,23 +171,25 @@ public class SlackPlugin implements NotificationPlugin {
         StringBuilder sb = new StringBuilder();
         sb.append("*Change ").append(index).append("*");
         if (change.fingerprint() != null) {
-            sb.append(" — Fingerprint: `").append(change.fingerprint()).append("`");
+            sb.append(" — Fingerprint: `").append(change.fingerprint().toJsonString()).append("`");
         }
         sb.append("\n");
-        if (change.data() != null) {
+        if (change.data() instanceof JqObject obj) {
             switch (nodeType) {
                 case "ft" -> {
-                    if (change.data().has("value")) sb.append("• Value: `").append(change.data().get("value")).append("`\n");
-                    if (change.data().has("bound")) sb.append("• Bound: `").append(change.data().get("bound")).append("`\n");
-                    if (change.data().has("direction")) sb.append("• Direction: ").append(change.data().get("direction").asText()).append("\n");
+                    if (obj.has("value")) sb.append("• Value: `").append(obj.get("value").toJsonString()).append("`\n");
+                    if (obj.has("bound")) sb.append("• Bound: `").append(obj.get("bound").toJsonString()).append("`\n");
+                    if (obj.has("direction")) sb.append("• Direction: ").append(obj.get("direction").asText()).append("\n");
                 }
                 case "rd" -> {
-                    if (change.data().has("ratio")) sb.append("• Ratio: `").append(String.format("%.1f%%", change.data().get("ratio").asDouble())).append("`\n");
-                    if (change.data().has("value")) sb.append("• Value: `").append(change.data().get("value")).append("`\n");
-                    if (change.data().has("previous")) sb.append("• Previous: `").append(change.data().get("previous")).append("`\n");
+                    if (obj.has("ratio")) sb.append("• Ratio: `").append(String.format("%.1f%%", obj.get("ratio").asDouble(0.0))).append("`\n");
+                    if (obj.has("value")) sb.append("• Value: `").append(obj.get("value").toJsonString()).append("`\n");
+                    if (obj.has("previous")) sb.append("• Previous: `").append(obj.get("previous").toJsonString()).append("`\n");
                 }
-                default -> sb.append("• Data: `").append(change.data()).append("`\n");
+                default -> sb.append("• Data: `").append(obj.toJsonString()).append("`\n");
             }
+        } else if (change.data() != null) {
+            sb.append("• Data: `").append(change.data().toJsonString()).append("`\n");
         }
         return sb.toString();
     }
@@ -195,24 +197,13 @@ public class SlackPlugin implements NotificationPlugin {
     private String extractField(String json, String field) {
         if (json == null) return null;
         try {
-            JsonNode node = MAPPER.readTree(json);
-            if (node.has(field)) {
-                return node.get(field).asText();
+            JqValue parsed = JqValues.parse(json);
+            if (parsed instanceof JqObject obj && obj.has(field)) {
+                return obj.get(field).asString("");
             }
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             // not valid JSON
         }
         return null;
-    }
-
-    private String extractToken(String secrets) {
-        if (secrets == null || secrets.isBlank()) {
-            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
-        }
-        String token = extractField(secrets, "token");
-        if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
-        }
-        return token;
     }
 }

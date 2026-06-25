@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.benchmark;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.svc.FolderService;
@@ -48,8 +48,6 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
     @Inject
     WorkService workService;
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private DbGraphBuilder graphBuilder;
 
@@ -243,7 +241,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
         // Upload data — let @Transactional handle the commit so work queue
         // threads can see the persisted data before starting execution
         folderService.upload("bench_folder", "$.data",
-                OBJECT_MAPPER.readTree("{\"data\": 42}"));
+                JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 
         BenchmarkTimer.Result result = BenchmarkTimer.run(
@@ -267,7 +265,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
         graphBuilder.buildDiamondInGroup(groupId, rootId, layers, width);
 
         folderService.upload("bench_folder", "$.data",
-                OBJECT_MAPPER.readTree("{\"data\": 42}"));
+                JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 
         BenchmarkTimer.Result result = BenchmarkTimer.run(

@@ -1,7 +1,5 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.svc.FolderService;
@@ -39,8 +37,6 @@ public class VerifyLegacy implements Callable<Integer> {
 
     @Inject
     FolderService folderService;
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     @Transactional

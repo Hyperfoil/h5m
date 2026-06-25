@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
@@ -125,7 +125,7 @@ public class ViewService implements ViewServiceInterface {
 
     @Override
     @Transactional
-    public List<JsonNode> getViewData(String folderName, Long viewId) {
+    public List<JqValue> getViewData(String folderName, Long viewId) {
         ViewEntity view = em.createQuery(
             "SELECT v FROM folder_view v LEFT JOIN FETCH v.components c LEFT JOIN FETCH c.node WHERE v.id = :id",
             ViewEntity.class

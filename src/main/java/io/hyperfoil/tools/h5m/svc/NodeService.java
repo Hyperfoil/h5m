@@ -1,13 +1,8 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.api.jsonata4java.expressions.EvaluateException;
-import com.api.jsonata4java.expressions.EvaluateRuntimeException;
-import com.api.jsonata4java.expressions.Expressions;
-import com.api.jsonata4java.expressions.ParseException;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.*;
+import io.hyperfoil.tools.jjq.jsonata.JsonataCompiler;
+import io.hyperfoil.tools.jjq.jsonata.JsonataException;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
@@ -20,8 +15,9 @@ import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.*;
-import io.hyperfoil.tools.h5m.pasted.ProxyJacksonArray;
-import io.hyperfoil.tools.h5m.pasted.ProxyJacksonObject;
+import io.hyperfoil.tools.h5m.pasted.ProxyJq;
+import io.hyperfoil.tools.h5m.pasted.ProxyJqObject;
+import io.hyperfoil.tools.h5m.pasted.Util;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -31,15 +27,10 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.PolyglotException;
-import org.graalvm.polyglot.proxy.Proxy;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.hibernate.Session;
 
 import io.hyperfoil.tools.jjq.JqProgram;
-import io.hyperfoil.tools.jjq.jackson.JacksonConverter;
-import io.hyperfoil.tools.jjq.jackson.JacksonJqEngine;
-import io.hyperfoil.tools.jjq.value.JqArray;
-import io.hyperfoil.tools.jjq.value.JqValue;
 
 import java.io.IOException;
 import java.util.*;
@@ -52,14 +43,16 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class NodeService implements NodeServiceInterface {
 
-    private static final JacksonJqEngine JQ_ENGINE = new JacksonJqEngine();
     private static final ConcurrentHashMap<String, JqProgram> JQ_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, JqProgram> JSONATA_CACHE = new ConcurrentHashMap<>();
 
     private static JqProgram compileJq(String filter) {
-        return JQ_CACHE.computeIfAbsent(filter, JQ_ENGINE::compile);
+        return JQ_CACHE.computeIfAbsent(filter, JqProgram::compile);
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static JqProgram compileJsonata(String expression) {
+        return JSONATA_CACHE.computeIfAbsent(expression, JsonataCompiler::compile);
+    }
 
     @Inject
     EntityManager em;
@@ -113,15 +106,12 @@ public class NodeService implements NodeServiceInterface {
 
     @Override
     @Transactional
-    public Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) throws JsonProcessingException {
+    public Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) {
         NodeEntity node = switch (type) {
             case FINGERPRINT -> new FingerprintNode(name, "");
-            case FIXED_THRESHOLD -> new FixedThreshold(name, OBJECT_MAPPER.writeValueAsString(
-                    OBJECT_MAPPER.convertValue(configuration, FixedThresholdConfig.class)));
-            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, OBJECT_MAPPER.writeValueAsString(
-                    OBJECT_MAPPER.convertValue(configuration, RelativeDifferenceConfig.class)));
-            case STDDEV_ANOMALY -> new StdDevAnomaly(name, OBJECT_MAPPER.writeValueAsString(
-                    OBJECT_MAPPER.convertValue(configuration, StdDevAnomalyConfig.class)));
+            case FIXED_THRESHOLD -> new FixedThreshold(name, toFixedThresholdConfig(configuration).toJsonString());
+            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, toRelativeDifferenceConfig(configuration).toJsonString());
+            case STDDEV_ANOMALY -> new StdDevAnomaly(name, toStdDevAnomalyConfig(configuration).toJsonString());
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -130,6 +120,57 @@ public class NodeService implements NodeServiceInterface {
         NodeEntity merged = em.merge(node);
         em.flush();
         return merged.id;
+    }
+
+    /** Convert configuration (Map from REST or record from CLI) to JqObject for FixedThreshold. */
+    private static JqObject toFixedThresholdConfig(Object config) {
+        if (config instanceof FixedThresholdConfig ft) {
+            JqObject.Builder b = JqObject.builder();
+            if (ft.min() != null) b.put("min", ft.min());
+            if (ft.max() != null) b.put("max", ft.max());
+            if (ft.minInclusive() != null) b.put("minInclusive", ft.minInclusive());
+            if (ft.maxInclusive() != null) b.put("maxInclusive", ft.maxInclusive());
+            if (ft.fingerprintFilter() != null) b.put("fingerprintFilter", ft.fingerprintFilter());
+            return b.build();
+        } else if (config instanceof Map<?, ?>) {
+            JqValue v = JqValues.fromJavaObject(config);
+            if (v instanceof JqObject obj) return obj;
+        }
+        throw new IllegalArgumentException("Invalid FixedThreshold configuration: " + config);
+    }
+
+    /** Convert configuration (Map from REST or record from CLI) to JqObject for RelativeDifference. */
+    private static JqObject toRelativeDifferenceConfig(Object config) {
+        if (config instanceof RelativeDifferenceConfig rd) {
+            JqObject.Builder b = JqObject.builder();
+            if (rd.filter() != null) b.put("filter", rd.filter());
+            b.put("threshold", rd.threshold());
+            b.put("window", (long) rd.window());
+            b.put("minPrevious", (long) rd.minPrevious());
+            if (rd.fingerprintFilter() != null) b.put("fingerprintFilter", rd.fingerprintFilter());
+            return b.build();
+        } else if (config instanceof Map<?, ?>) {
+            JqValue v = JqValues.fromJavaObject(config);
+            if (v instanceof JqObject obj) return obj;
+        }
+        throw new IllegalArgumentException("Invalid RelativeDifference configuration: " + config);
+    }
+
+    /** Convert configuration to JqObject for StdDevAnomaly. */
+    private static JqObject toStdDevAnomalyConfig(Object config) {
+        if (config instanceof StdDevAnomalyConfig sd) {
+            JqObject.Builder b = JqObject.builder();
+            b.put("windowSize", (long) sd.windowSize());
+            b.put("deviations", sd.deviations());
+            if (sd.direction() != null) b.put("direction", sd.direction().name());
+            b.put("minDataPoints", (long) sd.minDataPoints());
+            if (sd.fingerprintFilter() != null) b.put("fingerprintFilter", sd.fingerprintFilter());
+            return b.build();
+        } else if (config instanceof Map<?, ?>) {
+            JqValue v = JqValues.fromJavaObject(config);
+            if (v instanceof JqObject obj) return obj;
+        }
+        throw new IllegalArgumentException("Invalid StdDevAnomaly configuration: " + config);
     }
 
     @Transactional
@@ -417,37 +458,6 @@ public class NodeService implements NodeServiceInterface {
                     continue;
                 }
                 if (relDiff.getDomainNode() != null) {
-
-                    //when would this have more than 1 value?
-                    /*
-                    List<ValueEntity> domainValueFromRoot = valueService.findMatchingFingerprint(
-                            relDiff.getDomainNode(),
-                            groupBy,
-                            fingerprintValue,
-                            null,
-                            null,
-                            root,
-                            -1,
-                            -1,
-                            true
-                    );
-                    for(int dIdx=0; dIdx<domainValueFromRoot.size(); dIdx++){
-                        ValueEntity domainValue = domainValueFromRoot.get(dIdx);
-                        //todo this does not look for values after previous relDiff observation :(
-                        List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
-                                relDiff.getRangeNode(),
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                domainValue,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                true
-                        );
-                        //this would need to filter rangeValues that already have a changeDetection detected...
-                    }
-                    */
-
                     //changing domainValues to just get the domainValues from this root would change from full series scanning to just scanning the new values
                     //but that would only work if values are added sequentially to the domain value (or we delay relative difference calculation to the end of the work queue.
                     //perhaps we check if root introduced the maximum domainValue then only calculate new changes for that last window
@@ -498,15 +508,9 @@ public class NodeService implements NodeServiceInterface {
                                     0,
                                     true
                             );
-                            List<Double> converted = rangeValues.stream().map(obj -> {
-                                if (obj.data instanceof NumericNode numericNode) {
-                                    return numericNode.asDouble();
-                                } else if (obj.data.toString().matches("[0-9]+\\.?[0-9]*")) {
-                                    return Double.parseDouble(obj.data.toString());
-                                } else {
-                                    return null;
-                                }
-                            }).filter(Objects::nonNull).toList();
+                            List<Double> converted = rangeValues.stream()
+                                .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
+                                .filter(Objects::nonNull).toList();
 
                             if (converted.size() < relDiff.getWindow() + minPrevious) {
                                 System.err.println("insufficient samples to calculate " + relDiff.name + " need " + (relDiff.getWindow() + minPrevious) + " have " + converted.size());
@@ -552,13 +556,13 @@ public class NodeService implements NodeServiceInterface {
                                     assert cv != null;
                                     Double prevData = converted.get((int) relDiff.getWindow() - 1);
                                     Double lastData = cv;
-                                    ObjectNode data = OBJECT_MAPPER.createObjectNode();
-                                    data.set("previous", new DoubleNode(prevData));
-                                    data.set("last", new DoubleNode(lastData));
-                                    data.set("value", new DoubleNode(value));
-                                    data.set("ratio", new DoubleNode(100 * (ratio - 1)));
-                                    //data.set("dIdx",new IntNode(dIdx));//was added for debug
-                                    data.set("domainvalue", domainValue.data);
+                                    JqValue data = JqObject.builder()
+                                            .put("previous", prevData)
+                                            .put("last", lastData)
+                                            .put("value", value)
+                                            .put("ratio", 100 * (ratio - 1))
+                                            .put("domainvalue", domainValue.data)
+                                            .build();
                                     //skip domain values due to a detection
                                     dIdx += minPrevious;
                                     ValueEntity changeValue = new ValueEntity(root.folder, relDiff, data);
@@ -583,7 +587,7 @@ public class NodeService implements NodeServiceInterface {
                                 0,
                                 false
                         );
-                        List<JsonNode> domainRemoveScope = new ArrayList<>();
+                        List<JqValue> domainRemoveScope = new ArrayList<>();
                         for (ValueEntity dv : allDomainValues) {
                             if (dv.data != null) {
                                 domainRemoveScope.add(dv.data);
@@ -591,13 +595,13 @@ public class NodeService implements NodeServiceInterface {
                         }
                         if (!rtrn.isEmpty()) {
                             for (ValueEntity existingValue : persistedChangeValues) {
-                                JsonNode existingDomainValue = existingValue.data.get("domainvalue");
-                                if (existingDomainValue == null) continue;
+                                JqValue existingDomainValue = existingValue.data != null ? existingValue.data.getField("domainvalue") : JqNull.NULL;
+                                if (existingDomainValue.isNull()) continue;
                                 if (domainRemoveScope.contains(existingDomainValue)) {
                                     boolean match = false;
                                     for (ValueEntity currentValue : rtrn) {
-                                        JsonNode currentDomainValue = currentValue.data.get("domainvalue");
-                                        if (currentDomainValue == null) continue;
+                                        JqValue currentDomainValue = currentValue.data != null ? currentValue.data.getField("domainvalue") : JqNull.NULL;
+                                        if (currentDomainValue.isNull()) continue;
                                         if (existingDomainValue.equals(currentDomainValue)) {
                                             match = true;
                                             break;
@@ -639,12 +643,8 @@ public class NodeService implements NodeServiceInterface {
                 );
                 for (int rIdx = 0; rIdx < rangeValues.size(); rIdx++) {
                     ValueEntity rangeValue = rangeValues.get(rIdx);
-                    Double numericValue;
-                    if (rangeValue.data instanceof NumericNode numericNode) {
-                        numericValue = numericNode.asDouble();
-                    } else if (rangeValue.data.toString().matches("[0-9]+\\.?[0-9]*")) {
-                        numericValue = Double.parseDouble(rangeValue.data.toString());
-                    } else {
+                    Double numericValue = rangeValue.data != null ? rangeValue.data.tryDouble() : null;
+                    if (numericValue == null) {
                         continue;
                     }
 
@@ -665,11 +665,12 @@ public class NodeService implements NodeServiceInterface {
                     }
 
                     if (violationType != null) {
-                        ObjectNode data = OBJECT_MAPPER.createObjectNode();
-                        data.set("value", new DoubleNode(numericValue));
-                        data.set("bound", new DoubleNode(bound));
-                        data.put("direction", violationType.label());
-                        data.set("fingerprint", fingerprintValue.data);
+                        JqValue data = JqObject.builder()
+                                .put("value", numericValue)
+                                .put("bound", bound)
+                                .put("direction", violationType.label())
+                                .put("fingerprint", fingerprintValue.data)
+                                .build();
                         ValueEntity changeValue = new ValueEntity(root.folder, ft, data);
                         changeValue.idx = startingOrdinal;
                         List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
@@ -716,7 +717,7 @@ public class NodeService implements NodeServiceInterface {
                 }
 
                 // Get the domain value from the current upload for the output data
-                JsonNode currentDomainData = null;
+                JqValue currentDomainData = null;
                 ValueEntity domainPivot = null;
                 if (sd.getDomainNode() != null) {
                     List<ValueEntity> currentDomainValues = valueService.getDescendantValues(groupByValue, sd.getDomainNode());
@@ -728,7 +729,7 @@ public class NodeService implements NodeServiceInterface {
 
                 // For each range value in the current dataset:
                 for (ValueEntity currentRangeValue : currentRangeValues) {
-                    Double currentNumeric = toDouble(currentRangeValue.data);
+                    Double currentNumeric = currentRangeValue.data != null ? currentRangeValue.data.tryDouble() : null;
                     if (currentNumeric == null) {
                         continue;
                     }
@@ -751,7 +752,7 @@ public class NodeService implements NodeServiceInterface {
                         if (rv.getId().equals(currentRangeValue.getId())) {
                             continue;
                         }
-                        Double d = toDouble(rv.data);
+                        Double d = rv.data != null ? rv.data.tryDouble() : null;
                         if (d != null) {
                             values.add(d);
                         }
@@ -765,17 +766,18 @@ public class NodeService implements NodeServiceInterface {
                             sd.getDirection(), sd.getMinDataPoints());
 
                     if (result != null && result.anomaly()) {
-                        ObjectNode data = OBJECT_MAPPER.createObjectNode();
-                        data.set("value", new DoubleNode(result.currentValue()));
-                        data.set("mean", new DoubleNode(result.mean()));
-                        data.set("stddev", new DoubleNode(result.stddev()));
-                        data.set("deviations", new DoubleNode(result.deviations()));
-                        data.put("direction", result.direction());
-                        data.set("threshold", new DoubleNode(result.threshold()));
-                        data.set("fingerprint", fingerprintValue.data);
+                        JqObject.Builder dataBuilder = JqObject.builder();
+                        dataBuilder.put("value", result.currentValue());
+                        dataBuilder.put("mean", result.mean());
+                        dataBuilder.put("stddev", result.stddev());
+                        dataBuilder.put("deviations", result.deviations());
+                        dataBuilder.put("direction", result.direction());
+                        dataBuilder.put("threshold", result.threshold());
+                        dataBuilder.put("fingerprint", fingerprintValue.data);
                         if (currentDomainData != null) {
-                            data.set("domainvalue", currentDomainData);
+                            dataBuilder.put("domainvalue", currentDomainData);
                         }
+                        JqValue data = dataBuilder.build();
                         ValueEntity changeValue = new ValueEntity(root.folder, sd, data);
                         changeValue.idx = startingOrdinal;
                         List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
@@ -796,8 +798,8 @@ public class NodeService implements NodeServiceInterface {
                             sd.getDomainNode(), null, null,
                             -1, -1, true);
                     for (ValueEntity existing : persistedChanges) {
-                        JsonNode existingDomain = existing.data != null ? existing.data.get("domainvalue") : null;
-                        if (existingDomain != null && existingDomain.equals(currentDomainData)) {
+                        JqValue existingDomain = existing.data != null ? existing.data.getField("domainvalue") : JqNull.NULL;
+                        if (!existingDomain.isNull() && existingDomain.equals(currentDomainData)) {
                             valueService.delete(existing);
                         }
                     }
@@ -809,21 +811,7 @@ public class NodeService implements NodeServiceInterface {
         return rtrn;
     }
 
-    private static Double toDouble(JsonNode data) {
-        if (data instanceof NumericNode numericNode) {
-            return numericNode.asDouble();
-        } else if (data != null) {
-            String text = data.asText();
-            if (text != null && text.length() < 20 && text.matches("-?[0-9]+\\.?[0-9]*")) {
-                try {
-                    return Double.parseDouble(text);
-                } catch (NumberFormatException e) {
-                    return null;
-                }
-            }
-        }
-        return null;
-    }
+
 
     @Transactional
     public List<ValueEntity> calculateSqlJsonpathValues(SqlJsonpathNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
@@ -845,18 +833,22 @@ public class NodeService implements NodeServiceInterface {
         }
         ValueEntity input = sourceValues.get(node.sources.getFirst().name);
 
-        JsonNode found = (JsonNode) em.createNativeQuery(
+        String foundJson = (String) em.createNativeQuery(
                 switch(dbKind) {
                     case "sqlite" -> "SELECT (SELECT data FROM value WHERE id = ?) -> ?";
-                    case "postgresql" -> ("SELECT PSQL_FUNCTION((SELECT data FROM value WHERE id = ?), ?::jsonpath)")
+                    case "postgresql" -> ("SELECT PSQL_FUNCTION((SELECT data FROM value WHERE id = ?), ?::jsonpath)::text")
                             .replaceAll("PSQL_FUNCTION", psqlFunction);
                     default -> "";
-                }, JsonNode.class)
+                }, String.class)
                 .setParameter(1, input.id)
                 .setParameter(2, node.operation)
                 .getSingleResultOrNull();
 
-        if (found == null || found.isNull()) {
+        if (foundJson == null || foundJson.isBlank() || foundJson.equals("null")) {
+            return rtrn;
+        }
+        JqValue found = JqValues.parse(foundJson);
+        if (found.isNull()) {
             return rtrn;
         }
 
@@ -881,10 +873,9 @@ public class NodeService implements NodeServiceInterface {
         //TODO should this be done in db with json_each?
         ValueEntity v = sourceValues.get(node.sources.getFirst().name);
         if(v!=null){
-            if(v.data.isArray()){
-                ArrayNode arrayNode = (ArrayNode) v.data;
-                for(int i=0;i<arrayNode.size();i++){
-                    JsonNode entry = arrayNode.get(i);
+            if(v.data instanceof JqArray jqArr){
+                for(int i=0;i<jqArr.length();i++){
+                    JqValue entry = jqArr.get(i);
                     ValueEntity newValue = new ValueEntity(null,node,entry);
                     newValue.idx=i;
                     newValue.sources = List.of(v);
@@ -913,8 +904,13 @@ public class NodeService implements NodeServiceInterface {
         List<ValueEntity> rtrn = new ArrayList<>();
 
         try {
-            Expressions expr = Expressions.parse(node.operation);
-            JsonNode result = expr.evaluate(input.data);
+            // JSONata compiled to jq via jjq-jsonata — executes natively on JqValue
+            JqProgram program = compileJsonata(node.operation);
+            JqValue jqInput = input != null && input.data != null ? input.data : JqNull.NULL;
+            JqValue result = program.apply(jqInput);
+            if (result == null) {
+                result = JqNull.NULL;
+            }
 
             ValueEntity newValue = new ValueEntity();
             newValue.idx = startingOrdinal+1;
@@ -923,9 +919,7 @@ public class NodeService implements NodeServiceInterface {
             newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
             return List.of(newValue);
 
-        } catch (ParseException e) {
-            System.err.println("failed to parse jsonata expression\n"+e.getLocalizedMessage());
-        } catch (EvaluateException | EvaluateRuntimeException e) {
+        } catch (JsonataException e) {
             System.err.println("failed to evaluate jsonata expression\n"+e.getLocalizedMessage());
         }
 
@@ -1055,8 +1049,7 @@ public class NodeService implements NodeServiceInterface {
             System.err.println("Error occurred reading parameters from js function\n"+node.operation);
             return Collections.emptyList();
         }
-        List<JsonNode> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
-        Object result = null;
+        List<JqValue> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
         try(Context context = Context.newBuilder("js").engine(Engine.newBuilder("js").option("engine.WarnInterpreterOnly", "false").build())
                 .allowExperimentalOptions(true)
                 .option("js.foreign-object-prototype", "true")
@@ -1065,7 +1058,7 @@ public class NodeService implements NodeServiceInterface {
 //                .err(out)
                 .build()){
             context.enter();
-            context.getBindings("js").putMember("isInstanceLike", new ProxyJacksonObject.InstanceCheck());
+            context.getBindings("js").putMember("isInstanceLike", new ProxyJqObject.InstanceCheck());
             context.eval("js",
                     """
                     Object.defineProperty(Object,Symbol.hasInstance, {
@@ -1074,10 +1067,11 @@ public class NodeService implements NodeServiceInterface {
                       }
                     });
                     """);
-            StringBuilder jsCode = new StringBuilder();
+            // Bind input parameters as GraalVM proxy objects — JqValue passed directly
             for(int i=0; i<input.size(); i++) {
-                jsCode.append("const __obj").append(i).append(" = ").append(input.get(i)).append(";").append(System.lineSeparator());
+                context.getBindings("js").putMember("__obj" + i, ProxyJq.wrap(input.get(i)));
             }
+            StringBuilder jsCode = new StringBuilder();
             jsCode.append("const __func").append(" = ").append(node.operation).append(";").append(System.lineSeparator());
             jsCode.append("__func(");
             for(int i=0; i<input.size(); i++) {
@@ -1090,20 +1084,7 @@ public class NodeService implements NodeServiceInterface {
                 List<org.graalvm.polyglot.Value> resolvedValues = resolvePromiseOrGenerator(value);
                 for(org.graalvm.polyglot.Value resolvedValue : resolvedValues) {
                     try{
-                        result = convert(resolvedValue);
-                        JsonNode data = null;
-                        if(result==null){
-                            //data stays null
-                        }else if (result instanceof JsonNode){
-                            //TODO do we support splitting an array into multiple Values?
-                            data = (JsonNode) result;
-                        }else{//scalar
-                            try {
-                                data = OBJECT_MAPPER.readTree(result.toString());
-                            } catch (JsonProcessingException e) {
-                                System.err.println("failed to convert "+result+" to a javascript object");
-                            }
-                        }
+                        JqValue data = Util.convertToJqValue(resolvedValue);
 
                         //File valuePath = JqNode.outputPath().resolve(node.name + "." + (startingOrdinal+1)+".jq").toFile();
                         if(data!=null) {
@@ -1169,127 +1150,25 @@ public class NodeService implements NodeServiceInterface {
         }
         return rtrn;
     }
-    //copied from io.hyperfoil.tools.horreum.exp.pasted.ExpUtil#convert but changed to return JsonNode
-    public static JsonNode convert(org.graalvm.polyglot.Value value) throws JsonProcessingException {
-        if (value == null) {
-            return null;
-        } else if (value.isNull()) {
-            // ValueEntity api cannot differentiate null and undefined from javascript
-            if (value.toString().contains("undefined")) {
-                return TextNode.valueOf(""); //no return is the same as returning a missing key from a ProxyObject?
-            } else {
-                return null;
-            }
-        } else if (value.isProxyObject()) {
-            Proxy p = value.asProxyObject();
-            if (p instanceof ProxyJacksonArray) {
-                return ((ProxyJacksonArray) p).getJsonNode();
-            } else if (p instanceof ProxyJacksonObject) {
-                return ((ProxyJacksonObject) p).getJsonNode();
-            } else {
-                //not sure when this would happend
-                System.err.println("Unexpected proxy object: "+p);
-                return OBJECT_MAPPER.readTree(p.toString());
-            }
-        } else if (value.isBoolean()) {
-            return BooleanNode.valueOf(value.asBoolean());
-        } else if (value.isNumber()) {
-            double v = value.asDouble();
-            if (v == Math.rint(v)) {
-                return LongNode.valueOf((long) v);
-            } else {
-                return DoubleNode.valueOf(v);
-            }
-        } else if (value.isString()) {
-            return TextNode.valueOf(value.asString());
-        } else if (value.hasArrayElements()) {
-            return convertArray(value);
-        } else if (value.canExecute()) {
-            return TextNode.valueOf(value.toString());
-        } else if (value.hasMembers()) {
-            return convertMapping(value);
-        } else {
-            //TODO log error wtf is ValueEntity?
-            return TextNode.valueOf("");
-        }
-    }
-    //io.hyperfoil.tools.horreum.exp.pasted.ExpUtil#convertArray
-    public static ArrayNode convertArray(org.graalvm.polyglot.Value value) {
-        ArrayNode json = JsonNodeFactory.instance.arrayNode();
-        for (int i = 0; i < value.getArraySize(); i++) {
-            org.graalvm.polyglot.Value element = value.getArrayElement(i);
-            if (element == null || element.isNull()) {
-                json.addNull();
-            } else if (element.isBoolean()) {
-                json.add(element.asBoolean());
-            } else if (element.isNumber()) {
-                double v = element.asDouble();
-                if (v == Math.rint(v)) {
-                    json.add(element.asLong());
-                } else {
-                    json.add(v);
-                }
-            } else if (element.isString()) {
-                json.add(element.asString());
-            } else if (element.hasArrayElements()) {
-                json.add(convertArray(element));
-            } else if (element.hasMembers()) {
-                json.add(convertMapping(element));
-            } else {
-                json.add(element.toString());
-            }
-        }
-        return json;
-    }
-    //io.hyperfoil.tools.horreum.exp.pasted.ExpUtil#convertMapping
-    public static ObjectNode convertMapping(org.graalvm.polyglot.Value value) {
-        ObjectNode json = JsonNodeFactory.instance.objectNode();
-        for (String key : value.getMemberKeys()) {
-            org.graalvm.polyglot.Value element = value.getMember(key);
-            if (element == null || element.isNull()) {
-                json.set(key, JsonNodeFactory.instance.nullNode());
-            } else if (element.isBoolean()) {
-                json.set(key, JsonNodeFactory.instance.booleanNode(element.asBoolean()));
-            } else if (element.isNumber()) {
-                double v = element.asDouble();
-                if (v == Math.rint(v)) {
-                    json.set(key, JsonNodeFactory.instance.numberNode(element.asLong()));
-                } else {
-                    json.set(key, JsonNodeFactory.instance.numberNode(v));
-                }
-            } else if (element.isString()) {
-                json.set(key, JsonNodeFactory.instance.textNode(element.asString()));
-            } else if (element.hasArrayElements()) {
-                json.set(key, convertArray(element));
-            } else if (element.hasMembers()) {
-                json.set(key, convertMapping(element));
-            } else {
-                json.set(key, JsonNodeFactory.instance.textNode(element.toString()));
-            }
-        }
-        return json;
-    }
-
-
 
     @Transactional
     public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
-        ObjectNode fpObject = OBJECT_MAPPER.createObjectNode();
-        TreeMap<String, JsonNode> sorted = new TreeMap<>();
+        JqObject.Builder fpBuilder = JqObject.builder();
+        TreeMap<String, JqValue> sorted = new TreeMap<>();
         for (NodeEntity source : node.sources) {
             if (sourceValues.containsKey(source.name)) {
                 sorted.put(source.name, sourceValues.get(source.name).data);
             }
         }
-        sorted.forEach(fpObject::set);
+        sorted.forEach(fpBuilder::put);
         ValueEntity newValue = new ValueEntity();
         newValue.idx = startingOrdinal+1;
         newValue.node = node;
-        newValue.data = fpObject;
+        newValue.data = fpBuilder.build();
         newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
         return List.of(newValue);
     }
-    public boolean evaluateFingerprintFilter(String filter, JsonNode fingerprint) {
+    public boolean evaluateFingerprintFilter(String filter, JqValue fingerprint) {
         if (filter == null || filter.isBlank()) {
             return true;
         }
@@ -1301,8 +1180,8 @@ public class NodeService implements NodeServiceInterface {
                 .build()) {
             context.enter();
             try {
-                String jsCode = "const __fp = " + fingerprint.toString() + ";\n" +
-                        "const __filter = " + filter + ";\n" +
+                context.getBindings("js").putMember("__fp", ProxyJq.wrap(fingerprint));
+                String jsCode = "const __filter = " + filter + ";\n" +
                         "!!(__filter(__fp));";
                 org.graalvm.polyglot.Value result = context.eval("js", jsCode);
                 return result.asBoolean();
@@ -1330,7 +1209,8 @@ public class NodeService implements NodeServiceInterface {
         }
 
         // Collect source data in order, preserving node.sources ordering
-        List<JsonNode> sourceData = new ArrayList<>();
+        // Source data is already JqValue — no conversion needed
+        List<JqValue> sourceData = new ArrayList<>();
         if (!node.sources.isEmpty()) {
             List.copyOf(node.sources).forEach(sourceNode -> {
                 if (sourceValues.containsKey(sourceNode.name)) {
@@ -1348,32 +1228,23 @@ public class NodeService implements NodeServiceInterface {
         boolean isSlurp = !isNullInput && (node.sources.size() > 1 || sourceValues.size() > 1);
 
         try {
-            List<JsonNode> results;
+            List<JqValue> results;
             if (isNullInput) {
-                List<JqValue> jqInputs = sourceData.stream()
-                        .map(JacksonConverter::fromJsonNodeLazy)
-                        .toList();
-                results = program.applyNullInput(jqInputs).stream()
-                        .map(v -> JacksonConverter.toJsonNode(v, JQ_ENGINE.mapper()))
-                        .toList();
+                // No JacksonConverter round-trip — source data is already JqValue
+                results = program.applyNullInput(sourceData);
             } else if (isSlurp) {
-                List<JqValue> jqInputs = sourceData.stream()
-                        .map(JacksonConverter::fromJsonNodeLazy)
-                        .toList();
-                results = program.applyAll(JqArray.ofTrusted(jqInputs)).stream()
-                        .map(v -> JacksonConverter.toJsonNode(v, JQ_ENGINE.mapper()))
-                        .toList();
+                results = program.applyAll((JqValue) JqArray.ofTrusted(sourceData));
             } else {
-                JsonNode input = sourceData.isEmpty() ? NullNode.getInstance() : sourceData.getFirst();
-                results = JQ_ENGINE.apply(program, input);
+                JqValue input = sourceData.isEmpty() ? JqNull.NULL : sourceData.getFirst();
+                results = program.applyAll(input);
             }
             int order = startingOrdinal;
-            for (JsonNode jsNode : results) {
-                if (!jsNode.isNull()) {
+            for (JqValue jqResult : results) {
+                if (!jqResult.isNull()) {
                     ValueEntity newValue = new ValueEntity();
                     newValue.idx = order++;
                     newValue.node = node;
-                    newValue.data = jsNode;
+                    newValue.data = jqResult;
                     newValue.sources = node.sources.stream()
                             .filter(n -> sourceValues.containsKey(n.name))
                             .map(n -> sourceValues.get(n.name))

@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -37,7 +37,7 @@ public class WorkQueueRaceTest extends FreshDb {
     @Inject
     TransactionManager tm;
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    // ObjectMapper removed — using JqValues.parse() directly
     private static final List<String> TEST_FILES = List.of(
             "15248.json", "15763.json", "15764.json", "15765.json", "15766.json");
 
@@ -66,7 +66,7 @@ public class WorkQueueRaceTest extends FreshDb {
         // even if an upload throws — otherwise background workers can race with cleanup.
         try {
             for (String fileName : TEST_FILES) {
-                JsonNode data = loadQvssFile(fileName);
+                JqValue data = loadQvssFile(fileName);
                 folderService.upload("rapid_test", "$", data);
             }
         } finally {
@@ -87,7 +87,7 @@ public class WorkQueueRaceTest extends FreshDb {
 
         try {
             for (String fileName : TEST_FILES) {
-                JsonNode data = loadQvssFile(fileName);
+                JqValue data = loadQvssFile(fileName);
                 folderService.upload("sequential_test", "$", data);
                 awaitWorkQueue(30_000);
             }
@@ -137,10 +137,10 @@ public class WorkQueueRaceTest extends FreshDb {
         }
     }
 
-    private JsonNode loadQvssFile(String fileName) throws Exception {
+    private JqValue loadQvssFile(String fileName) throws Exception {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream("qvss/" + fileName)) {
             assertNotNull(is, "Missing test resource: qvss/" + fileName);
-            return OBJECT_MAPPER.readTree(is);
+            return JqValues.parse(is.readAllBytes());
         }
     }
 
