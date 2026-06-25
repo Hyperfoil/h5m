@@ -2,7 +2,9 @@ package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.yaup.json.Json;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PostLoad;
@@ -37,24 +39,25 @@ public class FixedThreshold extends NodeEntity implements DetectionNode {
     }
 
     @Transient
-    private Json config;
+    private JqObject config;
 
     public FixedThreshold() {
-        config = new Json();
+        config = JqObject.EMPTY;
     }
 
     public FixedThreshold(String name, String operation) {
         super(name, operation);
-        config = new Json();
+        config = JqObject.EMPTY;
     }
 
     @PostLoad
     public void loadConfig() {
-        if (this.config == null || this.config.isEmpty()) {
+        if (config == null || config.size() == 0) {
             if (this.operation != null && !this.operation.isBlank()) {
-                config = Json.fromString(this.operation);
+                JqValue parsed = JqValues.parse(this.operation);
+                config = parsed instanceof JqObject obj ? obj : JqObject.EMPTY;
             } else {
-                config = new Json();
+                config = JqObject.EMPTY;
             }
         }
     }
@@ -84,30 +87,22 @@ public class FixedThreshold extends NodeEntity implements DetectionNode {
 
     @Transient
     public double getMin() {
-        Object val = config.get(MIN);
-        if (val instanceof Number) {
-            return ((Number) val).doubleValue();
-        }
-        return Double.NaN;
+        return config.get(MIN).asDouble(Double.NaN);
     }
 
     public void setMin(double min) {
-        config.set(MIN, min);
-        operation = config.toString();
+        config = config.with(MIN, io.hyperfoil.tools.jjq.value.JqNumber.of(min));
+        operation = config.toJsonString();
     }
 
     @Transient
     public double getMax() {
-        Object val = config.get(MAX);
-        if (val instanceof Number) {
-            return ((Number) val).doubleValue();
-        }
-        return Double.NaN;
+        return config.get(MAX).asDouble(Double.NaN);
     }
 
     public void setMax(double max) {
-        config.set(MAX, max);
-        operation = config.toString();
+        config = config.with(MAX, io.hyperfoil.tools.jjq.value.JqNumber.of(max));
+        operation = config.toJsonString();
     }
 
     @Transient
@@ -122,32 +117,32 @@ public class FixedThreshold extends NodeEntity implements DetectionNode {
 
     @Transient
     public boolean isMinInclusive() {
-        return config.getBoolean(MIN_INCLUSIVE, true);
+        return config.get(MIN_INCLUSIVE).asBoolean(true);
     }
 
     public void setMinInclusive(boolean minInclusive) {
-        config.set(MIN_INCLUSIVE, minInclusive);
-        operation = config.toString();
+        config = config.with(MIN_INCLUSIVE, io.hyperfoil.tools.jjq.value.JqBoolean.of(minInclusive));
+        operation = config.toJsonString();
     }
 
     @Transient
     public boolean isMaxInclusive() {
-        return config.getBoolean(MAX_INCLUSIVE, true);
+        return config.get(MAX_INCLUSIVE).asBoolean(true);
     }
 
     public void setMaxInclusive(boolean maxInclusive) {
-        config.set(MAX_INCLUSIVE, maxInclusive);
-        operation = config.toString();
+        config = config.with(MAX_INCLUSIVE, io.hyperfoil.tools.jjq.value.JqBoolean.of(maxInclusive));
+        operation = config.toJsonString();
     }
 
     @Transient
     public String getFingerprintFilter() {
-        return config.getString(FINGERPRINT_FILTER);
+        return config.has(FINGERPRINT_FILTER) ? config.get(FINGERPRINT_FILTER).asString(null) : null;
     }
 
     public void setFingerprintFilter(String fingerprintFilter) {
-        config.set(FINGERPRINT_FILTER, fingerprintFilter);
-        operation = config.toString();
+        config = config.with(FINGERPRINT_FILTER, io.hyperfoil.tools.jjq.value.JqString.of(fingerprintFilter));
+        operation = config.toJsonString();
     }
 
     @Override

@@ -1,10 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -52,9 +48,9 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity aNode = new JqNode("a",".a");
         aNode.sources=List.of(rootNode);
         aNode.persist();
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("a"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("a"));
         rootValue.persist();
-        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null,aNode,JqString.of("a"));
         aValue.sources=List.of(rootValue);
         aValue.persist();
         tm.commit();
@@ -80,16 +76,16 @@ public class ValueServiceTest extends FreshDb {
         bNode.sources=List.of(rootNode);
         bNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("root"));
         rootValue.persist();
-        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null,aNode,JqString.of("a"));
         aValue.sources=List.of(rootValue);
         aValue.persist();
-        ValueEntity bValue = new ValueEntity(null,bNode,new TextNode("b"));
+        ValueEntity bValue = new ValueEntity(null,bNode,JqString.of("b"));
         bValue.sources=List.of(rootValue);
         bValue.persist();
         // X is shared: both aValue and bValue are parents
-        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        ValueEntity xValue = new ValueEntity(null,aNode,JqString.of("x"));
         xValue.sources=List.of(aValue, bValue);
         xValue.persist();
         tm.commit();
@@ -115,13 +111,13 @@ public class ValueServiceTest extends FreshDb {
         aNode.sources=List.of(rootNode);
         aNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("root"));
         rootValue.persist();
-        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null,aNode,JqString.of("a"));
         aValue.sources=List.of(rootValue);
         aValue.persist();
         // X has only aValue as parent
-        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        ValueEntity xValue = new ValueEntity(null,aNode,JqString.of("x"));
         xValue.sources=List.of(aValue);
         xValue.persist();
         tm.commit();
@@ -147,20 +143,20 @@ public class ValueServiceTest extends FreshDb {
         bNode.sources=List.of(rootNode);
         bNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("root"));
         rootValue.persist();
-        ValueEntity aValue = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null,aNode,JqString.of("a"));
         aValue.sources=List.of(rootValue);
         aValue.persist();
-        ValueEntity bValue = new ValueEntity(null,bNode,new TextNode("b"));
+        ValueEntity bValue = new ValueEntity(null,bNode,JqString.of("b"));
         bValue.sources=List.of(rootValue);
         bValue.persist();
         // X is shared between aValue and bValue
-        ValueEntity xValue = new ValueEntity(null,aNode,new TextNode("x"));
+        ValueEntity xValue = new ValueEntity(null,aNode,JqString.of("x"));
         xValue.sources=List.of(aValue, bValue);
         xValue.persist();
         // Y is exclusive to aValue
-        ValueEntity yValue = new ValueEntity(null,aNode,new TextNode("y"));
+        ValueEntity yValue = new ValueEntity(null,aNode,JqString.of("y"));
         yValue.sources=List.of(aValue);
         yValue.persist();
         tm.commit();
@@ -189,20 +185,20 @@ public class ValueServiceTest extends FreshDb {
         bNode.sources = List.of(rootNode);
         bNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null, rootNode, new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqString.of("root"));
         rootValue.persist();
-        ValueEntity aValue = new ValueEntity(null, aNode, new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null, aNode, JqString.of("a"));
         aValue.sources = List.of(rootValue);
         aValue.persist();
-        ValueEntity bValue = new ValueEntity(null, bNode, new TextNode("b"));
+        ValueEntity bValue = new ValueEntity(null, bNode, JqString.of("b"));
         bValue.sources = List.of(rootValue);
         bValue.persist();
         // shared: child of both aValue and bValue
-        ValueEntity sharedValue = new ValueEntity(null, aNode, new TextNode("shared"));
+        ValueEntity sharedValue = new ValueEntity(null, aNode, JqString.of("shared"));
         sharedValue.sources = List.of(aValue, bValue);
         sharedValue.persist();
         // exclusive: child of aValue only
-        ValueEntity exclusiveValue = new ValueEntity(null, aNode, new TextNode("exclusive"));
+        ValueEntity exclusiveValue = new ValueEntity(null, aNode, JqString.of("exclusive"));
         exclusiveValue.sources = List.of(aValue);
         exclusiveValue.persist();
         tm.commit();
@@ -238,21 +234,21 @@ public class ValueServiceTest extends FreshDb {
         bNode.sources = List.of(rootNode);
         bNode.persist();
 
-        ValueEntity rootValue = new ValueEntity(null, rootNode, new TextNode("root"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqString.of("root"));
         rootValue.persist();
         // aValue is the purge target
-        ValueEntity aValue = new ValueEntity(null, aNode, new TextNode("a"));
+        ValueEntity aValue = new ValueEntity(null, aNode, JqString.of("a"));
         aValue.sources = List.of(rootValue);
         aValue.persist();
-        ValueEntity bValue = new ValueEntity(null, bNode, new TextNode("b"));
+        ValueEntity bValue = new ValueEntity(null, bNode, JqString.of("b"));
         bValue.sources = List.of(rootValue);
         bValue.persist();
         // child only reachable via aValue
-        ValueEntity childOfA = new ValueEntity(null, aNode, new TextNode("childOfA"));
+        ValueEntity childOfA = new ValueEntity(null, aNode, JqString.of("childOfA"));
         childOfA.sources = List.of(aValue);
         childOfA.persist();
         // shared child with external parent bValue
-        ValueEntity sharedChild = new ValueEntity(null, aNode, new TextNode("shared"));
+        ValueEntity sharedChild = new ValueEntity(null, aNode, JqString.of("shared"));
         sharedChild.sources = List.of(aValue, bValue);
         sharedChild.persist();
         tm.commit();
@@ -279,12 +275,11 @@ public class ValueServiceTest extends FreshDb {
     }
 
     @Test
-    public void lazy_data() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+    public void lazy_data() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
-        ObjectMapper objectMapper = new ObjectMapper();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,objectMapper.readTree("{\"this\":{ \"is\":{\"silly\":\"yes\"}}}"));
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqValues.parse("{\"this\":{ \"is\":{\"silly\":\"yes\"}}}"));
         rootValue01.persist();
         tm.commit();
 
@@ -302,7 +297,7 @@ public class ValueServiceTest extends FreshDb {
     }
 
     @Test
-    public void getAncestor_single_ancestor() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+    public void getAncestor_single_ancestor() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -315,32 +310,32 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity abcNode = new JqNode("abc");
         abcNode.sources=List.of(abNode);
         abcNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,objectMapper.readTree("111"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqValues.parse("111"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,objectMapper.readTree("222"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqValues.parse("222"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,objectMapper.readTree("11"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqValues.parse("11"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
 
-        ValueEntity aValue02 = new ValueEntity(null,aNode,objectMapper.readTree("22"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqValues.parse("22"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity abValue01 = new ValueEntity(null,abNode,objectMapper.readTree("1"));
+        ValueEntity abValue01 = new ValueEntity(null,abNode,JqValues.parse("1"));
         abValue01.sources=List.of(aValue01);
         abValue01.persist();
-        ValueEntity abValue02 = new ValueEntity(null,abNode,objectMapper.readTree("2"));
+        ValueEntity abValue02 = new ValueEntity(null,abNode,JqValues.parse("2"));
         abValue02.sources=List.of(aValue02);
         abValue02.persist();
 
-        ValueEntity abcValue01 = new ValueEntity(null,abcNode,objectMapper.readTree("{\"a\":123,\"b\":456}"));//matching value to find fingerprint
+        ValueEntity abcValue01 = new ValueEntity(null,abcNode,JqValues.parse("{\"a\":123,\"b\":456}"));//matching value to find fingerprint
         abcValue01.sources=List.of(abValue01);
         abcValue01.persist();
-        ValueEntity abcValue02 = new ValueEntity(null,abcNode,objectMapper.readTree("{\"a\":123,\"b\":456}"));
+        ValueEntity abcValue02 = new ValueEntity(null,abcNode,JqValues.parse("{\"a\":123,\"b\":456}"));
         abcValue02.sources=List.of(abValue02);
         abcValue02.persist();
         tm.commit();
@@ -365,47 +360,47 @@ public class ValueServiceTest extends FreshDb {
         bNode.sources=List.of(rootNode);
         bNode.persist();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root01"));
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root01"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root02"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root02"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,new TextNode("a01"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqString.of("a01"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
-        ValueEntity aValue02 = new ValueEntity(null,aNode,new TextNode("a02"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqString.of("a02"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity bValue01 = new ValueEntity(null,bNode,new TextNode("b01"));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,JqString.of("b01"));
         bValue01.sources=List.of(rootValue01);
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,new TextNode("b02"));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,JqString.of("b02"));
         bValue02.sources=List.of(rootValue02);
         bValue02.persist();
 
-        List<JsonNode> jsons = valueService.getGroupedValues(rootNode.id);
+        List<JqValue> jsons = valueService.getGroupedValues(rootNode.id);
 
         assertEquals(2,jsons.size(),"expect to find two entries: "+jsons);
 
-        JsonNode entry = jsons.get(0);
+        JqValue entry = jsons.get(0);
         assertNotNull(entry);
-        assertInstanceOf(ObjectNode.class,entry);
-        ObjectNode obj =  (ObjectNode) entry;
-        assertTrue(obj.has("a"),"first entry should have a field: "+obj.toString());
-        assertTrue(obj.has("b"),"first entry should have b field: "+obj.toString());
+        assertInstanceOf(JqObject.class,entry);
+        JqObject obj =  (JqObject) entry;
+        assertTrue(obj.has("a"),"first entry should have a field: "+obj.toJsonString());
+        assertTrue(obj.has("b"),"first entry should have b field: "+obj.toJsonString());
         entry = jsons.get(1);
         assertNotNull(entry);
-        assertInstanceOf(ObjectNode.class,entry);
-        obj =  (ObjectNode) entry;
-        assertTrue(obj.has("a"),"second entry should have a field: "+obj.toString());
-        assertTrue(obj.has("b"),"second entry should have b field: "+obj.toString());
+        assertInstanceOf(JqObject.class,entry);
+        obj =  (JqObject) entry;
+        assertTrue(obj.has("a"),"second entry should have a field: "+obj.toJsonString());
+        assertTrue(obj.has("b"),"second entry should have b field: "+obj.toJsonString());
 
         tm.commit();
     }
 
     @Test
-    public void findMatchingFingerprint_deep_ancestry_json_value() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint_deep_ancestry_json_value() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -418,32 +413,32 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity abcNode = new JqNode("abc");
         abcNode.sources=List.of(abNode);
         abcNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,objectMapper.readTree("111"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqValues.parse("111"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,objectMapper.readTree("222"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqValues.parse("222"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,objectMapper.readTree("11"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqValues.parse("11"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
 
-        ValueEntity aValue02 = new ValueEntity(null,aNode,objectMapper.readTree("22"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqValues.parse("22"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity abValue01 = new ValueEntity(null,abNode,objectMapper.readTree("1"));
+        ValueEntity abValue01 = new ValueEntity(null,abNode,JqValues.parse("1"));
         abValue01.sources=List.of(aValue01);
         abValue01.persist();
-        ValueEntity abValue02 = new ValueEntity(null,abNode,objectMapper.readTree("2"));
+        ValueEntity abValue02 = new ValueEntity(null,abNode,JqValues.parse("2"));
         abValue02.sources=List.of(aValue02);
         abValue02.persist();
 
-        ValueEntity abcValue01 = new ValueEntity(null,abcNode,objectMapper.readTree("{\"a\":123,\"b\":456}"));//matching value to find fingerprint
+        ValueEntity abcValue01 = new ValueEntity(null,abcNode,JqValues.parse("{\"a\":123,\"b\":456}"));//matching value to find fingerprint
         abcValue01.sources=List.of(abValue01);
         abcValue01.persist();
-        ValueEntity abcValue02 = new ValueEntity(null,abcNode,objectMapper.readTree("{\"a\":123,\"b\":456}"));
+        ValueEntity abcValue02 = new ValueEntity(null,abcNode,JqValues.parse("{\"a\":123,\"b\":456}"));
         abcValue02.sources=List.of(abValue02);
         abcValue02.persist();
         tm.commit();
@@ -460,7 +455,7 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
-    public void findMatchingFingerprint_integer_value() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint_integer_value() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -470,25 +465,25 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity abNode = new JqNode("ab");
         abNode.sources=List.of(aNode);
         abNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,objectMapper.readTree("111"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqValues.parse("111"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,objectMapper.readTree("222"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqValues.parse("222"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,objectMapper.readTree("11"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqValues.parse("11"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
 
-        ValueEntity aValue02 = new ValueEntity(null,aNode,objectMapper.readTree("22"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqValues.parse("22"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity abValue01 = new ValueEntity(null,abNode,objectMapper.readTree("67"));
+        ValueEntity abValue01 = new ValueEntity(null,abNode,JqValues.parse("67"));
         abValue01.sources=List.of(aValue01);
         abValue01.persist();
-        ValueEntity abValue02 = new ValueEntity(null,abNode,objectMapper.readTree("67"));
+        ValueEntity abValue02 = new ValueEntity(null,abNode,JqValues.parse("67"));
         abValue02.sources=List.of(aValue02);
         abValue02.persist();
         tm.commit();
@@ -521,36 +516,36 @@ public class ValueServiceTest extends FreshDb {
         bbNode.sources=List.of(bNode);
         bbNode.persist();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root1"));
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root1"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root2"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root2"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,new TextNode("a1"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqString.of("a1"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
-        ValueEntity aValue02 = new ValueEntity(null,aNode,new TextNode("a2"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqString.of("a2"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity aaValue01 = new ValueEntity(null,aaNode,new TextNode("fp"));
+        ValueEntity aaValue01 = new ValueEntity(null,aaNode,JqString.of("fp"));
         aaValue01.sources=List.of(aValue01);
         aaValue01.persist();
-        ValueEntity aaValue02 = new ValueEntity(null,aaNode,new TextNode("fp"));
+        ValueEntity aaValue02 = new ValueEntity(null,aaNode,JqString.of("fp"));
         aaValue02.sources=List.of(aValue02);
         aaValue02.persist();
 
-        ValueEntity bValue01 = new ValueEntity(null,bNode,new TextNode("b1"));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,JqString.of("b1"));
         bValue01.sources=List.of(rootValue01);
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,new TextNode("b2"));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,JqString.of("b2"));
         bValue02.sources=List.of(rootValue02);
         bValue02.persist();
 
-        ValueEntity bbValue01 = new ValueEntity(null,bbNode,new TextNode("bb1"));
+        ValueEntity bbValue01 = new ValueEntity(null,bbNode,JqString.of("bb1"));
         bbValue01.sources=List.of(bValue01);
         bbValue01.persist();
-        ValueEntity bbValue02 = new ValueEntity(null,bbNode,new TextNode("bb2"));
+        ValueEntity bbValue02 = new ValueEntity(null,bbNode,JqString.of("bb2"));
         bbValue02.sources=List.of(bValue02);
         bbValue02.persist();
         tm.commit();
@@ -562,7 +557,7 @@ public class ValueServiceTest extends FreshDb {
     }
 
     @Test
-    public void findMatchingFingerprint() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
 
         NodeGroupEntity group = new NodeGroupEntity("findMatchingFingerprint");
@@ -576,25 +571,25 @@ public class ValueServiceTest extends FreshDb {
         bNode.group = group;
         bNode.sources=List.of(rootNode);
         bNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root1"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root1"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root2"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root2"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqString.of("a"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
 
-        ValueEntity aValue02 = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqString.of("a"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity bValue01 = new ValueEntity(null,bNode,new TextNode("b1"));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,JqString.of("b1"));
         bValue01.sources=List.of(rootValue01);
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,new TextNode("b2"));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,JqString.of("b2"));
         bValue02.sources=List.of(rootValue02);
         bValue02.persist();
         tm.commit();
@@ -612,7 +607,7 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
-    public void findMatchingFingerprint_sibling() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint_sibling() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist(rootNode);
@@ -625,33 +620,33 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity cNode = new JqNode("c");
         cNode.sources=List.of(rootNode);
         cNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root1"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root1"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root2"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root2"));
         rootValue02.persist();
 
-        ValueEntity aValue01 = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,JqString.of("a"));
         aValue01.sources=List.of(rootValue01);
         aValue01.persist();
 
-        ValueEntity aValue02 = new ValueEntity(null,aNode,new TextNode("a"));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,JqString.of("a"));
         aValue02.sources=List.of(rootValue02);
         aValue02.persist();
 
-        ValueEntity bValue01 = new ValueEntity(null,bNode,new TextNode("b1"));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,JqString.of("b1"));
         bValue01.sources=List.of(rootValue01);
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,new TextNode("b2"));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,JqString.of("b2"));
         bValue02.sources=List.of(rootValue02);
         bValue02.persist();
 
 
-        ValueEntity cValue01 = new ValueEntity(null,cNode,new TextNode("c1"));
+        ValueEntity cValue01 = new ValueEntity(null,cNode,JqString.of("c1"));
         cValue01.sources=List.of(rootValue01);
         cValue01.persist();
-        ValueEntity cValue02 = new ValueEntity(null,cNode,new TextNode("c2"));
+        ValueEntity cValue02 = new ValueEntity(null,cNode,JqString.of("c2"));
         cValue02.sources=List.of(rootValue02);
         cValue02.persist();
 
@@ -671,7 +666,7 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
-    public void findMatchingFingerprint_sorting_cousin_reverse() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+    public void findMatchingFingerprint_sorting_cousin_reverse() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -684,35 +679,35 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity caNode = new JqNode("c",".ca",List.of(cNode,aNode));
         caNode.persist();
 
-        ObjectMapper objectMapper = new ObjectMapper();
+
         ValueEntity rootValue01 = new ValueEntity(null,rootNode,
-            objectMapper.readTree("""
+            JqValues.parse("""
             { "a" : "a", "b" : "b1", "c" : "c1", "ca" : "ca1" }
             """));
         ValueEntity rootValue02 = new ValueEntity(null,rootNode,
-                objectMapper.readTree("""
+                JqValues.parse("""
             { "a" : "a", "b" : "b2", "c" : "c1", "ca" : "ca2" }
             """));
         rootValue01.persist();
         // a values
-        ValueEntity aValue01 = new ValueEntity(null,aNode,rootValue01.data.get("a"),List.of(rootValue01));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,rootValue01.data.getField("a"),List.of(rootValue01));
         aValue01.persist();
-        ValueEntity aValue02 = new ValueEntity(null,aNode,rootValue02.data.get("a"),List.of(rootValue02));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,rootValue02.data.getField("a"),List.of(rootValue02));
         aValue02.persist();
         // b values
-        ValueEntity bValue01 = new ValueEntity(null,bNode,rootValue01.data.get("b"),List.of(rootValue01));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,rootValue01.data.getField("b"),List.of(rootValue01));
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,rootValue02.data.get("b"),List.of(rootValue02));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,rootValue02.data.getField("b"),List.of(rootValue02));
         bValue02.persist();
         // c values
-        ValueEntity cValue01 = new ValueEntity(null,cNode,rootValue01.data.get("c"),List.of(rootValue01));
+        ValueEntity cValue01 = new ValueEntity(null,cNode,rootValue01.data.getField("c"),List.of(rootValue01));
         cValue01.persist();
-        ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.get("c"),List.of(rootValue02));
+        ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.getField("c"),List.of(rootValue02));
         cValue02.persist();
         // ca values
-        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.get("ca"),List.of(rootValue01));
+        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(rootValue01));
         caValue01.persist();
-        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.get("ca"),List.of(rootValue02));
+        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(rootValue02));
         caValue02.persist();
 
         tm.commit();
@@ -729,7 +724,7 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
-    public void findMatchingFingerprint_sorting_cousin() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint_sorting_cousin() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -742,35 +737,35 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity caNode = new JqNode("c",".ca",List.of(cNode,aNode));
         caNode.persist();
 
-        ObjectMapper objectMapper = new ObjectMapper();
+
         ValueEntity rootValue01 = new ValueEntity(null,rootNode,
-                objectMapper.readTree("""
+                JqValues.parse("""
             { "a" : "a", "b" : "b1", "c" : "c1", "ca" : "ca1" }
             """));
         ValueEntity rootValue02 = new ValueEntity(null,rootNode,
-                objectMapper.readTree("""
+                JqValues.parse("""
             { "a" : "a", "b" : "b2", "c" : "c1", "ca" : "ca2" }
             """));
         rootValue01.persist();
         // a values
-        ValueEntity aValue01 = new ValueEntity(null,aNode,rootValue01.data.get("a"),List.of(rootValue01));
+        ValueEntity aValue01 = new ValueEntity(null,aNode,rootValue01.data.getField("a"),List.of(rootValue01));
         aValue01.persist();
-        ValueEntity aValue02 = new ValueEntity(null,aNode,rootValue02.data.get("a"),List.of(rootValue02));
+        ValueEntity aValue02 = new ValueEntity(null,aNode,rootValue02.data.getField("a"),List.of(rootValue02));
         aValue02.persist();
         // b values
-        ValueEntity bValue01 = new ValueEntity(null,bNode,rootValue01.data.get("b"),List.of(rootValue01));
+        ValueEntity bValue01 = new ValueEntity(null,bNode,rootValue01.data.getField("b"),List.of(rootValue01));
         bValue01.persist();
-        ValueEntity bValue02 = new ValueEntity(null,bNode,rootValue02.data.get("b"),List.of(rootValue02));
+        ValueEntity bValue02 = new ValueEntity(null,bNode,rootValue02.data.getField("b"),List.of(rootValue02));
         bValue02.persist();
         // c values
-        ValueEntity cValue01 = new ValueEntity(null,cNode,rootValue01.data.get("c"),List.of(rootValue01));
+        ValueEntity cValue01 = new ValueEntity(null,cNode,rootValue01.data.getField("c"),List.of(rootValue01));
         cValue01.persist();
-        ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.get("c"),List.of(rootValue02));
+        ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.getField("c"),List.of(rootValue02));
         cValue02.persist();
         // ca values
-        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.get("ca"),List.of(rootValue01));
+        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(rootValue01));
         caValue01.persist();
-        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.get("ca"),List.of(rootValue02));
+        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(rootValue02));
         caValue02.persist();
 
         tm.commit();
@@ -788,7 +783,7 @@ public class ValueServiceTest extends FreshDb {
 
     }
     @Test
-    public void findMatchingFingerprint_dataset_sibling() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+    public void findMatchingFingerprint_dataset_sibling() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeGroupEntity group = new NodeGroupEntity("findMatchingFingeprint_dataset_siblilng");
         group.persist();
@@ -805,30 +800,30 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity dNode = new JqNode("d",".d",List.of(aNode));
         //dNode.group=group;
         dNode.persist();
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue = new ValueEntity(null,rootNode,objectMapper.readTree("""
+
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse("""
                 { "a": [ { "b" : 1, "c" : "cat", "d" : 1}, { "b" : 2, "c" : "cat", "d" : 2 } ] }
                 """));
         rootValue.persist();
-        ValueEntity a1 = new ValueEntity(null,aNode,rootValue.data.get("a").get(0),List.of(rootValue));
+        ValueEntity a1 = new ValueEntity(null,aNode,rootValue.data.getField("a").getElement(0),List.of(rootValue));
         a1.persist();
-        ValueEntity a2 = new ValueEntity(null,aNode,rootValue.data.get("a").get(1),List.of(rootValue));
+        ValueEntity a2 = new ValueEntity(null,aNode,rootValue.data.getField("a").getElement(1),List.of(rootValue));
         a2.persist();
 
-        ValueEntity b1 = new ValueEntity(null,bNode,a1.data.get("b"),List.of(a1));
+        ValueEntity b1 = new ValueEntity(null,bNode,a1.data.getField("b"),List.of(a1));
         b1.persist();
-        ValueEntity b2 = new ValueEntity(null,bNode,a2.data.get("b"),List.of(a2));
+        ValueEntity b2 = new ValueEntity(null,bNode,a2.data.getField("b"),List.of(a2));
         b2.persist();
 
-        ValueEntity c1 = new ValueEntity(null,cNode,a1.data.get("c"),List.of(a1));
+        ValueEntity c1 = new ValueEntity(null,cNode,a1.data.getField("c"),List.of(a1));
         c1.persist();
-        ValueEntity c2 = new ValueEntity(null,cNode,a2.data.get("c"),List.of(a2));
+        ValueEntity c2 = new ValueEntity(null,cNode,a2.data.getField("c"),List.of(a2));
         c2.persist();
 
-        ValueEntity d1 = new ValueEntity(null,cNode,a1.data.get("d"),List.of(a1));
+        ValueEntity d1 = new ValueEntity(null,cNode,a1.data.getField("d"),List.of(a1));
         d1.persist();
-        ValueEntity d2 = new ValueEntity(null,cNode,a2.data.get("d"),List.of(a2));
+        ValueEntity d2 = new ValueEntity(null,cNode,a2.data.getField("d"),List.of(a2));
         d2.persist();
         tm.commit();
 
@@ -848,7 +843,7 @@ public class ValueServiceTest extends FreshDb {
         assertTrue(found.contains(b2),"missing b2");
     }
     @Test
-    public void findMatchingFingerprint_dataset_cousin() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void findMatchingFingerprint_dataset_cousin() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeGroupEntity group = new NodeGroupEntity("findMatchingFingerprint_dataset_cousin");
         group.persist();
@@ -869,80 +864,80 @@ public class ValueServiceTest extends FreshDb {
         caNode.group=group;
         caNode.persist();
 
-        ObjectMapper objectMapper = new ObjectMapper();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root1"));
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root1"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root2"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root2"));
         rootValue02.persist();
 
-        ValueEntity aValue011 = new ValueEntity(null,aNode,new TextNode("a11"));
+        ValueEntity aValue011 = new ValueEntity(null,aNode,JqString.of("a11"));
         aValue011.sources=List.of(rootValue01);
         aValue011.persist();
-        ValueEntity aValue012 = new ValueEntity(null,aNode,new TextNode("a12"));
+        ValueEntity aValue012 = new ValueEntity(null,aNode,JqString.of("a12"));
         aValue012.sources=List.of(rootValue01);
         aValue012.persist();
 
-        ValueEntity aValue021 = new ValueEntity(null,aNode,new TextNode("a21"));
+        ValueEntity aValue021 = new ValueEntity(null,aNode,JqString.of("a21"));
         aValue021.sources=List.of(rootValue02);
         aValue021.persist();
-        ValueEntity aValue022 = new ValueEntity(null,aNode,new TextNode("a22"));
+        ValueEntity aValue022 = new ValueEntity(null,aNode,JqString.of("a22"));
         aValue022.sources=List.of(rootValue02);
         aValue022.persist();
 
-        ValueEntity bValue011 = new ValueEntity(null,bNode,new TextNode("b11"));
+        ValueEntity bValue011 = new ValueEntity(null,bNode,JqString.of("b11"));
         bValue011.sources=List.of(aValue011);
         bValue011.persist();
-        ValueEntity bValue012 = new ValueEntity(null,bNode,new TextNode("b12"));
+        ValueEntity bValue012 = new ValueEntity(null,bNode,JqString.of("b12"));
         bValue012.sources=List.of(aValue012);
         bValue012.persist();
 
-        ValueEntity bValue021 = new ValueEntity(null,bNode,new TextNode("b21"));
+        ValueEntity bValue021 = new ValueEntity(null,bNode,JqString.of("b21"));
         bValue021.sources=List.of(aValue021);
         bValue021.persist();
-        ValueEntity bValue022 = new ValueEntity(null,bNode,new TextNode("b22"));
+        ValueEntity bValue022 = new ValueEntity(null,bNode,JqString.of("b22"));
         bValue022.sources=List.of(aValue022);
         bValue022.persist();
 
-        ValueEntity baValue011 = new ValueEntity(null,baNode,new TextNode("ba11"));
+        ValueEntity baValue011 = new ValueEntity(null,baNode,JqString.of("ba11"));
         baValue011.sources=List.of(bValue011);
         baValue011.persist();
-        ValueEntity baValue012 = new ValueEntity(null,baNode,new TextNode("ba12"));
+        ValueEntity baValue012 = new ValueEntity(null,baNode,JqString.of("ba12"));
         baValue012.sources=List.of(bValue012);
         baValue012.persist();
 
-        ValueEntity baValue021 = new ValueEntity(null,baNode,new TextNode("ba21"));
+        ValueEntity baValue021 = new ValueEntity(null,baNode,JqString.of("ba21"));
         baValue021.sources=List.of(bValue021);
         baValue021.persist();
-        ValueEntity baValue022 = new ValueEntity(null,baNode,new TextNode("ba22"));
+        ValueEntity baValue022 = new ValueEntity(null,baNode,JqString.of("ba22"));
         baValue022.sources=List.of(bValue022);
         baValue022.persist();
 
-        ValueEntity cValue011 = new ValueEntity(null,cNode,new TextNode("c11"));
+        ValueEntity cValue011 = new ValueEntity(null,cNode,JqString.of("c11"));
         cValue011.sources=List.of(aValue011);
         cValue011.persist();
-        ValueEntity cValue012 = new ValueEntity(null,cNode,new TextNode("c12"));
+        ValueEntity cValue012 = new ValueEntity(null,cNode,JqString.of("c12"));
         cValue012.sources=List.of(aValue012);
         cValue012.persist();
 
-        ValueEntity cValue021 = new ValueEntity(null,cNode,new TextNode("c21"));
+        ValueEntity cValue021 = new ValueEntity(null,cNode,JqString.of("c21"));
         cValue021.sources=List.of(aValue021);
         cValue021.persist();
-        ValueEntity cValue022 = new ValueEntity(null,cNode,new TextNode("c22"));
+        ValueEntity cValue022 = new ValueEntity(null,cNode,JqString.of("c22"));
         cValue022.sources=List.of(aValue022);
         cValue022.persist();
 
-        ValueEntity caValue011 = new ValueEntity(null,caNode,new TextNode("ca11"));
+        ValueEntity caValue011 = new ValueEntity(null,caNode,JqString.of("ca11"));
         caValue011.sources=List.of(cValue011);
         caValue011.persist();
-        ValueEntity caValue012 = new ValueEntity(null,caNode,new TextNode("fp"));
+        ValueEntity caValue012 = new ValueEntity(null,caNode,JqString.of("fp"));
         caValue012.sources=List.of(cValue012);
         caValue012.persist();
 
-        ValueEntity caValue021 = new ValueEntity(null,caNode,new TextNode("ca21"));
+        ValueEntity caValue021 = new ValueEntity(null,caNode,JqString.of("ca21"));
         caValue021.sources=List.of(cValue021);
         caValue021.persist();
-        ValueEntity caValue022 = new ValueEntity(null,caNode,new TextNode("fp"));
+        ValueEntity caValue022 = new ValueEntity(null,caNode,JqString.of("fp"));
         caValue022.sources=List.of(cValue022);
         caValue022.persist();
 
@@ -1101,14 +1096,14 @@ public class ValueServiceTest extends FreshDb {
         node.persist();
 
         // root → child → grandchild, all on the same node
-        ValueEntity rootValue = new ValueEntity(null, node, new TextNode("root-data"));
+        ValueEntity rootValue = new ValueEntity(null, node, JqString.of("root-data"));
         rootValue.persist();
 
-        ValueEntity childValue = new ValueEntity(null, node, new TextNode("child-data"));
+        ValueEntity childValue = new ValueEntity(null, node, JqString.of("child-data"));
         childValue.sources = List.of(rootValue);
         childValue.persist();
 
-        ValueEntity grandchildValue = new ValueEntity(null, node, new TextNode("grandchild-data"));
+        ValueEntity grandchildValue = new ValueEntity(null, node, JqString.of("grandchild-data"));
         grandchildValue.sources = List.of(childValue);
         grandchildValue.persist();
         tm.commit();
@@ -1132,14 +1127,14 @@ public class ValueServiceTest extends FreshDb {
         NodeEntity node = new JqNode("sametype");
         node.persist();
 
-        ValueEntity rootValue = new ValueEntity(null, node, new TextNode("root-data"));
+        ValueEntity rootValue = new ValueEntity(null, node, JqString.of("root-data"));
         rootValue.persist();
 
-        ValueEntity childValue = new ValueEntity(null, node, new TextNode("child-data"));
+        ValueEntity childValue = new ValueEntity(null, node, JqString.of("child-data"));
         childValue.sources = List.of(rootValue);
         childValue.persist();
 
-        ValueEntity grandchildValue = new ValueEntity(null, node, new TextNode("grandchild-data"));
+        ValueEntity grandchildValue = new ValueEntity(null, node, JqString.of("grandchild-data"));
         grandchildValue.sources = List.of(childValue);
         grandchildValue.persist();
         tm.commit();
@@ -1296,17 +1291,17 @@ public class ValueServiceTest extends FreshDb {
         buildIdNode.sources = List.of(rootNode);
         buildIdNode.persist();
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
         root1.persist();
-        ValueEntity t1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        ValueEntity t1 = new ValueEntity(null, throughputNode, JqString.of("100"));
         t1.sources = List.of(root1);
         t1.persist();
-        ValueEntity b1 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        ValueEntity b1 = new ValueEntity(null, buildIdNode, JqString.of("201"));
         b1.sources = List.of(root1);
         b1.persist();
         tm.commit();
 
-        List<JsonNode> results = valueService.getGroupedValues(rootNode.id, List.of(throughputNode.id));
+        List<JqValue> results = valueService.getGroupedValues(rootNode.id, List.of(throughputNode.id));
 
         assertEquals(1, results.size(), "expect one row: " + results);
         assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));
@@ -1316,7 +1311,7 @@ public class ValueServiceTest extends FreshDb {
     @Test
     public void getGroupedValues_sorted() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException
     {
-        ObjectMapper om = new ObjectMapper();
+
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
@@ -1327,44 +1322,45 @@ public class ValueServiceTest extends FreshDb {
         buildIdNode.sources = List.of(rootNode);
         buildIdNode.persist();
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
         root1.persist();
-        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, JqString.of("100"));
         throughputv1.sources = List.of(root1);
         throughputv1.persist();
-        ValueEntity buildv1 = new ValueEntity(null, buildIdNode, new TextNode("202"));
+        ValueEntity buildv1 = new ValueEntity(null, buildIdNode, JqString.of("202"));
         buildv1.sources = List.of(root1);
         buildv1.persist();
 
-        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
         root2.persist();
-        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, new TextNode("101"));
+        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, JqString.of("101"));
         throughputv2.sources = List.of(root2);
         throughputv2.persist();
-        ValueEntity buildv2 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        ValueEntity buildv2 = new ValueEntity(null, buildIdNode, JqString.of("201"));
         buildv2.sources = List.of(root2);
         buildv2.persist();
 
-        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("r3"));
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("r3"));
         root3.persist();
-        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, new TextNode("102"));
+        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, JqString.of("102"));
         throughputv3.sources = List.of(root3);
         throughputv3.persist();
-        ValueEntity buildv3 = new ValueEntity(null, buildIdNode, new TextNode("200"));
+        ValueEntity buildv3 = new ValueEntity(null, buildIdNode, JqString.of("200"));
         buildv3.sources = List.of(root3);
         buildv3.persist();
         tm.commit();
 
-        List<JsonNode> results = valueService.getGroupedValues(
+        List<JqValue> results = valueService.getGroupedValues(
                 rootNode.id,
                 List.of(throughputNode.id, buildIdNode.id),
                 buildIdNode.id
         );
 
         assertEquals(3, results.size(), "expect 3 rows: " + results);
-        assertEquals(200, results.get(0).get("build_id").asInt(), "first row should be build_id 200: " + results);
-        assertEquals(201, results.get(1).get("build_id").asInt(), "second row should be build_id 201: " + results);
-        assertEquals(202, results.get(2).get("build_id").asInt(), "third row should be build_id 202: " + results);
+        // Grouped values may return numeric values as strings depending on DB aggregation
+        assertEquals("200", results.get(0).getField("build_id").asText(), "first row should be build_id 200: " + results);
+        assertEquals("201", results.get(1).getField("build_id").asText(), "second row should be build_id 201: " + results);
+        assertEquals("202", results.get(2).getField("build_id").asText(), "third row should be build_id 202: " + results);
     }
 
     @Test
@@ -1380,35 +1376,35 @@ public class ValueServiceTest extends FreshDb {
         buildNode.sources = List.of(rootNode);
         buildNode.persist();
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
         root1.persist();
-        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        ValueEntity throughputv1 = new ValueEntity(null, throughputNode, JqString.of("100"));
         throughputv1.sources = List.of(root1);
         throughputv1.persist();
-        ValueEntity buildv1 = new ValueEntity(null, buildNode, new TextNode("101"));
+        ValueEntity buildv1 = new ValueEntity(null, buildNode, JqString.of("101"));
         buildv1.sources = List.of(root1);
         buildv1.persist();
 
-        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
         root2.persist();
-        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, new TextNode("200"));
+        ValueEntity throughputv2 = new ValueEntity(null, throughputNode, JqString.of("200"));
         throughputv2.sources = List.of(root2);
         throughputv2.persist();
-        ValueEntity buildv2 = new ValueEntity(null, buildNode, new TextNode("201"));
+        ValueEntity buildv2 = new ValueEntity(null, buildNode, JqString.of("201"));
         buildv2.sources = List.of(root2);
         buildv2.persist();
 
-        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("r3"));
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("r3"));
         root3.persist();
-        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, new TextNode("300"));
+        ValueEntity throughputv3 = new ValueEntity(null, throughputNode, JqString.of("300"));
         throughputv3.sources = List.of(root3);
         throughputv3.persist();
-        ValueEntity buildv3 = new ValueEntity(null, buildNode, new TextNode("301"));
+        ValueEntity buildv3 = new ValueEntity(null, buildNode, JqString.of("301"));
         buildv3.sources = List.of(root3);
         buildv3.persist();
         tm.commit();
 
-        List<JsonNode> results = valueService.getGroupedValues(rootNode.id, List.of());
+        List<JqValue> results = valueService.getGroupedValues(rootNode.id, List.of());
 
         assertEquals(3, results.size(), "expect 3 rows: " + results);
         assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));
@@ -1441,27 +1437,27 @@ public class ValueServiceTest extends FreshDb {
         buildIdNode.sources = List.of(rootNode);
         buildIdNode.persist();
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("r1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
         root1.persist();
-        ValueEntity t1 = new ValueEntity(null, throughputNode, new TextNode("100"));
+        ValueEntity t1 = new ValueEntity(null, throughputNode, JqString.of("100"));
         t1.sources = List.of(root1);
         t1.persist();
-        ValueEntity b1 = new ValueEntity(null, buildIdNode, new TextNode("201"));
+        ValueEntity b1 = new ValueEntity(null, buildIdNode, JqString.of("201"));
         b1.sources = List.of(root1);
         b1.persist();
 
-        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("r2"));
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
         root2.persist();
-        ValueEntity t2 = new ValueEntity(null, throughputNode, new TextNode("200"));
+        ValueEntity t2 = new ValueEntity(null, throughputNode, JqString.of("200"));
         t2.sources = List.of(root2);
         t2.persist();
-        ValueEntity b2 = new ValueEntity(null, buildIdNode, new TextNode("202"));
+        ValueEntity b2 = new ValueEntity(null, buildIdNode, JqString.of("202"));
         b2.sources = List.of(root2);
         b2.persist();
 
         tm.commit();
 
-        List<JsonNode> results = valueService.getLabelValues(folder.id, null, null, null);
+        List<JqValue> results = valueService.getLabelValues(folder.id, null, null, null);
 
         assertEquals(2, results.size(), "expect two rows: " + results);
         assertTrue(results.get(0).has("throughput"), "row should have throughput: " + results.get(0));

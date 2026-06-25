@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -29,7 +28,23 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 public class RestEndpointTest extends FreshDb {
 
-    private static final ObjectMapper mapper = new ObjectMapper();
+    /** Serialize a View record to JSON string for REST request bodies. */
+    private static String viewToJson(io.hyperfoil.tools.h5m.api.View view) {
+        JqValue[] components = view.components() == null ? new JqValue[0] : view.components().stream().map(c -> (JqValue) JqObject.builder()
+                .put("id", c.id() != null ? JqNumber.of(c.id()) : JqNull.NULL)
+                .put("nodeId", c.nodeId() != null ? JqNumber.of(c.nodeId()) : JqNull.NULL)
+                .put("nodeName", c.nodeName() != null ? JqString.of(c.nodeName()) : JqNull.NULL)
+                .put("nodeType", c.nodeType() != null ? JqString.of(c.nodeType()) : JqNull.NULL)
+                .put("headerName", c.headerName() != null ? JqString.of(c.headerName()) : JqNull.NULL)
+                .put("headerOrder", JqNumber.of(c.headerOrder()))
+                .build()).toArray(JqValue[]::new);
+        return JqObject.builder()
+                .put("id", view.id() != null ? JqNumber.of(view.id()) : JqNull.NULL)
+                .put("name", JqString.of(view.name()))
+                .put("folderId", view.folderId() != null ? JqNumber.of(view.folderId()) : JqNull.NULL)
+                .put("components", JqArray.of(components))
+                .build().toJsonString();
+    }
 
     @Inject
     TransactionManager tm;
@@ -278,9 +293,9 @@ public class RestEndpointTest extends FreshDb {
         JqNode jqNode = new JqNode("child", ".foo");
         jqNode.sources = List.of(rootNode);
         jqNode.persist();
-        ValueEntity rootValue = new ValueEntity(null, rootNode, mapper.readTree("{\"foo\": \"bar\"}"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, io.hyperfoil.tools.jjq.value.JqValues.parse("{\"foo\": \"bar\"}"));
         rootValue.persist();
-        ValueEntity childValue = new ValueEntity(null, jqNode, mapper.readTree("\"bar\""));
+        ValueEntity childValue = new ValueEntity(null, jqNode, io.hyperfoil.tools.jjq.value.JqValues.parse("\"bar\""));
         childValue.sources = List.of(rootValue);
         childValue.persist();
         tm.commit();
@@ -297,7 +312,7 @@ public class RestEndpointTest extends FreshDb {
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        ValueEntity rootValue = new ValueEntity(null, rootNode, mapper.readTree("{\"a\": 1}"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, io.hyperfoil.tools.jjq.value.JqValues.parse("{\"a\": 1}"));
         rootValue.persist();
         tm.commit();
 
@@ -457,7 +472,7 @@ public class RestEndpointTest extends FreshDb {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            JsonNode runData = mapper.readTree(is);
+            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
                     .orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -480,7 +495,7 @@ public class RestEndpointTest extends FreshDb {
 
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
-                JsonNode runData = mapper.readTree(is);
+                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
                 folderService.upload("rhivos-perf-comprehensive", "$", runData)
                         .orTimeout(30, TimeUnit.SECONDS).join();
             }
@@ -501,7 +516,7 @@ public class RestEndpointTest extends FreshDb {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            JsonNode runData = mapper.readTree(is);
+            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
                     .orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -574,7 +589,7 @@ public class RestEndpointTest extends FreshDb {
         tm.commit();
 
         // Create a view via REST
-        String viewJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String viewJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "test-view", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, userNodeId, null, null, "User", 0),
@@ -625,7 +640,7 @@ public class RestEndpointTest extends FreshDb {
         tm.commit();
 
         // Create view with user only
-        String createJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String createJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "updatable", null,
                 List.of(new io.hyperfoil.tools.h5m.api.ViewComponent(null, userNodeId, null, null, "User", 0))
         ));
@@ -639,7 +654,7 @@ public class RestEndpointTest extends FreshDb {
                 .extract().jsonPath().getLong("id");
 
         // Update to uuid + description
-        String updateJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String updateJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "updatable-renamed", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, uuidNodeId, null, null, "UUID", 0),
@@ -671,7 +686,7 @@ public class RestEndpointTest extends FreshDb {
         tm.commit();
 
         // Create view with user and uuid
-        String createJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String createJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "same-headers", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, userNodeId, null, null, "User", 0),
@@ -690,7 +705,7 @@ public class RestEndpointTest extends FreshDb {
         // Update with the same header names but reversed order — this previously
         // caused a unique constraint violation because Hibernate inserted new
         // components before deleting old ones with the same (view_id, header_name)
-        String updateJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String updateJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "same-headers", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, uuidNodeId, null, null, "UUID", 0),
@@ -721,7 +736,7 @@ public class RestEndpointTest extends FreshDb {
                 .filter(n -> "user".equals(n.name)).findFirst().get().id;
         tm.commit();
 
-        String createJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String createJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "deletable", null,
                 List.of(new io.hyperfoil.tools.h5m.api.ViewComponent(null, userNodeId, null, null, "User", 0))
         ));
@@ -774,7 +789,7 @@ public class RestEndpointTest extends FreshDb {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            JsonNode runData = mapper.readTree(is);
+            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
                     .orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -789,7 +804,7 @@ public class RestEndpointTest extends FreshDb {
         tm.commit();
 
         // Create a view with start_time and end_time
-        String viewJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String viewJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "data-view", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, startTimeNodeId, null, null, "Start Time", 0),
@@ -823,7 +838,7 @@ public class RestEndpointTest extends FreshDb {
         // Upload two runs
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
-                JsonNode runData = mapper.readTree(is);
+                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
                 folderService.upload("rhivos-perf-comprehensive", "$", runData)
                         .orTimeout(30, TimeUnit.SECONDS).join();
             }
@@ -836,7 +851,7 @@ public class RestEndpointTest extends FreshDb {
                 .filter(n -> "start_time".equals(n.name)).findFirst().get().id;
         tm.commit();
 
-        String viewJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String viewJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "multi-upload-view", null,
                 List.of(new io.hyperfoil.tools.h5m.api.ViewComponent(null, startTimeNodeId, null, null, "Start Time", 0))
         ));
@@ -872,7 +887,7 @@ public class RestEndpointTest extends FreshDb {
         tm.commit();
 
         // Create view with end_time at order 0 and start_time at order 1 (reversed)
-        String viewJson = mapper.writeValueAsString(new io.hyperfoil.tools.h5m.api.View(
+        String viewJson = viewToJson(new io.hyperfoil.tools.h5m.api.View(
                 null, "ordered-view", null,
                 List.of(
                         new io.hyperfoil.tools.h5m.api.ViewComponent(null, endTimeNodeId, null, null, "End", 0),

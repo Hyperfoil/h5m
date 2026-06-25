@@ -1,10 +1,11 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
+
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
 import io.quarkus.qute.Location;
@@ -36,7 +37,6 @@ import java.time.Duration;
 @ApplicationScoped
 public class GitHubIssuePlugin implements NotificationPlugin {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     @Inject
@@ -59,38 +59,43 @@ public class GitHubIssuePlugin implements NotificationPlugin {
 
     @Override
     public void send(ChangeNotification notification) {
-        String owner = extractField(notification.configData(), "owner");
-        String repo = extractField(notification.configData(), "repo");
-        String token = extractToken(notification.configSecrets());
+        String owner = notification.configData().get("owner").asString(null);
+        String repo = notification.configData().get("repo").asString(null);
+        if (notification.configSecrets() == null || !notification.configSecrets().has("token")) {
+            throw new IllegalArgumentException("GitHub issue secrets must contain a 'token' field");
+        }
+        String token = notification.configSecrets().get("token").asString(null);
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("GitHub issue secrets must contain a 'token' field");
+        }
         String title = buildTitle(notification);
         String body = buildBody(notification);
 
-        ObjectNode payload = MAPPER.createObjectNode();
-        payload.put("title", title);
-        payload.put("body", body);
+        JqObject.Builder payloadBuilder = JqObject.builder();
+        payloadBuilder.put("title", title);
+        payloadBuilder.put("body", body);
 
         // Add labels if configured
-        String labelsStr = extractField(notification.configData(), "labels");
-        if (labelsStr == null) {
-            payload.set("labels", MAPPER.createArrayNode().add("h5m"));
-        } else {
-            try {
-                JsonNode labels = MAPPER.readTree(notification.configData()).get("labels");
-                if (labels != null && labels.isArray()) {
-                    payload.set("labels", labels);
-                }
-            } catch (JsonProcessingException e) {
-                payload.set("labels", MAPPER.createArrayNode().add("h5m"));
+        JqValue labels = null;
+        if (notification.configData().has("labels")) {
+            JqValue configLabels = notification.configData().get("labels");
+            if (configLabels instanceof JqArray) {
+                labels = configLabels;
             }
         }
+        if (labels == null) {
+            labels = JqArray.of(JqString.of("h5m"));
+        }
+        payloadBuilder.put("labels", labels);
 
+        JqObject payload = payloadBuilder.build();
         String path = "/repos/" + owner + "/" + repo + "/issues";
 
         HttpResponse<Buffer> response = webClient.postAbs("https://api.github.com" + path)
             .putHeader("Content-Type", "application/vnd.github+json")
             .putHeader("Authorization", "Bearer " + token)
             .putHeader("User-Agent", "h5m")
-            .sendBuffer(Buffer.buffer(payload.toString()))
+            .sendBuffer(Buffer.buffer(payload.toJsonString()))
             .await().atMost(TIMEOUT);
 
         if (response.statusCode() >= 400) {
@@ -99,10 +104,13 @@ public class GitHubIssuePlugin implements NotificationPlugin {
         }
 
         try {
-            JsonNode responseJson = MAPPER.readTree(response.bodyAsString());
-            String issueUrl = responseJson.has("html_url") ? responseJson.get("html_url").asText() : path;
-            Log.infof("Created GitHub issue: %s", issueUrl);
-        } catch (JsonProcessingException e) {
+            JqValue responseJson = JqValues.parse(response.bodyAsString());
+            if (responseJson instanceof JqObject obj && obj.has("html_url")) {
+                Log.infof("Created GitHub issue: %s", obj.get("html_url").asString(""));
+            } else {
+                Log.infof("Created GitHub issue in %s (HTTP %d)", path, response.statusCode());
+            }
+        } catch (Exception e) {
             Log.infof("Created GitHub issue in %s (HTTP %d)", path, response.statusCode());
         }
     }
@@ -123,7 +131,8 @@ public class GitHubIssuePlugin implements NotificationPlugin {
     }
 
     private String buildTitle(ChangeNotification notification) {
-        String customTitle = extractField(notification.configData(), "title");
+        String customTitle = notification.configData().has("title")
+            ? notification.configData().get("title").asString(null) : null;
         if (customTitle != null && !customTitle.isBlank()) {
             return applyTemplate(customTitle, notification);
         }
@@ -157,24 +166,13 @@ public class GitHubIssuePlugin implements NotificationPlugin {
     private String extractField(String json, String field) {
         if (json == null) return null;
         try {
-            JsonNode node = MAPPER.readTree(json);
-            if (node.has(field)) {
-                return node.get(field).asText();
+            JqValue parsed = JqValues.parse(json);
+            if (parsed instanceof JqObject obj && obj.has(field)) {
+                return obj.get(field).asString("");
             }
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             // not valid JSON
         }
         return null;
-    }
-
-    private String extractToken(String secrets) {
-        if (secrets == null || secrets.isBlank()) {
-            throw new IllegalArgumentException("GitHub issue secrets must contain a 'token' field");
-        }
-        String token = extractField(secrets, "token");
-        if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("GitHub issue secrets must contain a 'token' field");
-        }
-        return token;
     }
 }

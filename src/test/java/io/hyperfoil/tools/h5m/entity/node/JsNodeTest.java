@@ -1,11 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.IntNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ValueNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import org.junit.jupiter.api.Disabled;
@@ -209,73 +204,69 @@ public class JsNodeTest {
         assertEquals(4, params.size(),"expected 4 values: "+params);
     }
     @Test
-    public void createParameters_destructure() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
+    public void createParameters_destructure() {
         Map<String, ValueEntity> values = Map.of(
-                "a",new ValueEntity(null,null,mapper.readTree("1")),
-                "b",new ValueEntity(null,null,mapper.readTree("2")),
-                "c",new ValueEntity(null,null,mapper.readTree("3"))
+                "a",new ValueEntity(null,null,JqValues.parse("1")),
+                "b",new ValueEntity(null,null,JqValues.parse("2")),
+                "c",new ValueEntity(null,null,JqValues.parse("3"))
         );
-        List<JsonNode> params = JsNode.createParameters("function({a,b},c){}",values,3);
+        List<JqValue> params = JsNode.createParameters("function({a,b},c){}",values,3);
         assertNotNull(params,"return should not be null");
         assertEquals(2,params.size(),"expected 2 values: "+params);
-        JsonNode node = params.get(0);
+        JqValue node = params.get(0);
         assertNotNull(node,"return should not be null");
-        assertInstanceOf(ObjectNode.class,node);
-        ObjectNode objectNode = (ObjectNode)node;
-        assertTrue(objectNode.has("a"),"expected a value: "+objectNode.toString());
-        assertEquals("1",objectNode.get("a").toString(),"expected a value: "+objectNode.toString());
-        assertTrue(objectNode.has("b"),"expected a value: "+objectNode.toString());
-        assertEquals("2",objectNode.get("b").toString(),"expected b value: "+objectNode.toString());
-        assertEquals("3",params.get(1).toString(),"expected b value: "+objectNode.toString());
+        assertInstanceOf(JqObject.class,node);
+        JqObject obj = (JqObject)node;
+        assertTrue(obj.has("a"),"expected a value: "+obj.toJsonString());
+        assertEquals("1",obj.get("a").toJsonString(),"expected a value: "+obj.toJsonString());
+        assertTrue(obj.has("b"),"expected a value: "+obj.toJsonString());
+        assertEquals("2",obj.get("b").toJsonString(),"expected b value: "+obj.toJsonString());
+        assertEquals("3",params.get(1).toJsonString(),"expected c value: "+obj.toJsonString());
     }
     @Test
-    public void createParameters_single_value_different_name() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
+    public void createParameters_single_value_different_name() {
         Map<String, ValueEntity> values = Map.of(
-                "a", new ValueEntity(null, null, mapper.readTree("1"))
+                "a", new ValueEntity(null, null, JqValues.parse("1"))
         );
-        List<JsonNode> params = JsNode.createParameters("function(v){return v;}",values,1);
+        List<JqValue> params = JsNode.createParameters("function(v){return v;}",values,1);
         assertNotNull(params,"return should not be null");
-        assertEquals(1,params.size(),"expected 2 values: "+params);
-        JsonNode node = params.get(0);
+        assertEquals(1,params.size(),"expected 1 value: "+params);
+        JqValue node = params.get(0);
         assertNotNull(node,"return should not be null");
-        assertInstanceOf(IntNode.class,node);
+        assertInstanceOf(JqNumber.class,node);
     }
 
     @Test
-    public void createParameters_multiple_values_single_parameter() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
+    public void createParameters_multiple_values_single_parameter() {
         Map<String, ValueEntity> values = Map.of(
-                "a",new ValueEntity(null,null,mapper.readTree("1")),
-                "b",new ValueEntity(null,null,mapper.readTree("2"))
+                "a",new ValueEntity(null,null,JqValues.parse("1")),
+                "b",new ValueEntity(null,null,JqValues.parse("2"))
         );
-        List<JsonNode> params = JsNode.createParameters("function(v){return v;}",values,2);
+        List<JqValue> params = JsNode.createParameters("function(v){return v;}",values,2);
         assertNotNull(params,"return should not be null");
-        assertEquals(1,params.size(),"expected 2 values: "+params);
-        JsonNode node = params.get(0);
+        assertEquals(1,params.size(),"expected 1 value: "+params);
+        JqValue node = params.get(0);
         assertNotNull(node,"return should not be null");
-        assertInstanceOf(ObjectNode.class,node);
-        ObjectNode objectNode = (ObjectNode)node;
-        assertTrue(objectNode.has("a"),"expected a value: "+objectNode.toString());
-        assertTrue(objectNode.has("b"),"expected a value: "+objectNode.toString());
+        assertInstanceOf(JqObject.class,node);
+        JqObject obj = (JqObject)node;
+        assertTrue(obj.has("a"),"expected a value: "+obj.toJsonString());
+        assertTrue(obj.has("b"),"expected b value: "+obj.toJsonString());
     }
     @Test
-    public void createParameters_multiple_values_multiple_parameters_different_name() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
+    public void createParameters_multiple_values_multiple_parameters_different_name() {
         Map<String, ValueEntity> values = Map.of(
-                "a",new ValueEntity(null,null,mapper.readTree("1")),
-                "b",new ValueEntity(null,null,mapper.readTree("2"))
+                "a",new ValueEntity(null,null,JqValues.parse("1")),
+                "b",new ValueEntity(null,null,JqValues.parse("2"))
         );
-        List<JsonNode> params = JsNode.createParameters("function(v,x=false,y='true'){return v;}",values,2);
+        List<JqValue> params = JsNode.createParameters("function(v,x=false,y='true'){return v;}",values,2);
         assertNotNull(params,"return should not be null");
-        assertEquals(1,params.size(),"expected 2 values: "+params);
-        JsonNode node = params.get(0);
+        assertEquals(1,params.size(),"expected 1 value: "+params);
+        JqValue node = params.get(0);
         assertNotNull(node,"return should not be null");
-        assertInstanceOf(ObjectNode.class,node);
-        ObjectNode objectNode = (ObjectNode)node;
-        assertTrue(objectNode.has("a"),"expected a value: "+objectNode.toString());
-        assertTrue(objectNode.has("b"),"expected a value: "+objectNode.toString());
+        assertInstanceOf(JqObject.class,node);
+        JqObject obj = (JqObject)node;
+        assertTrue(obj.has("a"),"expected a value: "+obj.toJsonString());
+        assertTrue(obj.has("b"),"expected b value: "+obj.toJsonString());
     }
 
     @Test

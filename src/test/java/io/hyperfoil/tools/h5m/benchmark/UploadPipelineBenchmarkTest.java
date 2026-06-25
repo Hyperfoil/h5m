@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.h5m.benchmark;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -33,7 +32,6 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
 
     private static final int WARMUP = 1;
     private static final int MEASURE = 3;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final List<BenchmarkTimer.Result> results = new ArrayList<>();
     private static final List<String> reports = new ArrayList<>();
 
@@ -152,7 +150,7 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
     // ==================== Benchmark helpers ====================
 
     private void benchUploadPipeline(String name, int nodeCount, String[] files) throws Exception {
-        JsonNode[] data = loadQvssData(files);
+        JqValue[] data = loadQvssData(files);
 
         BenchmarkTimer.Result result = BenchmarkTimer.run(
                 name, WARMUP, MEASURE,
@@ -172,7 +170,7 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
     }
 
     private void benchChainedPipeline(String name, String[] files) throws Exception {
-        JsonNode[] data = loadQvssData(files);
+        JqValue[] data = loadQvssData(files);
 
         BenchmarkTimer.Result result = BenchmarkTimer.run(
                 name, WARMUP, MEASURE,
@@ -238,7 +236,7 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
         tm.commit();
     }
 
-    private void uploadAndWait(String folderName, JsonNode[] data) throws Exception {
+    private void uploadAndWait(String folderName, JqValue[] data) throws Exception {
         for (int i = 0; i < data.length; i++) {
             folderService.upload(folderName, "upload", data[i]);
             // Drain work queue every 10 uploads to prevent connection pool exhaustion
@@ -256,11 +254,11 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
         }
     }
 
-    private JsonNode[] loadQvssData(String[] filenames) throws IOException {
-        JsonNode[] data = new JsonNode[filenames.length];
+    private JqValue[] loadQvssData(String[] filenames) throws IOException {
+        JqValue[] data = new JqValue[filenames.length];
         for (int i = 0; i < filenames.length; i++) {
             try (InputStream is = getClass().getClassLoader().getResourceAsStream("qvss/" + filenames[i])) {
-                data[i] = OBJECT_MAPPER.readTree(is);
+                data[i] = JqValues.parse(is.readAllBytes());
             }
         }
         return data;

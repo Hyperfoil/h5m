@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.queue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -36,8 +36,8 @@ public class WorkQueueTest extends FreshDb {
         NodeEntity relativeDifference = new RelativeDifference();
         relativeDifference.persist();
 
-        ValueEntity rootValue1 = new ValueEntity(null,rootNode,new TextNode("text1"));
-        ValueEntity rootValue2 = new ValueEntity(null,rootNode,new TextNode("text2"));
+        ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        ValueEntity rootValue2 = new ValueEntity(null,rootNode,JqValues.parse("\"text2\""));
 
         Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1));
         Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2));
@@ -62,7 +62,7 @@ public class WorkQueueTest extends FreshDb {
         root.persist();
         NodeEntity aNode = new JqNode("a",".a",root);
         aNode.persist();
-        ValueEntity rootValue = new ValueEntity(null,aNode,new TextNode("found"));
+        ValueEntity rootValue = new ValueEntity(null,aNode,JqValues.parse("\"found\""));
         rootValue.persist();
 
 

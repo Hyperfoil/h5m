@@ -2,7 +2,7 @@ package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.yaup.json.Json;
+import io.hyperfoil.tools.jjq.value.*;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PostLoad;
@@ -26,15 +26,15 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     private static final String FINGERPRINT_FILTER = "fingerprintFilter";
 
     @Transient
-    private Json config;
+    private JqObject config;
 
     public RelativeDifference() {
-        config = new Json();
+        config = JqObject.EMPTY;
     }
 
     public RelativeDifference(String name, String operation) {
         super(name,operation);
-        config = new Json();
+        config = JqObject.EMPTY;
     }
 
     @Override
@@ -44,12 +44,12 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
 
     @PostLoad
     public void loadConfig(){
-        if(this.config == null || this.config.isEmpty()){
+        if(config == null || config.size() == 0){
             if(this.operation!=null && !this.operation.isBlank()){
-                config = Json.fromString(this.operation);
+                JqValue parsed = JqValues.parse(this.operation);
+                config = parsed instanceof JqObject obj ? obj : JqObject.EMPTY;
             }else {
-                config = new Json();
-                //TODO load default values?
+                config = JqObject.EMPTY;
             }
         }
     }
@@ -92,43 +92,43 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
 
     @Transient
     public double getThreshold(){
-        return config.getDouble(THRESHOLD,DEFAULT_THRESHOLD);
+        return config.get(THRESHOLD).asDouble(DEFAULT_THRESHOLD);
     }
     public void setThreshold(double threshold){
-        config.set(THRESHOLD,threshold);
-        operation=config.toString();
+        config = config.with(THRESHOLD, JqNumber.of(threshold));
+        operation = config.toJsonString();
     }
     @Transient
     public long getWindow(){
-        return config.getLong(WINDOW,DEFAULT_WINDOW);
+        return config.get(WINDOW).asLong(DEFAULT_WINDOW);
     }
     public void setWindow(long window){
-        config.set(WINDOW,window);
-        operation=config.toString();
+        config = config.with(WINDOW, JqNumber.of(window));
+        operation = config.toJsonString();
     }
     @Transient
     public long getMinPrevious(){
-        return config.getLong(MIN_PREVIOUS,DEFAULT_MIN_PREVIOUS);
+        return config.get(MIN_PREVIOUS).asLong(DEFAULT_MIN_PREVIOUS);
     }
     public void setMinPrevious(long minPrevious){
-        config.set(MIN_PREVIOUS,minPrevious);
-        operation=config.toString();
+        config = config.with(MIN_PREVIOUS, JqNumber.of(minPrevious));
+        operation = config.toJsonString();
     }
     @Transient
     public String getFilter(){
-        return config.getString(FILTER);
+        return config.has(FILTER) ? config.get(FILTER).asString(null) : null;
     }
     public void setFilter(String filter){
-        config.set(FILTER,filter);
-        operation=config.toString();
+        config = config.with(FILTER, JqString.of(filter));
+        operation = config.toJsonString();
     }
     @Transient
     public String getFingerprintFilter(){
-        return config.getString(FINGERPRINT_FILTER);
+        return config.has(FINGERPRINT_FILTER) ? config.get(FINGERPRINT_FILTER).asString(null) : null;
     }
     public void setFingerprintFilter(String fingerprintFilter){
-        config.set(FINGERPRINT_FILTER,fingerprintFilter);
-        operation=config.toString();
+        config = config.with(FINGERPRINT_FILTER, JqString.of(fingerprintFilter));
+        operation = config.toJsonString();
     }
 
     @Override

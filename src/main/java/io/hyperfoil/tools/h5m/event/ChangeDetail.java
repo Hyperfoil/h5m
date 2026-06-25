@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.event;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 
 /**
  * Detail of a single detected change, enriched from the detection value.
@@ -9,4 +9,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param data        the detection value data (ratio, bound, direction, fingerprint, etc.)
  * @param fingerprint fingerprint data extracted from the detection value, or null
  */
-public record ChangeDetail(long valueId, JsonNode data, JsonNode fingerprint) {}
+public record ChangeDetail(long valueId, JqValue data, JqValue fingerprint) {}

@@ -1202,10 +1202,10 @@ public class H5mTest {
         assertTrue(output3.contains("\"domainvalue\":4"),
                 "Change should be detected for domain x=4\n" + output3);
 
-        assertTrue(output3.contains("\"previous\":2.0"),
-                "Should show previous y value of 2.0\n" + output3);
-        assertTrue(output3.contains("\"last\":2.0"),
-                "Should show last y value of 2.0\n" + output3);
+        assertTrue(output3.contains("\"previous\":2"),
+                "Should show previous y value of 2\n" + output3);
+        assertTrue(output3.contains("\"last\":2"),
+                "Should show last y value of 2\n" + output3);
         assertTrue(output3.contains("\"ratio\":-42.85714285714286"),
                 "Should contain calculated ratio -42.85714285714286\n" + output3);
 

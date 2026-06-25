@@ -1,12 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.LongNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -156,46 +150,43 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateJsValue_yield() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
         JsNode jsNode = new JsNode("js","function* foo(){ yield 1; yield 'foo'; }");
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, Collections.EMPTY_MAP,0);
 
         assertEquals(2,result.size());
         ValueEntity value = result.get(0);
         assertNotNull(value);
-        JsonNode data = value.data;
+        JqValue data = value.data;
         assertNotNull(data);
-        assertEquals(new LongNode(1),data);
+        assertEquals(JqNumber.of(1),data);
         value = result.get(1);
         assertNotNull(value);
         data = value.data;
         assertNotNull(data);
-        assertEquals(new TextNode("foo"),data);
+        assertEquals(JqString.of("foo"),data);
         System.out.println(data);
     }
 
 
     @Test
     public void calculateJsValue_no_source() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
         JsNode jsNode = new JsNode("js","()=>123");
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, Collections.EMPTY_MAP,0);
 
         assertEquals(1,result.size());
         ValueEntity value = result.get(0);
         assertNotNull(value);
-        JsonNode data = value.data;
+        JqValue data = value.data;
         assertNotNull(data);
-        assertEquals("123",data.toString());
+        assertEquals("123",data.toJsonString());
     }
     @Test
     public void calculateJsValue_arrow_without_parenthesis_text() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.name="root";
         rootNode.persist();
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("Bright"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("Bright"));
         rootValue.persist();
         JsNode jsNode = new JsNode("js","root=>'Hi, '+root");
         jsNode.persist();
@@ -208,19 +199,18 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1,result.size());
         ValueEntity first = result.get(0);
         assertNotNull(first);
-        JsonNode data = first.data;
+        JqValue data = first.data;
         assertNotNull(data);
         assertEquals("Hi, Bright",data.asText());
     }
 
     @Test
     public void calculateJsValue_arrow_different_parameter_name() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.name="root";
         rootNode.persist();
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("Bright"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("Bright"));
         rootValue.persist();
         JsNode jsNode = new JsNode("js","arg=>'Hi, '+arg");
         jsNode.sources=List.of(rootNode);
@@ -236,14 +226,13 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1,result.size());
         ValueEntity first = result.get(0);
         assertNotNull(first);
-        JsonNode data = first.data;
+        JqValue data = first.data;
         assertNotNull(data);
         assertEquals("Hi, Bright",data.asText());
     }
 
     @Test
     public void calculateJsValue_arrow_multiple_source_nodes() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.name="root";
@@ -252,7 +241,7 @@ public class NodeServiceTest extends FreshDb {
 
         JsNode otherSource = new JsNode("other","arg=>arg");
         otherSource.persist();
-        ValueEntity rootValue = new ValueEntity(null,rootNode,new TextNode("Bright"));
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqString.of("Bright"));
         rootValue.persist();
         JsNode jsNode = new JsNode("js","arg=>arg");
         jsNode.sources = List.of(rootNode,otherSource);
@@ -266,23 +255,22 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1,result.size());
         ValueEntity first = result.get(0);
         assertNotNull(first);
-        JsonNode data = first.data;
+        JqValue data = first.data;
         assertNotNull(data);
-        assertInstanceOf(ObjectNode.class,data,"data should be a json object but was :"+data.toString());
+        assertInstanceOf(JqObject.class,data,"data should be a json object but was :"+data.toJsonString());
     }
 
 
 
     @Test
     public void calculateSqlJsonpathValues() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         SqlJsonpathNode node = new SqlJsonpathNode("sql","$.buz",List.of(rootNode));//should be a different type of node?
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -305,14 +293,13 @@ public class NodeServiceTest extends FreshDb {
     }
     @Test
     public void calculateSqlJsonpathValues_null() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         SqlJsonpathNode node = new SqlJsonpathNode("sql","$.miss",List.of(rootNode));//should be a different type of node?
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -336,14 +323,13 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateJqValues_array_miss() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         JqNode node = new JqNode("jqall","[.miss[]?]",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -363,19 +349,18 @@ public class NodeServiceTest extends FreshDb {
         // JQ [.miss[]?] produces an empty array [], which is not null so it gets returned
         assertEquals(1,calculated.size());
         assertTrue(calculated.getFirst().data.isArray());
-        assertEquals(0,calculated.getFirst().data.size(),"empty array for missing path");
+        assertEquals(0,calculated.getFirst().data.length(),"empty array for missing path");
     }
 
     @Test
     public void calculateJqValues_array_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         JqNode node = new JqNode("jqall","[.foo[]?]",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "biz": "cat"
@@ -392,19 +377,18 @@ public class NodeServiceTest extends FreshDb {
         assertNotNull(calculated);
         assertEquals(1,calculated.size());
         assertTrue(calculated.getFirst().data.isArray());
-        assertEquals(2,calculated.getFirst().data.size(),"should contain both foo elements");
+        assertEquals(2,calculated.getFirst().data.length(),"should contain both foo elements");
     }
 
     @Test
     public void calculateSqlAllJsonpathValues_null() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         SqlJsonpathAllNode node = new SqlJsonpathAllNode("sqlall","$.miss",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -426,14 +410,13 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateSqlAllJsonpathValues_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
         SqlJsonpathAllNode node = new SqlJsonpathAllNode("sqlall","$.foo",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "biz": "cat"
@@ -454,7 +437,6 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateSqlJsonpathValues_partial_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
@@ -464,7 +446,7 @@ public class NodeServiceTest extends FreshDb {
         missNode.persist();
 
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 { "biz": "cat", "buz": "dog" }
                 """);
         v1.node=rootNode;
@@ -494,42 +476,42 @@ public class NodeServiceTest extends FreshDb {
         NodeEntity fingerprintNode = new JqNode("fingerprint",".fingerprint",rootNode);
         fingerprintNode.persist();
 
-        ValueEntity rootValue01 = new ValueEntity(null,rootNode,new TextNode("root1"));
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqString.of("root1"));
         rootValue01.persist();
-        ValueEntity rootValue02 = new ValueEntity(null,rootNode,new TextNode("root2"));
+        ValueEntity rootValue02 = new ValueEntity(null,rootNode,JqString.of("root2"));
         rootValue02.persist();
-        ValueEntity rootValue03 = new ValueEntity(null,rootNode,new TextNode("root3"));
+        ValueEntity rootValue03 = new ValueEntity(null,rootNode,JqString.of("root3"));
         rootValue03.persist();
 
-        ValueEntity rangeValue01 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(1));
+        ValueEntity rangeValue01 = new ValueEntity(null,rangeNode, JqNumber.of(1));
         rangeValue01.sources=List.of(rootValue01);
         rangeValue01.persist();
-        ValueEntity rangeValue02 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(2));
+        ValueEntity rangeValue02 = new ValueEntity(null,rangeNode, JqNumber.of(2));
         rangeValue02.sources=List.of(rootValue02);
         rangeValue02.persist();
-        ValueEntity rangeValue03 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(3));
+        ValueEntity rangeValue03 = new ValueEntity(null,rangeNode, JqNumber.of(3));
         rangeValue03.sources=List.of(rootValue03);
         rangeValue03.persist();
 
         //somehow domain values are missing value_edge...
         //LongNode.valueOf breaks this???
-        ValueEntity domainValue01 = new ValueEntity(null,domainNode,DoubleNode.valueOf(10));
+        ValueEntity domainValue01 = new ValueEntity(null,domainNode,JqNumber.of(10));
         domainValue01.sources=List.of(rootValue01);
         domainValue01.persist();
-        ValueEntity domainValue02 = new ValueEntity(null,domainNode,DoubleNode.valueOf(20));
+        ValueEntity domainValue02 = new ValueEntity(null,domainNode,JqNumber.of(20));
         domainValue02.sources=List.of(rootValue02);
         domainValue02.persist();
-        ValueEntity domainValue03 = new ValueEntity(null,domainNode, DoubleNode.valueOf(30));
+        ValueEntity domainValue03 = new ValueEntity(null,domainNode, JqNumber.of(30));
         domainValue03.sources=List.of(rootValue03);
         domainValue03.persist();
 
-        ValueEntity fingerprintValue01 = new ValueEntity(null,fingerprintNode,new TextNode("fp"));
+        ValueEntity fingerprintValue01 = new ValueEntity(null,fingerprintNode,JqString.of("fp"));
         fingerprintValue01.sources=List.of(rootValue01);
         fingerprintValue01.persist();
-        ValueEntity fingerprintValue02 = new ValueEntity(null,fingerprintNode,new TextNode("fp"));
+        ValueEntity fingerprintValue02 = new ValueEntity(null,fingerprintNode,JqString.of("fp"));
         fingerprintValue02.sources=List.of(rootValue02);
         fingerprintValue02.persist();
-        ValueEntity fingerprintValue03 = new ValueEntity(null,fingerprintNode,new TextNode("fp"));
+        ValueEntity fingerprintValue03 = new ValueEntity(null,fingerprintNode,JqString.of("fp"));
         fingerprintValue03.sources=List.of(rootValue03);
         fingerprintValue03.persist();
         tm.commit();
@@ -569,7 +551,6 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateJqValues_single_key_sourceValue() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode root = new RootNode();
         root.persist();
@@ -578,7 +559,7 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
         ValueEntity v1 = new ValueEntity();
         v1.node = root;
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -598,7 +579,6 @@ public class NodeServiceTest extends FreshDb {
     }
     @Test
     public void calculateJqValues_single_key_iterating() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         RootNode root = new RootNode();
         root.persist();
@@ -607,7 +587,7 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
         ValueEntity v1 = new ValueEntity();
         v1.node=root;
-        v1.data= mapper.readTree("""
+        v1.data= JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k" : "tres"} ],
@@ -625,8 +605,8 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertEquals(2,calculated.size(),"expect to create a multiple values from an output file with multiple roots");
 
-        String first = calculated.getFirst().data.toString();
-        String second = calculated.getLast().data.toString();
+        String first = calculated.getFirst().data.toJsonString();
+        String second = calculated.getLast().data.toJsonString();
 
         assertTrue(first.contains("one"),"first returned value should have first match from jq: "+first);
         assertTrue(second.contains("two"),"second returned value should have second match from jq: "+second);
@@ -639,11 +619,11 @@ public class NodeServiceTest extends FreshDb {
         root.persist();
         ValueEntity v1 = new ValueEntity();
         v1.node=root;
-        v1.data=new TextNode("cat");
+        v1.data=JqString.of("cat");
         v1.persist();
         ValueEntity v2 = new ValueEntity();
         v2.node=root;
-        v2.data=new TextNode("dog");
+        v2.data=JqString.of("dog");
         v2.persist();
 
         JqNode node = new JqNode("foo",".");
@@ -657,7 +637,7 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertEquals(1,calculated.size(),"expect to create a single value from two sources");
-        String read = calculated.getFirst().data.toString();
+        String read = calculated.getFirst().data.toJsonString();
         assertTrue(read.contains("cat"),"first file should be in result: "+read);
         assertTrue(read.contains("dog"),"second file should be in result: "+read);
         assertTrue(read.startsWith("["),"value should be an array: "+read);
@@ -697,30 +677,29 @@ public class NodeServiceTest extends FreshDb {
                 }
                 """);
         dataset.persist();
-        ObjectMapper mapper = new ObjectMapper();
-        ValueEntity upload = new ValueEntity(null,root,mapper.readTree("""
+        ValueEntity upload = new ValueEntity(null,root,JqValues.parse("""
             { "config": { "alpha" : "apple"},
               "foo": [ { "key" : "fooOne" } , { "key": "fooTwo" } , { "key" : "fooThree" }],
               "bar": [ { "key" : "barOne" } , { "key": "barTwo" } ]
             }
         """));
         upload.persist();
-        ValueEntity t1 = new ValueEntity(null,transform1,upload.data.get("config"));
+        ValueEntity t1 = new ValueEntity(null,transform1,upload.data.getField("config"));
         t1.persist();
-        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.get("foo"));
+        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.getField("foo"));
         t2.persist();
-        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.get("bar"));
+        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.getField("bar"));
         t3.persist();
         tm.commit();
 
         List<ValueEntity> values = nodeService.calculateJsValues(dataset,Map.of("transform1",t1,"transform2",t2,"transform3",t3),0);
         assertEquals(3,values.size(),"expect to create a single value from two sources");
         assertNotNull(values.get(0).data,"value[0] data should not be null");
-        assertTrue(Stream.of("transform1","transform2","transform3").allMatch(values.get(0).data::hasNonNull),"missing expected key from values[0]");
+        assertTrue(Stream.of("transform1","transform2","transform3").allMatch(k -> !values.get(0).data.getField(k).isNull()),"missing expected key from values[0]");
         assertNotNull(values.get(1).data,"value[1] data should not be null");
-        assertTrue(Stream.of("transform1","transform2","transform3").allMatch(values.get(1).data::hasNonNull),"missing expected key from values[1]");
+        assertTrue(Stream.of("transform1","transform2","transform3").allMatch(k -> !values.get(1).data.getField(k).isNull()),"missing expected key from values[1]");
         assertNotNull(values.get(2).data,"value[2] data should not be null");
-        assertTrue(Stream.of("transform1","transform2").allMatch(values.get(2).data::hasNonNull),"missing expected key from values[2]");
+        assertTrue(Stream.of("transform1","transform2").allMatch(k -> !values.get(2).data.getField(k).isNull()),"missing expected key from values[2]");
 
 
     }
@@ -740,19 +719,18 @@ public class NodeServiceTest extends FreshDb {
                 . as $a | ([.[]|if type=="array" then length else 1 end]|max) as $m | [range($m)|. as $p | [$a[]|if type=="object" then . elif type=="array" and $p<length then .[$p] else empty end]]
                 """);
         dataset.persist();
-        ObjectMapper mapper = new ObjectMapper();
-        ValueEntity upload = new ValueEntity(null,root,mapper.readTree("""
+        ValueEntity upload = new ValueEntity(null,root,JqValues.parse("""
             { "config": { "alpha" : "apple"},
               "foo": [ { "key" : "fooOne" } , { "key": "fooTwo" } , { "key" : "fooThree" }],
               "bar": [ { "key" : "barOne" } , { "key": "barTwo" } ]
             }
         """));
         upload.persist();
-        ValueEntity t1 = new ValueEntity(null,transform1,upload.data.get("config"));
+        ValueEntity t1 = new ValueEntity(null,transform1,upload.data.getField("config"));
         t1.persist();
-        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.get("foo"));
+        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.getField("foo"));
         t2.persist();
-        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.get("bar"));
+        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.getField("bar"));
         t3.persist();
         tm.commit();
 
@@ -765,7 +743,7 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
-    public void calculateSourceValuePermutations_returns_non_null_on_length_mismatch() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, JsonProcessingException {
+    public void calculateSourceValuePermutations_returns_non_null_on_length_mismatch() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity root = new RootNode();
         root.persist();
@@ -782,7 +760,7 @@ public class NodeServiceTest extends FreshDb {
         combined.persist();
 
         // Root value with arrays of different lengths
-        ValueEntity rootValue = new ValueEntity(null, root, new ObjectMapper().readTree("""
+        ValueEntity rootValue = new ValueEntity(null, root, JqValues.parse("""
                 {
                   "first": [1, 2, 3]
                 }
@@ -790,15 +768,15 @@ public class NodeServiceTest extends FreshDb {
         rootValue.persist();
         
         // First node produces 3 values
-        ValueEntity firstValue1 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("1"));
+        ValueEntity firstValue1 = new ValueEntity(null, firstNode, JqValues.parse("1"));
         firstValue1.idx=1;
         firstValue1.sources=List.of(rootValue);
         firstValue1.persist();
-        ValueEntity firstValue2 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("2"));
+        ValueEntity firstValue2 = new ValueEntity(null, firstNode, JqValues.parse("2"));
         firstValue2.idx=2;
         firstValue2.sources=List.of(rootValue);
         firstValue2.persist();
-        ValueEntity firstValue3 = new ValueEntity(null, firstNode, new ObjectMapper().readTree("3"));
+        ValueEntity firstValue3 = new ValueEntity(null, firstNode, JqValues.parse("3"));
         firstValue3.idx=3;
         firstValue3.sources=List.of(rootValue);
         firstValue3.persist();
@@ -819,14 +797,14 @@ public class NodeServiceTest extends FreshDb {
         node1.name="v1";
         node1.persist();
         ValueEntity v1 = new ValueEntity();
-        v1.data=new TextNode("cat");
+        v1.data=JqString.of("cat");
         v1.node = node1;
         v1.persist();
         NodeEntity node2 = new JqNode();
         node2.name="v2";
         node2.persist();
         ValueEntity v2 = new ValueEntity();
-        v2.data=new TextNode("dog");
+        v2.data=JqString.of("dog");
         v2.node = node2;
         v2.persist();
         tm.commit();
@@ -841,7 +819,7 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertEquals(1,calculated.size(),"expect to create a single value from two sources");
-        String read = calculated.getFirst().data.toString();
+        String read = calculated.getFirst().data.toJsonString();
         assertTrue(read.contains("cat"),"first file should be in result: "+read);
         assertTrue(read.contains("dog"),"second file should be in result: "+read);
         assertTrue(read.startsWith("["),"value should be an array: "+read);
@@ -906,18 +884,14 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateValues_single_key() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity upload = new RootNode();
         upload.name="upload";
         upload.persist();
 
         ValueEntity v1 = new ValueEntity();
-        v1.data= mapper.readTree("""
-            {"foo":{"uno":"one","dos":"two"}}
-            """);
         v1.node = upload;
-        v1.data = new ObjectMapper().readTree(
+        v1.data = JqValues.parse(
             """
             {"foo":{"uno":"one","dos":"two"}}
             """
@@ -937,7 +911,7 @@ public class NodeServiceTest extends FreshDb {
 
         ValueEntity calculatedFoo = calculated.get(0);
         assertNotNull(calculatedFoo,"calculated value for foo should not be null");
-        String content = calculatedFoo.data.toString();
+        String content = calculatedFoo.data.toJsonString();
         assertTrue(content.contains("uno"),"content missing first key:\n"+content);
         assertTrue(content.contains("dos"),"content missing second key:\n"+content);
         tm.commit();
@@ -945,7 +919,6 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateValues_scalarType_by_length() throws SystemException, NotSupportedException, IOException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         File v1File = Files.createTempFile(new Exception().getStackTrace()[0].getMethodName()+".",".json").toFile();
         v1File.deleteOnExit();
@@ -962,7 +935,7 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
 
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree(            """
+        v1.data = JqValues.parse(            """
             {
               "foo": [ { "key": "one"}, { "key" : "two" } ],
               "bar": [ { "k": "uno" }, { "k": "dos"} ],
@@ -995,8 +968,8 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> calculated = nodeService.calculateValues(combined,List.of(v1));
 
         assertEquals(2,calculated.size(),"expect 2 values due to foo");
-        String first = calculated.getFirst().data.toString();
-        String second = calculated.get(1).data.toString();
+        String first = calculated.getFirst().data.toJsonString();
+        String second = calculated.get(1).data.toJsonString();
 
         assertTrue(first.contains("one"),"first value not found");
         assertFalse(first.contains("two"),"first value not found");
@@ -1011,13 +984,12 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateValues_scalarType_NxN() throws SystemException, NotSupportedException, IOException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity upload = new JqNode("upload");//should be a different type of node?
         upload.persist();
 
         ValueEntity v1 = new ValueEntity();
-        v1.data=mapper.readTree(                """
+        v1.data=JqValues.parse(                """
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"} ],
@@ -1054,10 +1026,10 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> calculated = nodeService.calculateValues(combined,List.of(v1));
 
         assertEquals(4,calculated.size(),"expect 4 values due to foo");
-        String first = calculated.getFirst().data.toString();
-        String second = calculated.get(1).data.toString();
-        String third = calculated.get(2).data.toString();
-        String fourth = calculated.get(3).data.toString();
+        String first = calculated.getFirst().data.toJsonString();
+        String second = calculated.get(1).data.toJsonString();
+        String third = calculated.get(2).data.toJsonString();
+        String fourth = calculated.get(3).data.toJsonString();
 
         //check the scalars
         assertTrue(first.contains("cat"),"first should have cat: "+first);
@@ -1079,7 +1051,6 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void calculateValues_NxN_complicated() throws SystemException, NotSupportedException, IOException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         File v1File = Files.createTempFile(new Exception().getStackTrace()[0].getMethodName()+".", ".json").toFile();
         v1File.deleteOnExit();
@@ -1095,7 +1066,7 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
 
         ValueEntity v1 = new ValueEntity();
-        v1.data = mapper.readTree("""
+        v1.data = JqValues.parse("""
                 {
                   "foo": [ { "key": "one"}, { "key" : "two" } ],
                   "bar": [ { "k": "uno" }, { "k": "dos"}, { "k": "tres"} ],
@@ -1127,7 +1098,7 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> calculated = nodeService.calculateValues(combined,List.of(v1));
         assertEquals(18,calculated.size());
         List<String> content = calculated.stream().map(n-> {
-            return n.data.toString();
+            return n.data.toJsonString();
         }).toList();
         List.of("one","two").forEach(key->{
             assertEquals(9,content.stream().filter(v->v.contains(key)).count(),"unexpected number of value with "+key);
@@ -1150,8 +1121,8 @@ public class NodeServiceTest extends FreshDb {
 
         FingerprintNode fpNode = new FingerprintNode("fp","fp",List.of(platformNode, buildTypeNode));
 
-        ValueEntity platformValue = new ValueEntity(null, platformNode, new TextNode("x86"));
-        ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, new TextNode("release"));
+        ValueEntity platformValue = new ValueEntity(null, platformNode, JqString.of("x86"));
+        ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, JqString.of("release"));
 
         Map<String, ValueEntity> sourceValues = new HashMap<>();
         sourceValues.put("platform", platformValue);
@@ -1162,8 +1133,8 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, result.size(), "should produce exactly one fingerprint value");
         ValueEntity fpValue = result.getFirst();
         assertNotNull(fpValue.data);
-        assertTrue(fpValue.data instanceof ObjectNode, "fingerprint data should be an ObjectNode, not a hash: " + fpValue.data.getClass());
-        ObjectNode fpObject = (ObjectNode) fpValue.data;
+        assertTrue(fpValue.data instanceof JqObject, "fingerprint data should be a JqObject, not a hash: " + fpValue.data.getClass());
+        JqObject fpObject = (JqObject) fpValue.data;
         assertTrue(fpObject.has("platform"), "fingerprint should contain 'platform' key");
         assertTrue(fpObject.has("buildType"), "fingerprint should contain 'buildType' key");
         assertEquals("x86", fpObject.get("platform").asText());
@@ -1184,8 +1155,8 @@ public class NodeServiceTest extends FreshDb {
 
         FingerprintNode fpNode = new FingerprintNode("fp","fp",List.of(platformNode, buildTypeNode));
 
-        ValueEntity platformValue = new ValueEntity(null, platformNode, new TextNode("x86"));
-        ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, new TextNode("release"));
+        ValueEntity platformValue = new ValueEntity(null, platformNode, JqString.of("x86"));
+        ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, JqString.of("release"));
 
         Map<String, ValueEntity> sourceValues = new HashMap<>();
         sourceValues.put("platform", platformValue);
@@ -1194,49 +1165,44 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> result = nodeService.calculateFpValues(fpNode, sourceValues, 0);
 
         assertEquals(1, result.size());
-        ObjectNode fpObject = (ObjectNode) result.getFirst().data;
+        JqObject fpObject = (JqObject) result.getFirst().data;
         // verify keys are sorted alphabetically: buildType before platform
-        List<String> keys = new ArrayList<>();
-        fpObject.fieldNames().forEachRemaining(keys::add);
+        List<String> keys = new ArrayList<>(fpObject.objectValue().keySet());
         assertEquals("buildType", keys.get(0), "first key should be 'buildType' (alphabetical order)");
         assertEquals("platform", keys.get(1), "second key should be 'platform' (alphabetical order)");
     }
 
     @Test
     public void evaluateFingerprintFilter_matching() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode fingerprint = mapper.readTree("{\"platform\":\"x86\",\"buildType\":\"release\"}");
+        JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
         boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\"", fingerprint);
         assertTrue(result, "filter should match when platform is x86");
     }
 
     @Test
     public void evaluateFingerprintFilter_non_matching() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode fingerprint = mapper.readTree("{\"platform\":\"x86\",\"buildType\":\"release\"}");
+        JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
         boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"arm\"", fingerprint);
         assertFalse(result, "filter should not match when platform is x86 but filter expects arm");
     }
 
     @Test
     public void evaluateFingerprintFilter_null_passes_all() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode fingerprint = mapper.readTree("{\"platform\":\"x86\",\"buildType\":\"release\"}");
+        JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
         boolean result = nodeService.evaluateFingerprintFilter(null, fingerprint);
         assertTrue(result, "null filter should pass all fingerprints");
     }
 
     @Test
     public void evaluateFingerprintFilter_compound_filter() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode fingerprint = mapper.readTree("{\"platform\":\"x86\",\"buildType\":\"release\"}");
+        JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
         boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\" && fp.buildType === \"release\"", fingerprint);
         assertTrue(result, "compound filter should match when both conditions are true");
     }
 
     @Test
     public void calculateFpValues_with_qvss_data() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        JsonNode qvssData = new ObjectMapper().readTree(getClass().getClassLoader().getResourceAsStream("qvss/15763.json"));
+        JqValue qvssData = JqValues.parse(getClass().getClassLoader().getResourceAsStream("qvss/15763.json").readAllBytes());
 
         tm.begin();
         NodeEntity rootNode = new RootNode();
@@ -1272,11 +1238,10 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> fpResult = nodeService.calculateFpValues(fpNode, fpSourceValues, 0);
 
         assertEquals(1, fpResult.size(), "should produce exactly one fingerprint value");
-        ObjectNode fpObject = (ObjectNode) fpResult.getFirst().data;
+        JqObject fpObject = (JqObject) fpResult.getFirst().data;
 
         // verify sorted keys and real data values
-        List<String> keys = new ArrayList<>();
-        fpObject.fieldNames().forEachRemaining(keys::add);
+        List<String> keys = new ArrayList<>(fpObject.objectValue().keySet());
         assertEquals("JAVA_VERSION", keys.get(0), "first key should be JAVA_VERSION (sorted)");
         assertEquals("QUARKUS_VERSION", keys.get(1), "second key should be QUARKUS_VERSION (sorted)");
         assertEquals("22.3.r17-grl", fpObject.get("JAVA_VERSION").asText());
@@ -1296,68 +1261,66 @@ public class NodeServiceTest extends FreshDb {
         fingerprintNode.persist();
 
         // create 3 root values for x86 and 3 for arm
-        ValueEntity rootX86_01 = new ValueEntity(null,rootNode,new TextNode("rootX86_1"));
+        ValueEntity rootX86_01 = new ValueEntity(null,rootNode,JqString.of("rootX86_1"));
         rootX86_01.persist();
-        ValueEntity rootX86_02 = new ValueEntity(null,rootNode,new TextNode("rootX86_2"));
+        ValueEntity rootX86_02 = new ValueEntity(null,rootNode,JqString.of("rootX86_2"));
         rootX86_02.persist();
-        ValueEntity rootX86_03 = new ValueEntity(null,rootNode,new TextNode("rootX86_3"));
+        ValueEntity rootX86_03 = new ValueEntity(null,rootNode,JqString.of("rootX86_3"));
         rootX86_03.persist();
 
-        ValueEntity rootArm_01 = new ValueEntity(null,rootNode,new TextNode("rootArm_1"));
+        ValueEntity rootArm_01 = new ValueEntity(null,rootNode,JqString.of("rootArm_1"));
         rootArm_01.persist();
-        ValueEntity rootArm_02 = new ValueEntity(null,rootNode,new TextNode("rootArm_2"));
+        ValueEntity rootArm_02 = new ValueEntity(null,rootNode,JqString.of("rootArm_2"));
         rootArm_02.persist();
-        ValueEntity rootArm_03 = new ValueEntity(null,rootNode,new TextNode("rootArm_3"));
+        ValueEntity rootArm_03 = new ValueEntity(null,rootNode,JqString.of("rootArm_3"));
         rootArm_03.persist();
 
         // x86 range values
-        ValueEntity rangeX86_01 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(1));
+        ValueEntity rangeX86_01 = new ValueEntity(null,rangeNode, JqNumber.of(1));
         rangeX86_01.sources=List.of(rootX86_01);
         rangeX86_01.persist();
-        ValueEntity rangeX86_02 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(2));
+        ValueEntity rangeX86_02 = new ValueEntity(null,rangeNode, JqNumber.of(2));
         rangeX86_02.sources=List.of(rootX86_02);
         rangeX86_02.persist();
-        ValueEntity rangeX86_03 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(3));
+        ValueEntity rangeX86_03 = new ValueEntity(null,rangeNode, JqNumber.of(3));
         rangeX86_03.sources=List.of(rootX86_03);
         rangeX86_03.persist();
 
         // arm range values
-        ValueEntity rangeArm_01 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(10));
+        ValueEntity rangeArm_01 = new ValueEntity(null,rangeNode, JqNumber.of(10));
         rangeArm_01.sources=List.of(rootArm_01);
         rangeArm_01.persist();
-        ValueEntity rangeArm_02 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(20));
+        ValueEntity rangeArm_02 = new ValueEntity(null,rangeNode, JqNumber.of(20));
         rangeArm_02.sources=List.of(rootArm_02);
         rangeArm_02.persist();
-        ValueEntity rangeArm_03 = new ValueEntity(null,rangeNode, DoubleNode.valueOf(30));
+        ValueEntity rangeArm_03 = new ValueEntity(null,rangeNode, JqNumber.of(30));
         rangeArm_03.sources=List.of(rootArm_03);
         rangeArm_03.persist();
 
         // x86 domain values
-        ValueEntity domainX86_01 = new ValueEntity(null,domainNode,DoubleNode.valueOf(10));
+        ValueEntity domainX86_01 = new ValueEntity(null,domainNode,JqNumber.of(10));
         domainX86_01.sources=List.of(rootX86_01);
         domainX86_01.persist();
-        ValueEntity domainX86_02 = new ValueEntity(null,domainNode,DoubleNode.valueOf(20));
+        ValueEntity domainX86_02 = new ValueEntity(null,domainNode,JqNumber.of(20));
         domainX86_02.sources=List.of(rootX86_02);
         domainX86_02.persist();
-        ValueEntity domainX86_03 = new ValueEntity(null,domainNode,DoubleNode.valueOf(30));
+        ValueEntity domainX86_03 = new ValueEntity(null,domainNode,JqNumber.of(30));
         domainX86_03.sources=List.of(rootX86_03);
         domainX86_03.persist();
 
         // arm domain values
-        ValueEntity domainArm_01 = new ValueEntity(null,domainNode,DoubleNode.valueOf(100));
+        ValueEntity domainArm_01 = new ValueEntity(null,domainNode,JqNumber.of(100));
         domainArm_01.sources=List.of(rootArm_01);
         domainArm_01.persist();
-        ValueEntity domainArm_02 = new ValueEntity(null,domainNode,DoubleNode.valueOf(200));
+        ValueEntity domainArm_02 = new ValueEntity(null,domainNode,JqNumber.of(200));
         domainArm_02.sources=List.of(rootArm_02);
         domainArm_02.persist();
-        ValueEntity domainArm_03 = new ValueEntity(null,domainNode,DoubleNode.valueOf(300));
+        ValueEntity domainArm_03 = new ValueEntity(null,domainNode,JqNumber.of(300));
         domainArm_03.sources=List.of(rootArm_03);
         domainArm_03.persist();
 
-        // x86 fingerprint values (structured ObjectNode)
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode x86Fp = mapper.createObjectNode();
-        x86Fp.put("platform", "x86");
+        // x86 fingerprint values (structured JqObject)
+        JqObject x86Fp = JqObject.of("platform", "x86");
         ValueEntity fpX86_01 = new ValueEntity(null,fingerprintNode, x86Fp);
         fpX86_01.sources=List.of(rootX86_01);
         fpX86_01.persist();
@@ -1368,9 +1331,8 @@ public class NodeServiceTest extends FreshDb {
         fpX86_03.sources=List.of(rootX86_03);
         fpX86_03.persist();
 
-        // arm fingerprint values (structured ObjectNode)
-        ObjectNode armFp = mapper.createObjectNode();
-        armFp.put("platform", "arm");
+        // arm fingerprint values (structured JqObject)
+        JqObject armFp = JqObject.of("platform", "arm");
         ValueEntity fpArm_01 = new ValueEntity(null,fingerprintNode, armFp);
         fpArm_01.sources=List.of(rootArm_01);
         fpArm_01.persist();
@@ -1398,8 +1360,8 @@ public class NodeServiceTest extends FreshDb {
         Set<Double> x86DomainValues = Set.of(10.0, 20.0, 30.0);
         for (ValueEntity v : found) {
             assertNotNull(v.data, "change detection result should have data");
-            assertTrue(v.data.has("domainvalue"), "result should contain domainvalue field");
-            double domainValue = v.data.get("domainvalue").asDouble();
+            assertTrue(!v.data.getField("domainvalue").isNull(), "result should contain domainvalue field");
+            double domainValue = v.data.getField("domainvalue").asDouble(0.0);
             assertTrue(x86DomainValues.contains(domainValue),
                 "filtered result domainvalue " + domainValue + " should be an x86 value (10, 20, or 30)");
         }
@@ -1416,7 +1378,7 @@ public class NodeServiceTest extends FreshDb {
         // verify arm results contain arm domain values (100, 200, 300)
         Set<Double> armDomainValues = Set.of(100.0, 200.0, 300.0);
         for (ValueEntity v : armNoFilter) {
-            double domainValue = v.data.get("domainvalue").asDouble();
+            double domainValue = v.data.getField("domainvalue").asDouble(0.0);
             assertTrue(armDomainValues.contains(domainValue),
                 "arm unfiltered domainvalue " + domainValue + " should be an arm value (100, 200, or 300)");
         }
@@ -1445,27 +1407,25 @@ public class NodeServiceTest extends FreshDb {
         fingerprintNode.persist();
 
         // Create 3 root values with range values [5.0, 50.0, 150.0]
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("root1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("root1"));
         root1.persist();
-        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("root2"));
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("root2"));
         root2.persist();
-        ValueEntity root3 = new ValueEntity(null, rootNode, new TextNode("root3"));
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("root3"));
         root3.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(5.0));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(5.0));
         range1.sources = List.of(root1);
         range1.persist();
-        ValueEntity range2 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(50.0));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(50.0));
         range2.sources = List.of(root2);
         range2.persist();
-        ValueEntity range3 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(150.0));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, JqNumber.of(150.0));
         range3.sources = List.of(root3);
         range3.persist();
 
         // Fingerprint values
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode fpData = mapper.createObjectNode();
-        fpData.put("env", "test");
+        JqObject fpData = JqObject.of("env", "test");
         ValueEntity fp1 = new ValueEntity(null, fingerprintNode, fpData);
         fp1.sources = List.of(root1);
         fp1.persist();
@@ -1492,25 +1452,25 @@ public class NodeServiceTest extends FreshDb {
 
         // 5.0 below min=10 → violation
         assertEquals(1, found1.size(), "root1 (5.0) should produce 1 violation (below min)");
-        assertEquals("below", found1.getFirst().data.get("direction").asText());
-        assertEquals(5.0, found1.getFirst().data.get("value").asDouble());
-        assertEquals(10.0, found1.getFirst().data.get("bound").asDouble());
+        assertEquals("below", found1.getFirst().data.getField("direction").asText());
+        assertEquals(5.0, found1.getFirst().data.getField("value").asDouble(0.0));
+        assertEquals(10.0, found1.getFirst().data.getField("bound").asDouble(0.0));
 
         // 50.0 in range → no violation
         assertEquals(0, found2.size(), "root2 (50.0) should produce no violations");
 
         // 150.0 above max=100 → violation
         assertEquals(1, found3.size(), "root3 (150.0) should produce 1 violation (above max)");
-        assertEquals("above", found3.getFirst().data.get("direction").asText());
-        assertEquals(150.0, found3.getFirst().data.get("value").asDouble());
-        assertEquals(100.0, found3.getFirst().data.get("bound").asDouble());
+        assertEquals("above", found3.getFirst().data.getField("direction").asText());
+        assertEquals(150.0, found3.getFirst().data.getField("value").asDouble(0.0));
+        assertEquals(100.0, found3.getFirst().data.getField("bound").asDouble(0.0));
 
         // Verify violation data fields
         for (ValueEntity v : List.of(found1.getFirst(), found3.getFirst())) {
-            assertTrue(v.data.has("value"), "result should contain value field");
-            assertTrue(v.data.has("bound"), "result should contain bound field");
-            assertTrue(v.data.has("direction"), "result should contain direction field");
-            assertTrue(v.data.has("fingerprint"), "result should contain fingerprint field");
+            assertTrue(!v.data.getField("value").isNull(), "result should contain value field");
+            assertTrue(!v.data.getField("bound").isNull(), "result should contain bound field");
+            assertTrue(!v.data.getField("direction").isNull(), "result should contain direction field");
+            assertTrue(!v.data.getField("fingerprint").isNull(), "result should contain fingerprint field");
         }
     }
 
@@ -1527,7 +1487,6 @@ public class NodeServiceTest extends FreshDb {
                     .toList();
         }
 
-        ObjectMapper mapper = new ObjectMapper();
         tm.begin();
         NodeEntity rootNode = new RootNode();
         rootNode.name = "upload";
@@ -1546,7 +1505,7 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> allRootValues = new ArrayList<>();
         int throughputCount = 0;
         for (File f : qvssFiles) {
-            JsonNode qvssData = mapper.readTree(f);
+            JqValue qvssData = JqValues.parse(Files.readAllBytes(f.toPath()));
             tm.begin();
             ValueEntity rootValue = new ValueEntity(null, rootNode, qvssData);
             rootValue.persist();
@@ -1584,8 +1543,8 @@ public class NodeServiceTest extends FreshDb {
             List<ValueEntity> violations = nodeService.calculateFixedThresholdValues(ft, rootValue, 0);
             totalViolations += violations.size();
             for (ValueEntity v : violations) {
-                double val = v.data.get("value").asDouble();
-                String dir = v.data.get("direction").asText();
+                double val = v.data.getField("value").asDouble(0.0);
+                String dir = v.data.getField("direction").asText();
                 if ("above".equals(dir)) {
                     assertTrue(val > 15000, "above violation should have value > 15000 but was " + val);
                 } else if ("below".equals(dir)) {
@@ -1607,21 +1566,19 @@ public class NodeServiceTest extends FreshDb {
         fingerprintNode.persist();
 
         // Range values exactly at boundaries [10.0, 100.0]
-        ValueEntity root1 = new ValueEntity(null, rootNode, new TextNode("root1"));
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("root1"));
         root1.persist();
-        ValueEntity root2 = new ValueEntity(null, rootNode, new TextNode("root2"));
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("root2"));
         root2.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(10.0));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(10.0));
         range1.sources = List.of(root1);
         range1.persist();
-        ValueEntity range2 = new ValueEntity(null, rangeNode, DoubleNode.valueOf(100.0));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(100.0));
         range2.sources = List.of(root2);
         range2.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode fpData = mapper.createObjectNode();
-        fpData.put("env", "test");
+        JqObject fpData = JqObject.of("env", "test");
         ValueEntity fp1 = new ValueEntity(null, fingerprintNode, fpData);
         fp1.sources = List.of(root1);
         fp1.persist();
@@ -1693,24 +1650,22 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
-
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split1 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split1.sources = List.of(root1);
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null, domainNode, new LongNode(3));
+        ValueEntity domain1 = new ValueEntity(null, domainNode, JqNumber.of(3));
         domain1.sources = List.of(split1);
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, new DoubleNode(1.1));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(1.1));
         range1.sources = List.of(split1);
         range1.persist();
 
-        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp1.sources = List.of(split1);
         fp1.persist();
 
@@ -1722,22 +1677,22 @@ public class NodeServiceTest extends FreshDb {
 
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split2 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split2.sources = List.of(root2);
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null, domainNode, new LongNode(2));
+        ValueEntity domain2 = new ValueEntity(null, domainNode, JqNumber.of(2));
         domain2.sources = List.of(split2);
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null, rangeNode, new DoubleNode(2.1));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(2.1));
         range2.sources = List.of(split2);
         range2.persist();
 
-        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp2.sources = List.of(split2);
         fp2.persist();
         tm.commit();
@@ -1747,34 +1702,34 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 should produce 1 change (ratio exceeds 50% threshold)");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
+        JqValue changeData2 = change2.data;
 
-        double ratio2 = changeData2.get("ratio").asDouble();
-        double previous2 = changeData2.get("previous").asDouble();
-        JsonNode domainValue2 = changeData2.get("domainvalue");
+        double ratio2 = changeData2.getField("ratio").asDouble(0.0);
+        double previous2 = changeData2.getField("previous").asDouble(0.0);
+        JqValue domainValue2 = changeData2.getField("domainvalue");
 
-        assertEquals(3, domainValue2.asInt(), "Domain should be 3");
+        assertEquals(3, domainValue2.intValue(), "Domain should be 3");
         assertEquals(2.1, previous2, "Previous range value should be 2.1");
         assertEquals(-47.61904761904762, ratio2, 0.0001, "Ratio should be ~-47.62%");
 
 
         tm.begin();
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split3 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split3.sources = List.of(root3);
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null, domainNode, new LongNode(1));
+        ValueEntity domain3 = new ValueEntity(null, domainNode, JqNumber.of(1));
         domain3.sources = List.of(split3);
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null, rangeNode, new DoubleNode(3.1));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, JqNumber.of(3.1));
         range3.sources = List.of(split3);
         range3.persist();
 
-        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp3.sources = List.of(split3);
         fp3.persist();
         tm.commit();
@@ -1784,12 +1739,12 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, changes3.size(), "Upload 3: Should process only x=1 (new domain value), producing at most 1 change");
 
         ValueEntity change3 = changes3.get(0);
-        JsonNode changeData3 = change3.data;
-        double ratio3 = changeData3.get("ratio").asDouble();
-        double previous3 = changeData3.get("previous").asDouble();
-        JsonNode domainValue3 = changeData3.get("domainvalue");
+        JqValue changeData3 = change3.data;
+        double ratio3 = changeData3.getField("ratio").asDouble(0.0);
+        double previous3 = changeData3.getField("previous").asDouble(0.0);
+        JqValue domainValue3 = changeData3.getField("domainvalue");
 
-        assertEquals(2, domainValue3.asInt(), "Domain should be 2");
+        assertEquals(2, domainValue3.intValue(), "Domain should be 2");
         assertEquals(3.1, previous3, "Previous range value should be 3.1");
         assertEquals(-32.25806451612903, ratio3, 0.0001, "Ratio should be ~-32.26%");
 
@@ -1853,24 +1808,22 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
-
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split1 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split1.sources = List.of(root1);
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null, domainNode, new LongNode(4));
+        ValueEntity domain1 = new ValueEntity(null, domainNode, JqNumber.of(4));
         domain1.sources = List.of(split1);
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, new DoubleNode(1.1));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(1.1));
         range1.sources = List.of(split1);
         range1.persist();
 
-        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp1.sources = List.of(split1);
         fp1.persist();
 
@@ -1882,22 +1835,22 @@ public class NodeServiceTest extends FreshDb {
 
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split2 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split2.sources = List.of(root2);
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null, domainNode, new LongNode(2));
+        ValueEntity domain2 = new ValueEntity(null, domainNode, JqNumber.of(2));
         domain2.sources = List.of(split2);
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null, rangeNode, new DoubleNode(2.1));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(2.1));
         range2.sources = List.of(split2);
         range2.persist();
 
-        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp2.sources = List.of(split2);
         fp2.persist();
         tm.commit();
@@ -1907,33 +1860,33 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 should produce 1 change (ratio exceeds 50% threshold)");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
-        double ratio2 = changeData2.get("ratio").asDouble();
-        double previous2 = changeData2.get("previous").asDouble();
-        JsonNode domainValue2 = changeData2.get("domainvalue");
+        JqValue changeData2 = change2.data;
+        double ratio2 = changeData2.getField("ratio").asDouble(0.0);
+        double previous2 = changeData2.getField("previous").asDouble(0.0);
+        JqValue domainValue2 = changeData2.getField("domainvalue");
 
 
-        assertEquals(4, domainValue2.asInt(), "Domain should be 4");
+        assertEquals(4, domainValue2.intValue(), "Domain should be 4");
         assertEquals(2.1, previous2, "Previous range value should be 2.1");
         assertEquals(-47.61904761904761, ratio2 ,"Ratio should exceed ~-47.62");
 
         tm.begin();
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split3 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split3.sources = List.of(root3);
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null, domainNode, new LongNode(3));
+        ValueEntity domain3 = new ValueEntity(null, domainNode, JqNumber.of(3));
         domain3.sources = List.of(split3);
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null, rangeNode, new DoubleNode(3.1));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, JqNumber.of(3.1));
         range3.sources = List.of(split3);
         range3.persist();
 
-        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp3.sources = List.of(split3);
         fp3.persist();
         tm.commit();
@@ -1945,32 +1898,32 @@ public class NodeServiceTest extends FreshDb {
 
 
         ValueEntity change3 = changes3.get(0);
-        JsonNode changeData3 = change3.data;
-        double ratio3 = changeData3.get("ratio").asDouble();
-        double previous3 = changeData3.get("previous").asDouble();
-        JsonNode domainValue3 = changeData3.get("domainvalue");
+        JqValue changeData3 = change3.data;
+        double ratio3 = changeData3.getField("ratio").asDouble(0.0);
+        double previous3 = changeData3.getField("previous").asDouble(0.0);
+        JqValue domainValue3 = changeData3.getField("domainvalue");
 
-        assertEquals(3, domainValue3.asInt(), "Domain should be 3");
+        assertEquals(3, domainValue3.intValue(), "Domain should be 3");
         assertEquals(2.1, previous3, 0.01, "Previous range value should be 2.1");
         assertEquals(47.61904761904763, ratio3 ,"Ratio should exceed ~47.62");
 
         tm.begin();
-        ValueEntity root4 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root4 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root4.persist();
 
-        ValueEntity split4 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split4 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split4.sources = List.of(root4);
         split4.persist();
 
-        ValueEntity domain4 = new ValueEntity(null, domainNode, new LongNode(1));
+        ValueEntity domain4 = new ValueEntity(null, domainNode, JqNumber.of(1));
         domain4.sources = List.of(split4);
         domain4.persist();
 
-        ValueEntity range4 = new ValueEntity(null, rangeNode, new DoubleNode(4.1));
+        ValueEntity range4 = new ValueEntity(null, rangeNode, JqNumber.of(4.1));
         range4.sources = List.of(split4);
         range4.persist();
 
-        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp4.sources = List.of(split4);
         fp4.persist();
         tm.commit();
@@ -1981,12 +1934,12 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=1 should produce 1 change (ratio exceeds 50% threshold)");
 
         ValueEntity change4 = changes4.get(0);
-        JsonNode changeData4 = change4.data;
-        double ratio4 = changeData4.get("ratio").asDouble();
-        double previous4 = changeData4.get("previous").asDouble();
-        JsonNode domainValue4 = changeData4.get("domainvalue");
+        JqValue changeData4 = change4.data;
+        double ratio4 = changeData4.getField("ratio").asDouble(0.0);
+        double previous4 = changeData4.getField("previous").asDouble(0.0);
+        JqValue domainValue4 = changeData4.getField("domainvalue");
 
-        assertEquals(2, domainValue4.asInt(), "Domain should be 2");
+        assertEquals(2, domainValue4.intValue(), "Domain should be 2");
         assertEquals(4.1, previous4, "Previous range value should be 4.1");
         assertEquals(-48.78048780487805,ratio4,"Ratio should exceed ~-48.78048780487805");
 
@@ -2015,23 +1968,23 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
+        
 
-        ValueEntity root1 = new ValueEntity(null,rootNode,mapper.readTree("""
+        ValueEntity root1 = new ValueEntity(null,rootNode,JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 4, "range" : 400} ] }
                 """));
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null,splitNode,root1.data.get("split").get(0),List.of(root1));
+        ValueEntity split1 = new ValueEntity(null,splitNode,root1.data.getField("split").getElement(0),List.of(root1));
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null,domainNode,split1.data.get("domain"),List.of(split1));
+        ValueEntity domain1 = new ValueEntity(null,domainNode,split1.data.getField("domain"),List.of(split1));
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null,rangeNode,split1.data.get("range"),List.of(split1));
+        ValueEntity range1 = new ValueEntity(null,rangeNode,split1.data.getField("range"),List.of(split1));
         range1.persist();
 
-        ValueEntity fingerprint1 = new ValueEntity(null,fingerprintNode,split1.data.get("fingerprint"),List.of(split1));
+        ValueEntity fingerprint1 = new ValueEntity(null,fingerprintNode,split1.data.getField("fingerprint"),List.of(split1));
         fingerprint1.persist();
 
         tm.commit();
@@ -2040,21 +1993,21 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(0,changes1.size(),"upload 1: x=4 should produce 0 changes");
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null,rootNode,mapper.readTree("""
+        ValueEntity root2 = new ValueEntity(null,rootNode,JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 2, "range" : 200} ] }
                 """));
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null,splitNode,root2.data.get("split").get(0),List.of(root2));
+        ValueEntity split2 = new ValueEntity(null,splitNode,root2.data.getField("split").getElement(0),List.of(root2));
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null,domainNode,split2.data.get("domain"),List.of(split2));
+        ValueEntity domain2 = new ValueEntity(null,domainNode,split2.data.getField("domain"),List.of(split2));
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null,rangeNode,split2.data.get("range"),List.of(split2));
+        ValueEntity range2 = new ValueEntity(null,rangeNode,split2.data.getField("range"),List.of(split2));
         range2.persist();
 
-        ValueEntity fingerprint2 = new ValueEntity(null,fingerprintNode,split2.data.get("fingerprint"),List.of(split2));
+        ValueEntity fingerprint2 = new ValueEntity(null,fingerprintNode,split2.data.getField("fingerprint"),List.of(split2));
         fingerprint2.persist();
         tm.commit();
 
@@ -2063,10 +2016,10 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 with only 1 sample should produce 1 change");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
-        JsonNode domainValue2 = changeData2.get("domainvalue");
+        JqValue changeData2 = change2.data;
+        JqValue domainValue2 = changeData2.getField("domainvalue");
 
-        assertEquals(4,domainValue2.asInt(),"Domain value should be 4");
+        assertEquals(4,domainValue2.longValue(),"Domain value should be 4");
         assertNotNull(change2.sources, "Change at iteration 2 should have sources from the changed value at x=4");
         ValueEntity changeSource =  change2.sources.get(0);
         assertEquals(split1.id, changeSource.id,"Change id should be split 1 id where x=4");
@@ -2078,21 +2031,21 @@ public class NodeServiceTest extends FreshDb {
         tm.begin();
         em.merge(changes2.get(0));
 
-        ValueEntity root3 = new ValueEntity(null,rootNode,mapper.readTree("""
+        ValueEntity root3 = new ValueEntity(null,rootNode,JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 1, "range" : 200} ] }
                 """));
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null,splitNode,root3.data.get("split").get(0),List.of(root3));
+        ValueEntity split3 = new ValueEntity(null,splitNode,root3.data.getField("split").getElement(0),List.of(root3));
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null,domainNode,split3.data.get("domain"),List.of(split3));
+        ValueEntity domain3 = new ValueEntity(null,domainNode,split3.data.getField("domain"),List.of(split3));
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null,rangeNode,split3.data.get("range"),List.of(split3));
+        ValueEntity range3 = new ValueEntity(null,rangeNode,split3.data.getField("range"),List.of(split3));
         range3.persist();
 
-        ValueEntity fingerprint3 = new ValueEntity(null,fingerprintNode,split3.data.get("fingerprint"),List.of(split3));
+        ValueEntity fingerprint3 = new ValueEntity(null,fingerprintNode,split3.data.getField("fingerprint"),List.of(split3));
         fingerprint3.persist();
         tm.commit();
 
@@ -2102,21 +2055,21 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 3: x=1 with only 1 sample should produce 0 changes (need window(1) + minPrevious(1) = 2 samples)");
 
         tm.begin();
-        ValueEntity root4 = new ValueEntity(null,rootNode,mapper.readTree("""
+        ValueEntity root4 = new ValueEntity(null,rootNode,JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 3, "range" : 400} ] }
                 """));
         root4.persist();
 
-        ValueEntity split4 = new ValueEntity(null,splitNode,root4.data.get("split").get(0),List.of(root4));
+        ValueEntity split4 = new ValueEntity(null,splitNode,root4.data.getField("split").getElement(0),List.of(root4));
         split4.persist();
 
-        ValueEntity domain4 = new ValueEntity(null,domainNode,split4.data.get("domain"),List.of(split4));
+        ValueEntity domain4 = new ValueEntity(null,domainNode,split4.data.getField("domain"),List.of(split4));
         domain4.persist();
 
-        ValueEntity range4 = new ValueEntity(null,rangeNode,split4.data.get("range"),List.of(split4));
+        ValueEntity range4 = new ValueEntity(null,rangeNode,split4.data.getField("range"),List.of(split4));
         range4.persist();
 
-        ValueEntity fingerprint4 = new ValueEntity(null,fingerprintNode,split4.data.get("fingerprint"),List.of(split4));
+        ValueEntity fingerprint4 = new ValueEntity(null,fingerprintNode,split4.data.getField("fingerprint"),List.of(split4));
         fingerprint4.persist();
         tm.commit();
 
@@ -2126,9 +2079,9 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 4: x=3 with only 1 sample should produce 1 change");
 
         ValueEntity change4 = changes4.get(0);
-        JsonNode changeData4 = change4.data;
-        JsonNode domainValue4 = changeData4.get("domainvalue");
-        assertEquals(3,domainValue4.asInt(),"Domain value should be 3");
+        JqValue changeData4 = change4.data;
+        JqValue domainValue4 = changeData4.getField("domainvalue");
+        assertEquals(3,domainValue4.longValue(),"Domain value should be 3");
 
        List<ValueEntity> vs =  valueService.getValues(relDiff);
         assertEquals(0,vs.size(),"There should be no persisted change value"+ vs);
@@ -2159,24 +2112,24 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
+        
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split1 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split1.sources = List.of(root1);
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null, domainNode, new LongNode(4));
+        ValueEntity domain1 = new ValueEntity(null, domainNode, JqNumber.of(4));
         domain1.sources = List.of(split1);
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, new DoubleNode(400));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(400));
         range1.sources = List.of(split1);
         range1.persist();
 
-        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp1.sources = List.of(split1);
         fp1.persist();
 
@@ -2187,22 +2140,22 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 1: x=4 Insufficient. produce 0 changes (need window(1) + minPrevious(1) = 2 samples)");
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split2 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split2.sources = List.of(root2);
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null, domainNode, new LongNode(2));
+        ValueEntity domain2 = new ValueEntity(null, domainNode, JqNumber.of(2));
         domain2.sources = List.of(split2);
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null, rangeNode, new DoubleNode(200));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(200));
         range2.sources = List.of(split2);
         range2.persist();
 
-        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp2.sources = List.of(split2);
         fp2.persist();
         tm.commit();
@@ -2212,29 +2165,29 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 should produce 1 change");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
-        JsonNode domainValue2 = changeData2.get("domainvalue");
-        assertEquals(4,domainValue2.asInt(),"Domain value should be 4");
+        JqValue changeData2 = change2.data;
+        JqValue domainValue2 = changeData2.getField("domainvalue");
+        assertEquals(4,domainValue2.longValue(),"Domain value should be 4");
 
         tm.begin();
         em.merge(changes2.get(0));
 
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split3 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split3.sources = List.of(root3);
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null, domainNode, new LongNode(1));
+        ValueEntity domain3 = new ValueEntity(null, domainNode, JqNumber.of(1));
         domain3.sources = List.of(split3);
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null, rangeNode, new DoubleNode(200));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, JqNumber.of(200));
         range3.sources = List.of(split3);
         range3.persist();
 
-        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp3.sources = List.of(split3);
         fp3.persist();
         tm.commit();
@@ -2245,22 +2198,22 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 3: x=1 produce 0 changes (need window(1) + minPrevious(1) = 2 samples)");
 
         tm.begin();
-        ValueEntity root4 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root4 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root4.persist();
 
-        ValueEntity split4 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split4 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split4.sources = List.of(root4);
         split4.persist();
 
-        ValueEntity domain4 = new ValueEntity(null, domainNode, new LongNode(3));
+        ValueEntity domain4 = new ValueEntity(null, domainNode, JqNumber.of(3));
         domain4.sources = List.of(split4);
         domain4.persist();
 
-        ValueEntity range4 = new ValueEntity(null, rangeNode, new DoubleNode(200));
+        ValueEntity range4 = new ValueEntity(null, rangeNode, JqNumber.of(200));
         range4.sources = List.of(split4);
         range4.persist();
 
-        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp4.sources = List.of(split4);
         fp4.persist();
         tm.commit();
@@ -2299,24 +2252,24 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
+        
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split1 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split1.sources = List.of(root1);
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null, domainNode, new LongNode(4));
+        ValueEntity domain1 = new ValueEntity(null, domainNode, JqNumber.of(4));
         domain1.sources = List.of(split1);
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, new DoubleNode(100));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, JqNumber.of(100));
         range1.sources = List.of(split1);
         range1.persist();
 
-        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp1 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp1.sources = List.of(split1);
         fp1.persist();
 
@@ -2326,22 +2279,22 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(0,changes1.size(),"upload 1: x=4 should produce 0 changes");
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split2 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split2.sources = List.of(root2);
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null, domainNode, new LongNode(2));
+        ValueEntity domain2 = new ValueEntity(null, domainNode, JqNumber.of(2));
         domain2.sources = List.of(split2);
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null, rangeNode, new DoubleNode(200));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, JqNumber.of(200));
         range2.sources = List.of(split2);
         range2.persist();
 
-        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp2 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp2.sources = List.of(split2);
         fp2.persist();
         tm.commit();
@@ -2351,29 +2304,29 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 with only 1 sample should produce 1 changes");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
-        JsonNode domainValue2 = changeData2.get("domainvalue");
-        assertEquals(4,domainValue2.asInt(),"Domain value should be 4");
+        JqValue changeData2 = change2.data;
+        JqValue domainValue2 = changeData2.getField("domainvalue");
+        assertEquals(4,domainValue2.longValue(),"Domain value should be 4");
 
         tm.begin();
         em.merge(changes2.get(0));
 
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split3 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split3.sources = List.of(root3);
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null, domainNode, new LongNode(3));
+        ValueEntity domain3 = new ValueEntity(null, domainNode, JqNumber.of(3));
         domain3.sources = List.of(split3);
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null, rangeNode, new DoubleNode(300));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, JqNumber.of(300));
         range3.sources = List.of(split3);
         range3.persist();
 
-        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp3 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp3.sources = List.of(split3);
         fp3.persist();
         tm.commit();
@@ -2383,29 +2336,29 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, changes3.size(),
                 "Upload 3: x=1 with only 1 sample should produce 1 change");
         ValueEntity change3 = changes3.get(0);
-        JsonNode changeData3 = change3.data;
-        JsonNode domainValue3 = changeData3.get("domainvalue");
-        assertEquals(3,domainValue3.asInt(),"Domain value should be 3");
+        JqValue changeData3 = change3.data;
+        JqValue domainValue3 = changeData3.getField("domainvalue");
+        assertEquals(3,domainValue3.longValue(),"Domain value should be 3");
 
 
         tm.begin();
         em.merge(changes3.get(0));
-        ValueEntity root4 = new ValueEntity(null, rootNode, mapper.createObjectNode());
+        ValueEntity root4 = new ValueEntity(null, rootNode, JqObject.EMPTY);
         root4.persist();
 
-        ValueEntity split4 = new ValueEntity(null, splitNode, mapper.createObjectNode());
+        ValueEntity split4 = new ValueEntity(null, splitNode, JqObject.EMPTY);
         split4.sources = List.of(root4);
         split4.persist();
 
-        ValueEntity domain4 = new ValueEntity(null, domainNode, new LongNode(1));
+        ValueEntity domain4 = new ValueEntity(null, domainNode, JqNumber.of(1));
         domain4.sources = List.of(split4);
         domain4.persist();
 
-        ValueEntity range4 = new ValueEntity(null, rangeNode, new DoubleNode(400));
+        ValueEntity range4 = new ValueEntity(null, rangeNode, JqNumber.of(400));
         range4.sources = List.of(split4);
         range4.persist();
 
-        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, new TextNode("alpha"));
+        ValueEntity fp4 = new ValueEntity(null, fingerprintNode, JqString.of("alpha"));
         fp4.sources = List.of(split4);
         fp4.persist();
         tm.commit();
@@ -2415,9 +2368,9 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, changes4.size(),
                 "Upload 4: x=1 with only 1 sample should produce 1 change");
         ValueEntity change4 = changes4.get(0);
-        JsonNode changeData4 = change4.data;
-        JsonNode domainValue4 = changeData4.get("domainvalue");
-        assertEquals(2,domainValue4.asInt(),"Domain value should be 2");
+        JqValue changeData4 = change4.data;
+        JqValue domainValue4 = changeData4.getField("domainvalue");
+        assertEquals(2,domainValue4.longValue(),"Domain value should be 2");
 
         List<ValueEntity> vs =  valueService.getValues(relDiff);
         assertEquals(1,vs.size(),"There should be one persisted change value for domainValue 3"+ vs);
@@ -2485,23 +2438,23 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
+        
 
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.readTree("""
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 4, "range" : 400} ] }
                 """));
         root1.persist();
 
-        ValueEntity split1 = new ValueEntity(null, splitNode, root1.data.get("split").get(0), List.of(root1));
+        ValueEntity split1 = new ValueEntity(null, splitNode, root1.data.getField("split").getElement(0), List.of(root1));
         split1.persist();
 
-        ValueEntity domain1 = new ValueEntity(null, domainNode, split1.data.get("domain"), List.of(split1));
+        ValueEntity domain1 = new ValueEntity(null, domainNode, split1.data.getField("domain"), List.of(split1));
         domain1.persist();
 
-        ValueEntity range1 = new ValueEntity(null, rangeNode, split1.data.get("range"), List.of(split1));
+        ValueEntity range1 = new ValueEntity(null, rangeNode, split1.data.getField("range"), List.of(split1));
         range1.persist();
 
-        ValueEntity fingerprint1 = new ValueEntity(null, fingerprintNode, split1.data.get("fingerprint"), List.of(split1));
+        ValueEntity fingerprint1 = new ValueEntity(null, fingerprintNode, split1.data.getField("fingerprint"), List.of(split1));
         fingerprint1.persist();
 
         tm.commit();
@@ -2509,21 +2462,21 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> changes1 = nodeService.calculateRelativeDifferenceValues(relDiff, root1, 0);
 
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.readTree("""
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 2, "range" : 200} ] }
                 """));
         root2.persist();
 
-        ValueEntity split2 = new ValueEntity(null, splitNode, root2.data.get("split").get(0), List.of(root2));
+        ValueEntity split2 = new ValueEntity(null, splitNode, root2.data.getField("split").getElement(0), List.of(root2));
         split2.persist();
 
-        ValueEntity domain2 = new ValueEntity(null, domainNode, split2.data.get("domain"), List.of(split2));
+        ValueEntity domain2 = new ValueEntity(null, domainNode, split2.data.getField("domain"), List.of(split2));
         domain2.persist();
 
-        ValueEntity range2 = new ValueEntity(null, rangeNode, split2.data.get("range"), List.of(split2));
+        ValueEntity range2 = new ValueEntity(null, rangeNode, split2.data.getField("range"), List.of(split2));
         range2.persist();
 
-        ValueEntity fingerprint2 = new ValueEntity(null, fingerprintNode, split2.data.get("fingerprint"), List.of(split2));
+        ValueEntity fingerprint2 = new ValueEntity(null, fingerprintNode, split2.data.getField("fingerprint"), List.of(split2));
         fingerprint2.persist();
         tm.commit();
 
@@ -2532,30 +2485,30 @@ public class NodeServiceTest extends FreshDb {
                 "Upload 2: x=2 with only 1 sample should produce 1 change");
 
         ValueEntity change2 = changes2.get(0);
-        JsonNode changeData2 = change2.data;
-        JsonNode domainValue2 = changeData2.get("domainvalue");
+        JqValue changeData2 = change2.data;
+        JqValue domainValue2 = changeData2.getField("domainvalue");
 
-        assertEquals(4, domainValue2.asInt(), "Domain value should be 4");
+        assertEquals(4, domainValue2.longValue(), "Domain value should be 4");
 
 
         tm.begin();
         em.merge(changes2.get(0));
 
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.readTree("""
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqValues.parse("""
                 { "split": [ { "fingerprint" : "alpha", "domain" : 1, "range" : 100} ] }
                 """));
         root3.persist();
 
-        ValueEntity split3 = new ValueEntity(null, splitNode, root3.data.get("split").get(0), List.of(root3));
+        ValueEntity split3 = new ValueEntity(null, splitNode, root3.data.getField("split").getElement(0), List.of(root3));
         split3.persist();
 
-        ValueEntity domain3 = new ValueEntity(null, domainNode, split3.data.get("domain"), List.of(split3));
+        ValueEntity domain3 = new ValueEntity(null, domainNode, split3.data.getField("domain"), List.of(split3));
         domain3.persist();
 
-        ValueEntity range3 = new ValueEntity(null, rangeNode, split3.data.get("range"), List.of(split3));
+        ValueEntity range3 = new ValueEntity(null, rangeNode, split3.data.getField("range"), List.of(split3));
         range3.persist();
 
-        ValueEntity fingerprint3 = new ValueEntity(null, fingerprintNode, split3.data.get("fingerprint"), List.of(split3));
+        ValueEntity fingerprint3 = new ValueEntity(null, fingerprintNode, split3.data.getField("fingerprint"), List.of(split3));
         fingerprint3.persist();
         tm.commit();
 
@@ -2564,8 +2517,8 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1, changes3.size(),
                 "Upload 3: x=2 should produce changes");
         ValueEntity change3 = changes3.get(0);
-        JsonNode changeData3 = change3.data;
-        assertEquals(2, changeData3.get("domainvalue").asInt(), "Domain value should be 2");
+        JqValue changeData3 = change3.data;
+        assertEquals(2, changeData3.getField("domainvalue").longValue(), "Domain value should be 2");
 
 
     }
@@ -2606,8 +2559,8 @@ public class NodeServiceTest extends FreshDb {
 
         // Upload data — this creates Work items via WorkService.create()
         // which calls em.merge(work) with activeNodes and sourceNodes
-        ObjectMapper mapper = new ObjectMapper();
-        folderService.upload("cascade-test", "$", mapper.readTree("{\"key\": \"hello\"}"));
+        
+        folderService.upload("cascade-test", "$", JqValues.parse("{\"key\": \"hello\"}"));
 
         // Wait for the work queue to process
         long deadline = System.currentTimeMillis() + 10_000;
@@ -2652,19 +2605,19 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setFilter("mean");
         relDiff.persist();
 
-        ObjectMapper mapper = new ObjectMapper();
+        
 
         // Upload 1: domain=4, range=100
-        ValueEntity root1 = new ValueEntity(null, rootNode, mapper.readTree(
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqValues.parse(
                 """
                 { "split": [ { "fingerprint": "alpha", "domain": 4, "range": 100 } ] }
                 """));
         root1.persist();
-        ValueEntity split1 = new ValueEntity(null, splitNode, root1.data.get("split").get(0), List.of(root1));
+        ValueEntity split1 = new ValueEntity(null, splitNode, root1.data.getField("split").getElement(0), List.of(root1));
         split1.persist();
-        new ValueEntity(null, domainNode, split1.data.get("domain"), List.of(split1)).persist();
-        new ValueEntity(null, rangeNode, split1.data.get("range"), List.of(split1)).persist();
-        new ValueEntity(null, fingerprintNode, split1.data.get("fingerprint"), List.of(split1)).persist();
+        new ValueEntity(null, domainNode, split1.data.getField("domain"), List.of(split1)).persist();
+        new ValueEntity(null, rangeNode, split1.data.getField("range"), List.of(split1)).persist();
+        new ValueEntity(null, fingerprintNode, split1.data.getField("fingerprint"), List.of(split1)).persist();
 
         tm.commit();
 
@@ -2673,16 +2626,16 @@ public class NodeServiceTest extends FreshDb {
 
         // Upload 2: domain=3, range=100 (same range, no change expected)
         tm.begin();
-        ValueEntity root2 = new ValueEntity(null, rootNode, mapper.readTree(
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqValues.parse(
                 """
                 { "split": [ { "fingerprint": "alpha", "domain": 3, "range": 100 } ] }
                 """));
         root2.persist();
-        ValueEntity split2 = new ValueEntity(null, splitNode, root2.data.get("split").get(0), List.of(root2));
+        ValueEntity split2 = new ValueEntity(null, splitNode, root2.data.getField("split").getElement(0), List.of(root2));
         split2.persist();
-        new ValueEntity(null, domainNode, split2.data.get("domain"), List.of(split2)).persist();
-        new ValueEntity(null, rangeNode, split2.data.get("range"), List.of(split2)).persist();
-        new ValueEntity(null, fingerprintNode, split2.data.get("fingerprint"), List.of(split2)).persist();
+        new ValueEntity(null, domainNode, split2.data.getField("domain"), List.of(split2)).persist();
+        new ValueEntity(null, rangeNode, split2.data.getField("range"), List.of(split2)).persist();
+        new ValueEntity(null, fingerprintNode, split2.data.getField("fingerprint"), List.of(split2)).persist();
         tm.commit();
 
         List<ValueEntity> changes2 = nodeService.calculateRelativeDifferenceValues(relDiff, root2, 0);
@@ -2690,24 +2643,24 @@ public class NodeServiceTest extends FreshDb {
 
         // Upload 3: domain=2, range=200 (big change, should detect)
         tm.begin();
-        ValueEntity root3 = new ValueEntity(null, rootNode, mapper.readTree(
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqValues.parse(
                 """
                 { "split": [ { "fingerprint": "alpha", "domain": 2, "range": 200 } ] }
                 """));
         root3.persist();
-        ValueEntity split3 = new ValueEntity(null, splitNode, root3.data.get("split").get(0), List.of(root3));
+        ValueEntity split3 = new ValueEntity(null, splitNode, root3.data.getField("split").getElement(0), List.of(root3));
         split3.persist();
-        new ValueEntity(null, domainNode, split3.data.get("domain"), List.of(split3)).persist();
-        new ValueEntity(null, rangeNode, split3.data.get("range"), List.of(split3)).persist();
-        new ValueEntity(null, fingerprintNode, split3.data.get("fingerprint"), List.of(split3)).persist();
+        new ValueEntity(null, domainNode, split3.data.getField("domain"), List.of(split3)).persist();
+        new ValueEntity(null, rangeNode, split3.data.getField("range"), List.of(split3)).persist();
+        new ValueEntity(null, fingerprintNode, split3.data.getField("fingerprint"), List.of(split3)).persist();
         tm.commit();
 
         List<ValueEntity> changes3 = nodeService.calculateRelativeDifferenceValues(relDiff, root3, 0);
         assertEquals(1, changes3.size(), "Upload 3: range doubled, should detect 1 change");
         ValueEntity change3 = changes3.get(0);
-        JsonNode changeData3 = change3.data;
-        JsonNode domainValue3 = changeData3.get("domainvalue");
-        assertEquals(3,domainValue3.asInt(),"Domain value should be 3");
+        JqValue changeData3 = change3.data;
+        JqValue domainValue3 = changeData3.getField("domainvalue");
+        assertEquals(3,domainValue3.longValue(),"Domain value should be 3");
 
         // Persist the change
         tm.begin();
@@ -2720,7 +2673,7 @@ public class NodeServiceTest extends FreshDb {
         // will see domain values from iteration 1's window and could incorrectly
         // delete the persisted change from upload 3.
         tm.begin();
-        ValueEntity root4 = new ValueEntity(null, rootNode, mapper.readTree(
+        ValueEntity root4 = new ValueEntity(null, rootNode, JqValues.parse(
                 """
                 { "split": [
                     { "fingerprint": "alpha", "domain": 5, "range": 100 },
@@ -2729,17 +2682,17 @@ public class NodeServiceTest extends FreshDb {
                 """));
         root4.persist();
         // Split item 1: domain=5
-        ValueEntity split4a = new ValueEntity(null, splitNode, root4.data.get("split").get(0), List.of(root4));
+        ValueEntity split4a = new ValueEntity(null, splitNode, root4.data.getField("split").getElement(0), List.of(root4));
         split4a.persist();
-        new ValueEntity(null, domainNode, split4a.data.get("domain"), List.of(split4a)).persist();
-        new ValueEntity(null, rangeNode, split4a.data.get("range"), List.of(split4a)).persist();
-        new ValueEntity(null, fingerprintNode, split4a.data.get("fingerprint"), List.of(split4a)).persist();
+        new ValueEntity(null, domainNode, split4a.data.getField("domain"), List.of(split4a)).persist();
+        new ValueEntity(null, rangeNode, split4a.data.getField("range"), List.of(split4a)).persist();
+        new ValueEntity(null, fingerprintNode, split4a.data.getField("fingerprint"), List.of(split4a)).persist();
         // Split item 2: domain=6
-        ValueEntity split4b = new ValueEntity(null, splitNode, root4.data.get("split").get(1), List.of(root4));
+        ValueEntity split4b = new ValueEntity(null, splitNode, root4.data.getField("split").getElement(1), List.of(root4));
         split4b.persist();
-        new ValueEntity(null, domainNode, split4b.data.get("domain"), List.of(split4b)).persist();
-        new ValueEntity(null, rangeNode, split4b.data.get("range"), List.of(split4b)).persist();
-        new ValueEntity(null, fingerprintNode, split4b.data.get("fingerprint"), List.of(split4b)).persist();
+        new ValueEntity(null, domainNode, split4b.data.getField("domain"), List.of(split4b)).persist();
+        new ValueEntity(null, rangeNode, split4b.data.getField("range"), List.of(split4b)).persist();
+        new ValueEntity(null, fingerprintNode, split4b.data.getField("fingerprint"), List.of(split4b)).persist();
         tm.commit();
 
         List<ValueEntity> changes4 = nodeService.calculateRelativeDifferenceValues(relDiff, root4, 0);
@@ -2757,13 +2710,13 @@ public class NodeServiceTest extends FreshDb {
 
         // Verify the persisted change has the expected content from upload 3
         ValueEntity persistedChange = persistedChanges.get(0);
-        JsonNode changeData = persistedChange.data;
+        JqValue changeData = persistedChange.data;
         assertNotNull(changeData, "Persisted change should have data");
-        assertNotNull(changeData.get("domainvalue"), "Change should have domainvalue");
-        assertNotNull(changeData.get("ratio"), "Change should have ratio");
-        assertNotNull(changeData.get("previous"), "Change should have previous");
-        assertNotNull(changeData.get("last"), "Change should have last");
-        assertEquals(3, changeData.get("domainvalue").asInt(),
+        assertNotNull(changeData.getField("domainvalue"), "Change should have domainvalue");
+        assertNotNull(changeData.getField("ratio"), "Change should have ratio");
+        assertNotNull(changeData.getField("previous"), "Change should have previous");
+        assertNotNull(changeData.getField("last"), "Change should have last");
+        assertEquals(3, changeData.getField("domainvalue").longValue(),
                 "Persisted change should be for domain=3 (where the range jumped from 100 to 200)");
         tm.commit();
     }

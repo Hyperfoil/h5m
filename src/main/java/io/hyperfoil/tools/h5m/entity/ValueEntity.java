@@ -1,15 +1,15 @@
 package io.hyperfoil.tools.h5m.entity;
 
-import com.fasterxml.jackson.annotation.JsonIdentityInfo;
-import com.fasterxml.jackson.annotation.JsonIdentityReference;
-import com.fasterxml.jackson.annotation.ObjectIdGenerators;
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Mutability;
 import org.hibernate.type.SqlTypes;
@@ -24,26 +24,25 @@ import java.util.stream.Collectors;
     @Index(name = "idx_value_node_id", columnList = "node_id"),
     @Index(name = "idx_value_folder_id", columnList = "folder_id")
 })
+@Immutable
+@Cacheable
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class ValueEntity extends PanacheEntity {
 
     @Column(columnDefinition = "JSONB")
     @JdbcTypeCode(SqlTypes.JSON)
     @Basic(fetch = FetchType.LAZY)
     @Mutability(Immutability.class)
-    public JsonNode data;
+    public JqValue data;
 
     //not yet used but the idea is to sort multiple values based on idx to preserve node output order for next nodes input
     public int idx;
 
     @ManyToOne(fetch = FetchType.LAZY   )
-    @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "node_id")
-    @JsonIdentityReference(alwaysAsId = true)
     @NotNull
     public NodeEntity node;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "folder_id")
-    @JsonIdentityReference(alwaysAsId = true)
     public FolderEntity folder;
 
     @CreationTimestamp
@@ -60,7 +59,7 @@ public class ValueEntity extends PanacheEntity {
     public Long getId(){return id;}
 
     //cannot cascade delete because this entity "owns" the reference to the parent values
-    @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.LAZY )
+    @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER )
     @JoinTable(
             name="value_edge",
             joinColumns = @JoinColumn(name = "child_id"),
@@ -79,13 +78,13 @@ public class ValueEntity extends PanacheEntity {
         this.folder = folder;
         this.node = node;
     }
-    public ValueEntity(FolderEntity folder, NodeEntity node,JsonNode data){
+    public ValueEntity(FolderEntity folder, NodeEntity node, JqValue data){
         this();
         this.folder = folder;
         this.node = node;
         this.data = data;
     }
-    public ValueEntity(FolderEntity folder, NodeEntity node,JsonNode data,List<ValueEntity> sources){
+    public ValueEntity(FolderEntity folder, NodeEntity node, JqValue data, List<ValueEntity> sources){
         this.sources = new ArrayList<>(sources);
         this.folder = folder;
         this.node = node;
@@ -93,7 +92,7 @@ public class ValueEntity extends PanacheEntity {
     }
 
     @RegisterForReflection
-    public record DataProjection(JsonNode data) {} // field names must match with entity
+    public record DataProjection(JqValue data) {} // field names must match with entity
 
     public String getPath(){
         String prefix = node.getId()+"="+idx;

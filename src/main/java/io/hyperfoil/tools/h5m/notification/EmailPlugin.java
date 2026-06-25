@@ -1,9 +1,9 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
+
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
 import io.quarkus.mailer.Mail;
@@ -34,8 +34,6 @@ import java.time.Duration;
 @ApplicationScoped
 public class EmailPlugin implements NotificationPlugin {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     @Inject
     ReactiveMailer mailer;
 
@@ -58,7 +56,7 @@ public class EmailPlugin implements NotificationPlugin {
 
     @Override
     public void send(ChangeNotification notification) {
-        String to = extractField(notification.configData(), "to");
+        String to = notification.configData().get("to").asString(null);
         String subject = buildSubject(notification);
         String body = buildBody(notification);
         String htmlBody = buildHtmlBody(notification);
@@ -93,7 +91,8 @@ public class EmailPlugin implements NotificationPlugin {
     }
 
     private String buildSubject(ChangeNotification notification) {
-        String customSubject = extractField(notification.configData(), "subject");
+        String customSubject = notification.configData().has("subject")
+            ? notification.configData().get("subject").asString(null) : null;
         if (customSubject != null && !customSubject.isBlank()) {
             return subjectPrefix + " " + applyTemplate(customSubject, notification);
         }
@@ -138,11 +137,11 @@ public class EmailPlugin implements NotificationPlugin {
     private String extractField(String json, String field) {
         if (json == null) return null;
         try {
-            JsonNode node = MAPPER.readTree(json);
-            if (node.has(field)) {
-                return node.get(field).asText();
+            JqValue parsed = JqValues.parse(json);
+            if (parsed instanceof JqObject obj && obj.has(field)) {
+                return obj.get(field).asString("");
             }
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             // not valid JSON
         }
         return null;

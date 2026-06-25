@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
@@ -57,8 +56,6 @@ public class NodeResource {
             Object configuration) {
         try {
             return nodeService.createConfigured(name, groupId, type, sources, configuration);
-        } catch (JsonProcessingException e) {
-            throw new BadRequestException("Invalid node configuration payload", e);
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Invalid node configuration request: " + e.getMessage(), e);
         }

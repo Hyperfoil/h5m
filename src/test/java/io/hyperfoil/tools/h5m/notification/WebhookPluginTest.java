@@ -1,11 +1,8 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpServer;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -21,8 +18,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class WebhookPluginTest {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Inject
     WebhookPlugin plugin;
@@ -87,14 +82,14 @@ public class WebhookPluginTest {
             assertNotNull(receivedBody.get(), "Server should have received a request");
             assertEquals("application/json", receivedContentType.get());
 
-            JsonNode payload = MAPPER.readTree(receivedBody.get());
-            assertEquals("test-folder", payload.get("folder").asText());
-            assertEquals("threshold-node", payload.get("nodeName").asText());
-            assertEquals("ft", payload.get("nodeType").asText());
-            assertEquals(1, payload.get("changeCount").asInt());
+            JqValue payload = JqValues.parse(receivedBody.get());
+            assertEquals("test-folder", payload.getField("folder").asString(""));
+            assertEquals("threshold-node", payload.getField("nodeName").asString(""));
+            assertEquals("ft", payload.getField("nodeType").asString(""));
+            assertEquals(1, (int) payload.getField("changeCount").asLong(0));
             assertTrue(payload.has("text"), "Payload should contain a text field");
             assertTrue(payload.has("changes"), "Payload should contain changes array");
-            assertEquals(1, payload.get("changes").size());
+            assertEquals(1, payload.getField("changes").length());
         } finally {
             server.stop(0);
         }
@@ -144,10 +139,10 @@ public class WebhookPluginTest {
 
             plugin.send(notification);
 
-            JsonNode payload = MAPPER.readTree(receivedBody.get());
+            JqValue payload = JqValues.parse(receivedBody.get());
             assertEquals(
                 "Regression in *test-folder* by threshold-node: 1 change(s). cc @perf-team",
-                payload.get("text").asText()
+                payload.getField("text").asString("")
             );
         } finally {
             server.stop(0);
@@ -170,8 +165,8 @@ public class WebhookPluginTest {
 
             plugin.send(notification);
 
-            JsonNode payload = MAPPER.readTree(receivedBody.get());
-            String text = payload.get("text").asText();
+            JqValue payload = JqValues.parse(receivedBody.get());
+            String text = payload.getField("text").asString("");
             assertTrue(text.contains("test-folder"), "Default message should contain folder name");
             assertTrue(text.contains("threshold-node"), "Default message should contain node name");
         } finally {
@@ -206,9 +201,9 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            // Plain URL instead of JSON config
+            // Config with URL field (configData is always JqObject now)
             ChangeNotification notification = createTestNotification(
-                "http://localhost:" + port + "/webhook",
+                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
                 null,
                 null
             );
@@ -228,20 +223,28 @@ public class WebhookPluginTest {
     // === Helpers ===
 
     private ChangeNotification createTestNotification(String configData, String secrets, String template) {
-        ObjectNode detectionData = MAPPER.createObjectNode();
-        detectionData.set("value", new DoubleNode(95.3));
-        detectionData.set("bound", new DoubleNode(90.0));
-        detectionData.put("direction", "above");
+        JqValue detectionData = JqObject.builder()
+                .put("value", 95.3)
+                .put("bound", 90.0)
+                .put("direction", "above")
+                .build();
 
-        ObjectNode fingerprint = MAPPER.createObjectNode();
-        fingerprint.put("testName", "perf-test");
+        JqValue fingerprint = JqObject.builder()
+                .put("testName", "perf-test")
+                .build();
 
         ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
 
         return new ChangeNotification(
             "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), configData, secrets, template
+            List.of(detail), parseObj(configData), parseObj(secrets), template
         );
+    }
+
+    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
+        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        io.hyperfoil.tools.jjq.value.JqValue v = JqValues.parse(json);
+        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
     }
 
     private HttpServer startMockServer(int responseCode,

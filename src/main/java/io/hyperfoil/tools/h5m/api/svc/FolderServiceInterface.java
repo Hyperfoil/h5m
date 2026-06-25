@@ -1,9 +1,9 @@
 package io.hyperfoil.tools.h5m.api.svc;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
-import io.hyperfoil.tools.yaup.json.Json;
+
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -64,7 +64,7 @@ public interface FolderServiceInterface {
      * @param data The JSON data to upload.
      * @return A future that completes when all work for this upload is done.
      */
-    CompletableFuture<Void> upload(String name, String path, JsonNode data);
+    CompletableFuture<Void> upload(String name, String path, JqValue data);
 
     /**
      * Recalculates the contents or state of a folder by its name.
@@ -79,7 +79,7 @@ public interface FolderServiceInterface {
      * @param name The name of the folder.
      * @return The JSON representation of the folder's structure.
      */
-    Json structure(String name);
+    JqValue structure(String name);
 
     /**
      * Retrieves dashboard summaries for all folders.

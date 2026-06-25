@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.h5m.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.hyperfoil.tools.h5m.notification.NotificationMethod;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -40,9 +39,8 @@ public class NotificationConfig extends PanacheEntity {
      * Contains sensitive values like API tokens, passwords.
      * e.g. {"token": "xoxb-..."} for Slack,
      *      {"token": "ghp_..."} for GitHub.
-     * This field is never included in JSON serialization.
+     * This field is excluded from REST responses via the NotificationConfigResponse DTO.
      */
-    @JsonIgnore
     @Column(columnDefinition = "TEXT")
     public String secrets;
 

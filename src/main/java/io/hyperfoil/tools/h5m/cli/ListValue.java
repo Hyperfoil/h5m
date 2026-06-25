@@ -1,10 +1,10 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.NumericNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import io.hyperfoil.tools.jjq.value.JqNull;
+import io.hyperfoil.tools.jjq.value.JqNumber;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.Value;
@@ -80,20 +80,17 @@ public class ListValue implements Callable<Integer> {
                 return 1;
             }else{
                 Node foundNode = foundNodes.get(0);
-                List<JsonNode> jsons = valueService.getGroupedValues(foundNode.id());
+                List<JqValue> jsons = valueService.getGroupedValues(foundNode.id());
                 if(Format.raw.equals(format)){
                     System.out.println("Count: " + jsons.size());
                     System.out.println(ListCmd.table(80, jsons,
                             List.of("data"),
-                            List.of(JsonNode::toString)));
+                            List.of(JqValue::toJsonString)));
                 }else{
                     Set<String> keys = new HashSet<>();
-                    for(JsonNode json : jsons){
-                        if(json.isObject()){
-                            ObjectNode object = (ObjectNode) json;
-                            Iterator<String> iter = object.fieldNames();
-                            while( iter.hasNext()){
-                                String key = iter.next();
+                    for(JqValue json : jsons){
+                        if(json instanceof JqObject object){
+                            for(String key : object.objectValue().keySet()){
                                 if(!key.startsWith("_")){
                                     keys.add(key);
                                 }
@@ -102,16 +99,16 @@ public class ListValue implements Callable<Integer> {
                     }
                     List<String> keyList = new ArrayList<>(keys);
                     keyList.sort(String.CASE_INSENSITIVE_ORDER);
-                    List<Function<JsonNode,Object>> accessors = keyList.stream().map(name-> (Function<JsonNode, Object>) json -> {
-                        JsonNode found = json.get(name);
-                        if(found == null || found instanceof NullNode){
+                    List<Function<JqValue,Object>> accessors = keyList.stream().map(name-> (Function<JqValue, Object>) json -> {
+                        JqValue found = json.getField(name);
+                        if(found.isNull()){
                             return "null";
-                        }else if(found instanceof TextNode) {
-                            return ((TextNode) found).textValue();
-                        }else if (found instanceof NumericNode) {
-                            return ((NumericNode) found).numberValue();
+                        }else if(found instanceof JqString s) {
+                            return s.stringValue();
+                        }else if (found instanceof JqNumber n) {
+                            return n.isIntegral() ? (Object) n.longValue() : n.doubleValue();
                         }else{
-                            return found.toString();
+                            return found.toJsonString();
                         }
                     }).toList();
                     System.out.println("Count: " + jsons.size());
@@ -125,15 +122,15 @@ public class ListValue implements Callable<Integer> {
             System.out.println(ListCmd.table(80, values,
                     List.of("id", "data", "node.id"),
                     List.of(v -> v.id(), v -> {
-                        JsonNode found = v.data();
-                        if(found == null){
+                        JqValue found = v.data();
+                        if(found == null || found.isNull()){
                             return "null";
-                        }else if(found instanceof TextNode) {
-                            return ((TextNode) found).textValue();
-                        }else if (found instanceof NumericNode){
-                            return ((NumericNode) found).numberValue();
+                        }else if(found instanceof JqString s) {
+                            return s.stringValue();
+                        }else if (found instanceof JqNumber n){
+                            return n.isIntegral() ? (Object) n.longValue() : n.doubleValue();
                         }else{
-                            return found.toString();
+                            return found.toJsonString();
                         }
 
                     }, v -> v.node().id())));

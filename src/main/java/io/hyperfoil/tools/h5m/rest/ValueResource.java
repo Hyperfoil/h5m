@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -38,8 +38,8 @@ public class ValueResource {
     @Path("{id}")
     @PermitAll
     @Operation(description = "Get a value's data by its ID")
-    public JsonNode getValueData(@PathParam("id") Long id) {
-        JsonNode data = valueServiceImpl.getValueData(id);
+    public JqValue getValueData(@PathParam("id") Long id) {
+        JqValue data = valueServiceImpl.getValueData(id);
         if (data == null) {
             throw new NotFoundException("Value not found: " + id);
         }
@@ -58,7 +58,7 @@ public class ValueResource {
     @Path("node/{nodeId}/grouped")
     @PermitAll
     @Operation(description = "Get grouped values for a specific node")
-    public List<JsonNode> getGroupedValues(@PathParam("nodeId") Long nodeId) {
+    public List<JqValue> getGroupedValues(@PathParam("nodeId") Long nodeId) {
         return valueService.getGroupedValues(nodeId);
     }
 

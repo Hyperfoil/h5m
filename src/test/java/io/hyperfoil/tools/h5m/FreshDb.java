@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m;
 
 import io.agroal.api.AgroalDataSource;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManagerFactory;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,12 +18,17 @@ public class FreshDb {
     @Inject
     AgroalDataSource ds;
 
+    @Inject
+    EntityManagerFactory emf;
+
     @ConfigProperty(name="quarkus.datasource.db-kind")
     String dbKind;
 
     @BeforeEach
     @AfterEach
     public void dropRows() throws SQLException {
+        // Evict 2LC before truncating tables — prevents stale cached entities
+        emf.getCache().evictAll();
         try(Connection conn = ds.getConnection()){
             conn.setAutoCommit(true);
             try(Statement stmt = conn.createStatement()){

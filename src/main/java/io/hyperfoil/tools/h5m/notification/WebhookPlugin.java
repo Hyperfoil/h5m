@@ -1,10 +1,9 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.hyperfoil.tools.jjq.value.JqArray;
+import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.event.ChangeDetail;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
@@ -42,7 +41,6 @@ import java.time.Duration;
 @ApplicationScoped
 public class WebhookPlugin implements NotificationPlugin {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     @Inject
@@ -65,10 +63,13 @@ public class WebhookPlugin implements NotificationPlugin {
 
     @Override
     public void send(ChangeNotification notification) {
-        String urlStr = extractUrl(notification.configData());
-        String authHeader = extractAuthHeader(notification.configSecrets());
+        String urlStr = notification.configData().getField("url").asString(null);
+        if (urlStr == null || urlStr.isBlank()) {
+            throw new IllegalArgumentException("Webhook config is missing required 'url' field");
+        }
+        String authHeader = notification.configSecrets().getField("authHeader").asString(null);
 
-        ObjectNode payload = buildPayload(notification);
+        JqObject payload = buildPayload(notification);
 
         URL url;
         try {
@@ -92,7 +93,7 @@ public class WebhookPlugin implements NotificationPlugin {
         }
 
         HttpResponse<Buffer> response = request
-            .sendBuffer(Buffer.buffer(payload.toString()))
+            .sendBuffer(Buffer.buffer(payload.toJsonString()))
             .await().atMost(TIMEOUT);
 
         if (response.statusCode() >= 400) {
@@ -121,31 +122,34 @@ public class WebhookPlugin implements NotificationPlugin {
         }
     }
 
-    private ObjectNode buildPayload(ChangeNotification notification) {
-        ObjectNode payload = MAPPER.createObjectNode();
-        payload.put("folder", notification.folderName());
-        payload.put("nodeId", notification.nodeId());
-        payload.put("nodeName", notification.nodeName());
-        payload.put("nodeType", notification.nodeType());
-        payload.put("changeCount", notification.changes().size());
+    private JqObject buildPayload(ChangeNotification notification) {
+        JqObject.Builder payloadBuilder = JqObject.builder();
+        payloadBuilder.put("folder", notification.folderName());
+        payloadBuilder.put("nodeId", notification.nodeId());
+        payloadBuilder.put("nodeName", notification.nodeName());
+        payloadBuilder.put("nodeType", notification.nodeType());
+        payloadBuilder.put("changeCount", (long) notification.changes().size());
 
         // Include formatted text — compatible with Slack incoming webhooks
         String text = formatMessage(notification);
-        payload.put("text", text);
+        payloadBuilder.put("text", text);
 
-        ArrayNode changesArray = payload.putArray("changes");
-        for (ChangeDetail change : notification.changes()) {
-            ObjectNode changeNode = changesArray.addObject();
-            changeNode.put("valueId", change.valueId());
+        JqValue[] changeElements = new JqValue[notification.changes().size()];
+        for (int i = 0; i < notification.changes().size(); i++) {
+            ChangeDetail change = notification.changes().get(i);
+            JqObject.Builder changeBuilder = JqObject.builder();
+            changeBuilder.put("valueId", change.valueId());
             if (change.data() != null) {
-                changeNode.set("data", change.data());
+                changeBuilder.put("data", change.data());
             }
             if (change.fingerprint() != null) {
-                changeNode.set("fingerprint", change.fingerprint());
+                changeBuilder.put("fingerprint", change.fingerprint());
             }
+            changeElements[i] = changeBuilder.build();
         }
+        payloadBuilder.put("changes", JqArray.of(changeElements));
 
-        return payload;
+        return payloadBuilder.build();
     }
 
     private String formatMessage(ChangeNotification notification) {
@@ -173,30 +177,15 @@ public class WebhookPlugin implements NotificationPlugin {
 
     private String extractUrl(String configData) {
         try {
-            JsonNode config = MAPPER.readTree(configData);
-            if (config.has("url")) {
-                return config.get("url").asText();
+            JqValue config = JqValues.parse(configData);
+            if (config instanceof JqObject obj && obj.has("url")) {
+                return obj.get("url").asString("");
             }
-            // If it's not JSON, treat the entire string as the URL
+            // If it's not a JSON object, treat the entire string as the URL
             return configData.trim();
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             // Not valid JSON — treat as a plain URL
             return configData.trim();
         }
-    }
-
-    private String extractAuthHeader(String configSecrets) {
-        if (configSecrets == null || configSecrets.isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode secrets = MAPPER.readTree(configSecrets);
-            if (secrets.has("authHeader")) {
-                return secrets.get("authHeader").asText();
-            }
-        } catch (JsonProcessingException e) {
-            // ignore malformed secrets
-        }
-        return null;
     }
 }

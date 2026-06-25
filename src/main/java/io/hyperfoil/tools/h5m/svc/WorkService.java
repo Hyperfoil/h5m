@@ -56,6 +56,9 @@ public class WorkService implements WorkServiceInterface {
     @Inject
     Event<ChangeDetectedEvent> changeDetectedEvent;
 
+    @ConfigProperty(name="quarkus.datasource.db-kind")
+    String dbKind;
+
     @ConfigProperty(name = "h5m.worker.core", defaultValue = "1")
     int corePoolSize;
 
@@ -290,10 +293,20 @@ public class WorkService implements WorkServiceInterface {
                                 }
                                 iter.remove();
                             }else{
-                                //update the new value
-                                existingValue.data = newValue.data;
+                                //update the existing value's data via native SQL
+                                //(@Immutable entities can't be updated through Hibernate)
+                                String updateSql = switch (dbKind) {
+                                    case "postgresql" -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
+                                    case "sqlite"     -> "UPDATE value SET data = json(:data) WHERE id = :id";
+                                    default           -> "UPDATE value SET data = :data WHERE id = :id";
+                                };
+                                em.createNativeQuery(updateSql)
+                                    .setParameter("data", newValue.data.toJsonString())
+                                    .setParameter("id", existingValue.getId())
+                                    .executeUpdate();
+                                // Evict from 2LC since cached value is now stale
+                                em.getEntityManagerFactory().getCache().evict(ValueEntity.class, existingValue.getId());
                                 newOrUpdated.add(existingValue);
-                                //should this update the created_at
                             }
                             descendants.remove(path);//remove it so we know what is left over
                         }else{

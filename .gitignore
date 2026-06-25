@@ -10,3 +10,9 @@ dependency-reduced-pom.xml
 perf_test/states.yaml
 perf_test/qDup.jar
 jmh-result.*
+.cachebro/
+.factorypath
+.h5m_history
+hs_err_pid*.log
+AGENTS.md
+CLAUDE.md
