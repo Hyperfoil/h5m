@@ -137,6 +137,42 @@ java -Dquarkus.profile=cli \
      -jar target/cli/h5m.jar add folder test
 ```
 
+Or create a `.env` file in the project root:
+```properties
+quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/h5m
+quarkus.datasource.username=h5m
+quarkus.datasource.password=h5m
+```
+**Important:** Delete the `.env` file before running `mvn test` — it overrides the test datasource 
+and causes tests to hang.
+
+#### PostgreSQL with Podman
+
+When running PostgreSQL in a Podman container, use `--network=host` to avoid networking
+issues with large JSON payloads. Podman's default `pasta` network mode can hang on TCP 
+transfers larger than a few megabytes:
+
+```shell
+podman run -d --name h5m-db --network=host \
+  -e POSTGRES_USER=h5m -e POSTGRES_PASSWORD=h5m -e POSTGRES_DB=h5m \
+  docker.io/library/postgres:18 \
+  -c listen_addresses='*' -c port=5432
+```
+
+For importing from a Horreum backup database, use `--network=host` or add `sslmode=disable`
+to the legacy connection URL:
+```shell
+podman run -d --name hdb -p 6000:6000 \
+  --security-opt label=disable \
+  -e POSTGRES_DB=horreum -e POSTGRES_USER=horreum-user -e POSTGRES_PASSWORD=horreum \
+  -v /path/to/horreum/backup:/var/lib/postgresql/data:rw \
+  docker.io/library/postgres:16 -c port=6000
+
+h5m load-legacy-tests testId=339 \
+  url=jdbc:postgresql://localhost:6000/horreum?sslmode=disable \
+  username=horreum-user password=horreum
+```
+
 ## Design
 
 There are significant differences between `h5m` and the current horreum architecture. The main goals with h5m are:
