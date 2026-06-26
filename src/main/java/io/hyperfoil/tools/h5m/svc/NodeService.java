@@ -12,6 +12,7 @@ import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.RelativeDifferenceConfig;
+import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
@@ -119,6 +120,8 @@ public class NodeService implements NodeServiceInterface {
                     OBJECT_MAPPER.convertValue(configuration, FixedThresholdConfig.class)));
             case RELATIVE_DIFFERENCE -> new RelativeDifference(name, OBJECT_MAPPER.writeValueAsString(
                     OBJECT_MAPPER.convertValue(configuration, RelativeDifferenceConfig.class)));
+            case STDDEV_ANOMALY -> new StdDevAnomaly(name, OBJECT_MAPPER.writeValueAsString(
+                    OBJECT_MAPPER.convertValue(configuration, StdDevAnomalyConfig.class)));
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -367,6 +370,13 @@ public class NodeService implements NodeServiceInterface {
                 for(int rIdx=0; rIdx<roots.size(); rIdx++){
                     ValueEntity root =  roots.get(rIdx);
                     rtrn.addAll(calculateFixedThresholdValues(ft,root,rtrn.size()));
+                }
+                break;
+            case STDDEV_ANOMALY:
+                StdDevAnomaly sd = (StdDevAnomaly) node;
+                for(int rIdx=0; rIdx<roots.size(); rIdx++){
+                    ValueEntity root =  roots.get(rIdx);
+                    rtrn.addAll(calculateStdDevAnomalyValues(sd, root, rtrn.size()));
                 }
                 break;
             default:
@@ -674,6 +684,145 @@ public class NodeService implements NodeServiceInterface {
             e.printStackTrace();
         }
         return rtrn;
+    }
+
+    @Transactional
+    public List<ValueEntity> calculateStdDevAnomalyValues(StdDevAnomaly sd, ValueEntity root, int startingOrdinal) throws IOException {
+        List<ValueEntity> rtrn = new ArrayList<>();
+        try {
+            NodeEntity groupBy = NodeEntity.findById(sd.getGroupByNode().getId());
+            List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root, sd.getFingerprintNode());
+            String fpFilter = sd.getFingerprintFilter();
+
+            for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
+                ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                    continue;
+                }
+
+                // Get the groupBy ancestor for this fingerprint — this scopes to the
+                // specific dataset/split branch. For non-split uploads, this is the root.
+                List<ValueEntity> groupByValues = valueService.getAncestor(fingerprintValue, groupBy);
+                if (groupByValues.isEmpty()) {
+                    continue;
+                }
+                ValueEntity groupByValue = groupByValues.getFirst();
+
+                // Get the range value from the CURRENT upload that belongs to the same
+                // dataset as this fingerprint (shared groupBy ancestor).
+                List<ValueEntity> currentRangeValues = valueService.getDescendantValues(groupByValue, sd.getRangeNode());
+                if (currentRangeValues.isEmpty()) {
+                    continue;
+                }
+
+                // Get the domain value from the current upload for the output data
+                JsonNode currentDomainData = null;
+                ValueEntity domainPivot = null;
+                if (sd.getDomainNode() != null) {
+                    List<ValueEntity> currentDomainValues = valueService.getDescendantValues(groupByValue, sd.getDomainNode());
+                    if (!currentDomainValues.isEmpty()) {
+                        domainPivot = currentDomainValues.getFirst();
+                        currentDomainData = domainPivot.data;
+                    }
+                }
+
+                // For each range value in the current dataset:
+                for (ValueEntity currentRangeValue : currentRangeValues) {
+                    Double currentNumeric = toDouble(currentRangeValue.data);
+                    if (currentNumeric == null) {
+                        continue;
+                    }
+
+                    // Fetch historical range values for the baseline window.
+                    // Use the current upload's domain value as pivot to get preceding values.
+                    // Request windowSize + 1 because the current value will be in the result set
+                    // (its domain matches the pivot with <=). We skip it by ID below,
+                    // leaving windowSize baseline values.
+                    List<ValueEntity> historicalValues = valueService.findMatchingFingerprint(
+                            sd.getRangeNode(), groupBy, fingerprintValue,
+                            sd.getDomainNode(), domainPivot, null,
+                            sd.getWindowSize() + 1, 0, true);
+
+                    // Build the numeric series: historical values in chronological order,
+                    // with the current value as the last element
+                    List<Double> values = new ArrayList<>();
+                    for (ValueEntity rv : historicalValues) {
+                        // Skip the current value if it appears in the historical set
+                        if (rv.getId().equals(currentRangeValue.getId())) {
+                            continue;
+                        }
+                        Double d = toDouble(rv.data);
+                        if (d != null) {
+                            values.add(d);
+                        }
+                    }
+                    // Append the current value as the last element — this is what gets checked
+                    values.add(currentNumeric);
+
+                    // Delegate the math to the pure calculator
+                    StdDevAnomalyCalculator.Result result = StdDevAnomalyCalculator.evaluate(
+                            values, sd.getWindowSize(), sd.getDeviations(),
+                            sd.getDirection(), sd.getMinDataPoints());
+
+                    if (result != null && result.anomaly()) {
+                        ObjectNode data = OBJECT_MAPPER.createObjectNode();
+                        data.set("value", new DoubleNode(result.currentValue()));
+                        data.set("mean", new DoubleNode(result.mean()));
+                        data.set("stddev", new DoubleNode(result.stddev()));
+                        data.set("deviations", new DoubleNode(result.deviations()));
+                        data.put("direction", result.direction());
+                        data.set("threshold", new DoubleNode(result.threshold()));
+                        data.set("fingerprint", fingerprintValue.data);
+                        if (currentDomainData != null) {
+                            data.set("domainvalue", currentDomainData);
+                        }
+                        ValueEntity changeValue = new ValueEntity(root.folder, sd, data);
+                        changeValue.idx = startingOrdinal;
+                        List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
+                        if (foundParents.size() == 1) {
+                            changeValue.sources = foundParents;
+                        }
+                        rtrn.add(changeValue);
+                    }
+                }
+
+                // Stale change cleanup: delete previously persisted StdDev anomalies
+                // for this fingerprint at the current upload's domain value.
+                // The new results (in rtrn) will replace them when persisted by the caller.
+                // This handles: reprocessing, recalculation, and baseline shifts.
+                if (currentDomainData != null) {
+                    List<ValueEntity> persistedChanges = valueService.findMatchingFingerprint(
+                            sd, groupBy, fingerprintValue,
+                            sd.getDomainNode(), null, null,
+                            -1, -1, true);
+                    for (ValueEntity existing : persistedChanges) {
+                        JsonNode existingDomain = existing.data != null ? existing.data.get("domainvalue") : null;
+                        if (existingDomain != null && existingDomain.equals(currentDomainData)) {
+                            valueService.delete(existing);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return rtrn;
+    }
+
+    private static Double toDouble(JsonNode data) {
+        if (data instanceof NumericNode numericNode) {
+            return numericNode.asDouble();
+        } else if (data != null) {
+            String text = data.asText();
+            if (text != null && text.length() < 20 && text.matches("-?[0-9]+\\.?[0-9]*")) {
+                try {
+                    return Double.parseDouble(text);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     @Transactional
