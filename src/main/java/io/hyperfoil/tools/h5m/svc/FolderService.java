@@ -206,7 +206,7 @@ public class FolderService implements FolderServiceInterface {
             JOIN node r ON r.id = g.root_id
             LEFT JOIN value rv ON rv.node_id = r.id
             LEFT JOIN node n ON n.group_id = g.id AND n.id != r.id
-            LEFT JOIN node dn ON dn.group_id = g.id AND dn.type IN ('ft', 'rd')
+            LEFT JOIN node dn ON dn.group_id = g.id AND dn.type IN ('ft', 'rd', 'sd')
             LEFT JOIN value dv ON dv.node_id = dn.id
             GROUP BY f.id, f.name
             ORDER BY f.name

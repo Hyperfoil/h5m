@@ -3,6 +3,7 @@ package io.hyperfoil.tools.h5m.entity.work;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
+import io.hyperfoil.tools.h5m.entity.node.StdDevAnomaly;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import jakarta.enterprise.inject.spi.CDI;
 
@@ -33,7 +34,8 @@ public class Work implements Runnable, Comparable<Work>{
     public Work(Set<NodeEntity> activeNodes,List<NodeEntity> sourceNodes,List<ValueEntity> sourceValues){
         this();
         this.activeNodes = new HashSet<>(activeNodes); //so that it will be mutable
-        if(activeNodes.stream().anyMatch(node -> node instanceof RelativeDifference)){
+        if(activeNodes.stream().anyMatch(node -> node instanceof RelativeDifference
+                || node instanceof StdDevAnomaly)){
             this.cumulative = true;
         }
         this.sourceValues = sourceValues == null ? Collections.emptyList() : new ArrayList(sourceValues);
@@ -46,7 +48,8 @@ public class Work implements Runnable, Comparable<Work>{
 
     public void setActiveNodes(Set<NodeEntity> activeNodes) {
         this.activeNodes = activeNodes;
-        if(activeNodes.stream().anyMatch(node -> node instanceof RelativeDifference)){
+        if(activeNodes.stream().anyMatch(node -> node instanceof RelativeDifference
+                || node instanceof StdDevAnomaly)){
             this.cumulative = true;
         }else{
             this.cumulative = false;

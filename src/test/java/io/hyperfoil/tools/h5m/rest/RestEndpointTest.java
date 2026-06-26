@@ -348,6 +348,22 @@ public class RestEndpointTest extends FreshDb {
     }
 
     @Test
+    public void node_create_configured_stddev_anomaly() {
+        createFolder("sd-test");
+        Long groupId = getGroupId("sd-test");
+        Long rangeNodeId = createNode(groupId, "range", ".y");
+        Long fpNodeId = createNode(groupId, "fingerprint", ".fp");
+
+        Long nodeId = createConfiguredNode(groupId, "stddev", NodeType.STDDEV_ANOMALY.name(),
+                List.of(fpNodeId, rangeNodeId),
+                """
+                {"windowSize": 40, "deviations": 4.0, "direction": "BOTH", "minDataPoints": 10, "fingerprintFilter": null}
+                """);
+
+        assertTrue(nodeId > 0, "should return a valid node ID");
+    }
+
+    @Test
     public void node_create_configured_fingerprint() {
         createFolder("fp-test");
         Long groupId = getGroupId("fp-test");

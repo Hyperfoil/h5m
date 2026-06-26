@@ -12,6 +12,7 @@ public enum NodeType {
     JSONATA("nata"),
     RELATIVE_DIFFERENCE("rd"),
     ROOT("root"),
+    STDDEV_ANOMALY("sd"),
     SPLIT("split"),
     SQL_JSONPATH_ALL_NODE("sql-all"),
     SQL_JSONPATH_NODE("sql"),

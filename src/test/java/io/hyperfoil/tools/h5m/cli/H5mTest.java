@@ -1349,4 +1349,72 @@ public class H5mTest {
                 "Should contain calculated ratio -48.78048780487805\n" + output4);
     }
 
+    @Test
+    public void calculate_stddev_anomaly_node(QuarkusMainLauncher launcher) throws IOException {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        Path folder = Files.createTempDirectory("h5m");
+
+        // 5 stable uploads at y=100, then 1 anomaly at y=200
+        // Upload files individually in order to guarantee deterministic processing.
+        // File.listFiles() does not guarantee order, so directory upload is unreliable.
+        List<Path> uploadFiles = new java.util.ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            uploadFiles.add(Files.writeString(folder.resolve(String.format("upload_%02d.json", i)),
+                    String.format("""
+                    {
+                        "x": %d, "y": 100.0, "fp1": "alpha"
+                    }
+                    """, i)));
+        }
+        uploadFiles.add(Files.writeString(folder.resolve("upload_06.json"),
+                """
+                {
+                    "x": 6, "y": 200.0, "fp1": "alpha"
+                }
+                """));
+
+        // Build commands: setup nodes, then upload each file individually in order
+        List<String[]> commands = new java.util.ArrayList<>();
+        commands.add(new String[]{"add", "folder", testName});
+        commands.add(new String[]{"add", "jq", "to", testName, "domainNode", ".x"});
+        commands.add(new String[]{"add", "jq", "to", testName, "rangeNode", ".y"});
+        commands.add(new String[]{"add", "jq", "to", testName, "fp1", ".fp1"});
+        commands.add(new String[]{"list", testName, "nodes"});
+        commands.add(new String[]{"add", "stddev", "sdNode", "to", testName,
+                "range", "rangeNode", "domain", "domainNode",
+                "fingerprint", "fp1",
+                "windowSize", "5", "deviations", "3", "minDataPoints", "3",
+                "direction", "BOTH"});
+        commands.add(new String[]{"list", testName, "nodes"});
+        for (Path f : uploadFiles) {
+            commands.add(new String[]{"upload", f.toString(), "to", testName});
+        }
+        commands.add(new String[]{"list", "value", "from", testName});
+
+        List<LaunchResult> results = run(launcher, commands.toArray(new String[0][]));
+
+
+        results.forEach(result -> {
+            assertEquals(0, result.exitCode(), result.getOutput());
+        });
+
+        LaunchResult last = results.getLast();
+        String output = last.getOutput();
+
+        // The node list is the second "list nodes" command (index 6, after add stddev)
+        LaunchResult nodeList = results.get(6);
+        assertTrue(nodeList.getOutput().contains("sdNode"), "Node list should contain sdNode\n" + nodeList.getOutput());
+
+        // After uploading 5 stable + 1 anomaly, the anomaly should be detected
+        // Output should contain stddev detection fields
+        assertTrue(output.contains("\"mean\""), "Detection should contain mean\n" + output);
+        assertTrue(output.contains("\"stddev\""), "Detection should contain stddev\n" + output);
+        assertTrue(output.contains("\"deviations\""), "Detection should contain deviations\n" + output);
+        assertTrue(output.contains("\"direction\""), "Detection should contain direction\n" + output);
+        assertTrue(output.contains("above"), "200 should be detected as above the threshold\n" + output);
+    }
+
 }
