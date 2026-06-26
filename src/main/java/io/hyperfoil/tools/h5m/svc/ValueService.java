@@ -64,6 +64,24 @@ public class ValueService implements ValueServiceInterface {
     }
 
     @Transactional
+    public List<ValueEntity> createAll(List<ValueEntity> values){
+        List<ValueEntity> result = new ArrayList<>(values.size());
+        for (ValueEntity value : values) {
+            if (!value.isPersistent()) {
+                result.add(em.merge(value));
+            } else {
+                value.persist();
+                result.add(value);
+            }
+        }
+        em.flush();
+        for (int i = 0; i < values.size(); i++) {
+            values.get(i).id = result.get(i).id;
+        }
+        return result;
+    }
+
+    @Transactional
     @SuppressWarnings("unchecked")
     public List<ValueEntity> getDependentValues(ValueEntity v){
         // Query IDs only, then load via findMultiple() to hit 2LC
