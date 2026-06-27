@@ -67,6 +67,7 @@ public class FolderService implements FolderServiceInterface {
     ApiMapper apiMapper;
 
 
+
     @Override
     @Transactional
     public long create(String name){
@@ -146,7 +147,7 @@ public class FolderService implements FolderServiceInterface {
             JOIN node r ON r.id = g.root_id
             LEFT JOIN value rv ON rv.node_id = r.id
             LEFT JOIN node n ON n.group_id = g.id AND n.id != r.id
-            LEFT JOIN node dn ON dn.group_id = g.id AND dn.type IN ('ft', 'rd', 'sd')
+            LEFT JOIN node dn ON dn.group_id = g.id AND dn.type IN ('ft', 'rd', 'sd', 'ed')
             LEFT JOIN value dv ON dv.node_id = dn.id
             GROUP BY f.id, f.name
             ORDER BY f.name
@@ -409,6 +410,16 @@ public class FolderService implements FolderServiceInterface {
                     RelativeDifference rd = new RelativeDifference(name, operation);
                     rd.sources = new ArrayList<>(sources);
                     yield rd;
+                }
+                case "sd" -> {
+                    StdDevAnomaly sd = new StdDevAnomaly(name, operation);
+                    sd.sources = new ArrayList<>(sources);
+                    yield sd;
+                }
+                case "ed" -> {
+                    EDivisive ed = new EDivisive(name, operation);
+                    ed.sources = new ArrayList<>(sources);
+                    yield ed;
                 }
                 default -> {
                     Log.warnf("Unknown node type '%s' for node '%s', treating as jq", type, name);

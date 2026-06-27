@@ -19,6 +19,7 @@ import java.util.concurrent.Callable;
         AddRelativeDifference.class,
         AddFixedThreshold.class,
         AddStdDevAnomaly.class,
+        AddEDivisive.class,
         AddNotification.class,
     }
 )
