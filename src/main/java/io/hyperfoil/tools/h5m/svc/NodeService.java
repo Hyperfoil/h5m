@@ -3,11 +3,15 @@ package io.hyperfoil.tools.h5m.svc;
 import io.hyperfoil.tools.jjq.jsonata.JsonataCompiler;
 import io.hyperfoil.tools.jjq.jsonata.JsonataException;
 import io.hyperfoil.tools.jjq.value.*;
+import io.hyperfoil.tools.h5m.api.EDivisiveConfig;
 import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.RelativeDifferenceConfig;
 import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
+import io.hyperfoil.tools.jhunter.Analysis;
+import io.hyperfoil.tools.jhunter.AnalysisOptions;
+import io.hyperfoil.tools.jhunter.ChangePoint;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
@@ -18,6 +22,7 @@ import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.pasted.ProxyJq;
 import io.hyperfoil.tools.h5m.pasted.ProxyJqObject;
 import io.hyperfoil.tools.h5m.pasted.Util;
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -112,6 +117,7 @@ public class NodeService implements NodeServiceInterface {
             case FIXED_THRESHOLD -> new FixedThreshold(name, toFixedThresholdConfig(configuration).toJsonString());
             case RELATIVE_DIFFERENCE -> new RelativeDifference(name, toRelativeDifferenceConfig(configuration).toJsonString());
             case STDDEV_ANOMALY -> new StdDevAnomaly(name, toStdDevAnomalyConfig(configuration).toJsonString());
+            case EDIVISIVE -> new EDivisive(name, toEDivisiveConfig(configuration).toJsonString());
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -171,6 +177,23 @@ public class NodeService implements NodeServiceInterface {
             if (v instanceof JqObject obj) return obj;
         }
         throw new IllegalArgumentException("Invalid StdDevAnomaly configuration: " + config);
+    }
+
+    /** Convert configuration (Map from REST or record from CLI) to JqObject for EDivisive. */
+    private static JqObject toEDivisiveConfig(Object config) {
+        if (config instanceof EDivisiveConfig ed) {
+            JqObject.Builder b = JqObject.builder();
+            b.put("windowLen", (long) ed.windowLen());
+            b.put("maxPvalue", ed.maxPvalue());
+            b.put("minMagnitude", ed.minMagnitude());
+            b.put("maxSeriesLength", (long) ed.maxSeriesLength());
+            if (ed.fingerprintFilter() != null) b.put("fingerprintFilter", ed.fingerprintFilter());
+            return b.build();
+        } else if (config instanceof Map<?, ?>) {
+            JqValue v = JqValues.fromJavaObject(config);
+            if (v instanceof JqObject obj) return obj;
+        }
+        throw new IllegalArgumentException("Invalid EDivisive configuration: " + config);
     }
 
     @Transactional
@@ -419,6 +442,13 @@ public class NodeService implements NodeServiceInterface {
                 for(int rIdx=0; rIdx<roots.size(); rIdx++){
                     ValueEntity root =  roots.get(rIdx);
                     rtrn.addAll(calculateStdDevAnomalyValues(sd, root, rtrn.size()));
+                }
+                break;
+            case EDIVISIVE:
+                EDivisive ed = (EDivisive) node;
+                for(int rIdx=0; rIdx<roots.size(); rIdx++){
+                    ValueEntity root = roots.get(rIdx);
+                    rtrn.addAll(calculateEDivisiveValues(ed, root, rtrn.size()));
                 }
                 break;
             default:
@@ -684,6 +714,166 @@ public class NodeService implements NodeServiceInterface {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+        return rtrn;
+    }
+
+    /**
+     * Calculates e-divisive change points for the given root value.
+     * Collects the most recent maxSeriesLength range values per fingerprint
+     * (ordered by domain node), deletes existing e-divisive values within the
+     * analysis window, then calls jhunter to detect change points and creates
+     * a ValueEntity for each.
+     *
+     * A domain node is required for e-divisive — the algorithm needs a
+     * meaningful ordering to produce useful results. Change points outside
+     * the maxSeriesLength window are preserved from previous analyses.
+     *
+     * Note: uploads with domain values older than the maxSeriesLength window
+     * (e.g., backported runs) will not be included in the analysis.
+     * A manual recalculate with a larger maxSeriesLength can cover them.
+     *
+     * E-divisive Work is marked as cumulative, so the work queue deduplicates
+     * multiple Work items for the same node in a batch — only one runs.
+     * During recalculation (where Work is queued for every root value),
+     * the cumulative flag ensures e-divisive blocks until all extraction
+     * Work completes, and Work.equals() ignores sourceValues for cumulative
+     * Work, so duplicate cascade-created e-divisive Work items are
+     * deduplicated by WorkQueue.hasWork(). Result: e-divisive runs exactly
+     * once per recalculation batch, analyzing the full series.
+     */
+    @Transactional
+    public List<ValueEntity> calculateEDivisiveValues(EDivisive ed, ValueEntity root, int startingOrdinal) throws IOException {
+        List<ValueEntity> rtrn = new ArrayList<>();
+        try {
+            if (ed.getDomainNode() == null) {
+                Log.errorf("e-divisive node %s requires a domain node for meaningful ordering", ed.name);
+                return rtrn;
+            }
+
+            NodeEntity groupBy = NodeEntity.findById(ed.getGroupByNode().getId());
+            List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root, ed.getFingerprintNode());
+            String fpFilter = ed.getFingerprintFilter();
+            int maxSeriesLength = ed.getMaxSeriesLength();
+            for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
+                ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                    continue;
+                }
+
+                // Check if this upload contributed a range value for this fingerprint.
+                // Scope through the groupBy ancestor to handle multi-dataset uploads.
+                List<ValueEntity> groupByValues = valueService.getAncestor(fingerprintValue, groupBy);
+                if (groupByValues.isEmpty()) {
+                    continue;
+                }
+                ValueEntity groupByValue = groupByValues.getFirst();
+                List<ValueEntity> currentRangeValues = valueService.getDescendantValues(groupByValue, ed.getRangeNode());
+                if (currentRangeValues.isEmpty()) {
+                    continue; // this upload didn't produce a range value for this fingerprint
+                }
+
+                // Collect the most recent maxSeriesLength range values for this fingerprint,
+                // ordered by domain ascending. The limit is applied in SQL.
+                // preceedingValues=true fetches the most recent values and returns them
+                // in ascending order (findMatchingFingerprint reverses internally).
+                List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
+                        ed.getRangeNode(), groupBy, fingerprintValue,
+                        ed.getDomainNode(), null,
+                        maxSeriesLength, 0, true);
+
+                if (rangeValues.size() < ed.getWindowLen()) {
+                    continue;
+                }
+
+                // Extract double[] from range values
+                double[] series = new double[rangeValues.size()];
+                int validCount = 0;
+                for (int i = 0; i < rangeValues.size(); i++) {
+                    Double d = rangeValues.get(i).data != null ? rangeValues.get(i).data.tryDouble() : null;
+                    if (d != null) {
+                        series[validCount++] = d;
+                    }
+                }
+
+                if (validCount < ed.getWindowLen()) {
+                    continue;
+                }
+
+                // Trim array if some values were non-numeric
+                if (validCount < series.length) {
+                    series = Arrays.copyOf(series, validCount);
+                }
+
+                // Run jhunter analysis
+                AnalysisOptions options = new AnalysisOptions(
+                        ed.getWindowLen(), ed.getMaxPvalue(), ed.getMinMagnitude());
+                List<ChangePoint> changePoints = Analysis.computeChangePoints(series, options);
+
+                // Delete existing e-divisive change points within the analysis window.
+                // E-divisive recomputes the entire window each time, so all old change points
+                // within the window are replaced by the new results. Change points outside the
+                // window (from older analyses with values that fell out of maxSeriesLength) are
+                // preserved — they represent historical detections that are no longer in scope.
+                Set<Long> windowRangeIds = new HashSet<>();
+                for (ValueEntity rv : rangeValues) {
+                    if (rv.id != null) windowRangeIds.add(rv.id);
+                }
+                List<ValueEntity> existingEdValues = valueService.findMatchingFingerprint(
+                        ed, groupBy, fingerprintValue, (NodeEntity) null);
+                for (ValueEntity existing : existingEdValues) {
+                    JqValue rangeIdNode = existing.data != null ? existing.data.getField("rangeValueId") : JqNull.NULL;
+                    if (!rangeIdNode.isNull() && windowRangeIds.contains((long) rangeIdNode.asDouble(0.0))) {
+                        valueService.delete(existing);
+                    }
+                }
+
+                // Create a ValueEntity for each detected change point
+                for (ChangePoint cp : changePoints) {
+                    JqObject.Builder dataBuilder = JqObject.builder();
+                    dataBuilder.put("index", (long) cp.index());
+                    dataBuilder.put("pvalue", cp.pvalue());
+                    dataBuilder.put("meanBefore", cp.meanBefore());
+                    dataBuilder.put("meanAfter", cp.meanAfter());
+                    dataBuilder.put("stdBefore", cp.stdBefore());
+                    dataBuilder.put("stdAfter", cp.stdAfter());
+                    dataBuilder.put("magnitude", cp.magnitude());
+                    // Hazard level: symmetric measure for triage sorting (MongoDB/ICPE 2020)
+                    if (cp.meanBefore() != 0.0 && cp.meanAfter() > 0.0) {
+                        dataBuilder.put("hazardLevel", Math.log(cp.meanAfter() / cp.meanBefore()));
+                    }
+                    dataBuilder.put("fingerprint", fingerprintValue.data);
+                    // Reference the range and domain values at the change point index
+                    if (cp.index() < rangeValues.size()) {
+                        ValueEntity rangeAtCp = rangeValues.get(cp.index());
+                        // Store range value ID for windowed deletion on recomputation
+                        if (rangeAtCp.id != null) {
+                            dataBuilder.put("rangeValueId", rangeAtCp.id);
+                        }
+                        // Find the domain value that shares the same groupBy ancestor as
+                        // the range value at the change point. This handles split/dataset
+                        // scoping correctly (siblings in the DAG, not ancestors).
+                        List<ValueEntity> rangeGroupBy = valueService.getAncestor(rangeAtCp, groupBy);
+                        if (!rangeGroupBy.isEmpty()) {
+                            List<ValueEntity> domainValues = valueService.getDescendantValues(rangeGroupBy.getFirst(), ed.getDomainNode());
+                            if (!domainValues.isEmpty()) {
+                                dataBuilder.put("domainvalue", domainValues.getFirst().data);
+                            }
+                        }
+                    }
+                    JqValue data = dataBuilder.build();
+
+                    ValueEntity changeValue = new ValueEntity(root.folder, ed, data);
+                    changeValue.idx = startingOrdinal + rtrn.size();
+                    List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
+                    if (foundParents.size() == 1) {
+                        changeValue.sources = foundParents;
+                    }
+                    rtrn.add(changeValue);
+                }
+            }
+        } catch (Exception e) {
+            Log.errorf(e, "Error in e-divisive calculation for node %s: %s", ed.name, e.getMessage());
         }
         return rtrn;
     }
