@@ -859,9 +859,6 @@ public class NodeService implements NodeServiceInterface {
         if (found == null || found.isNull()) {
             return rtrn;
         }
-        if (psqlFunction.equals("jsonb_path_query_array") && found.isArray() && found.size() == 0) {
-            return rtrn;
-        }
 
         ValueEntity newValue = new ValueEntity(null, node, null);
         newValue.data = found;
