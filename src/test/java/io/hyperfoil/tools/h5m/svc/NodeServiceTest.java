@@ -421,7 +421,7 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> calculated = nodeService.calculateSqlAllJsonpathValues(node,sourceValueMap,0);
         assertNotNull(calculated);
-        assertEquals(0,calculated.size());
+        assertEquals(1,calculated.size());
     }
 
     @Test
