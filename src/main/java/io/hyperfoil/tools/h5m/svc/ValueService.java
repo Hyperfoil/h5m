@@ -538,7 +538,8 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     @SuppressWarnings("unchecked")
     public List<ValueEntity> getDescendantValues(ValueEntity root, NodeEntity node){
-        // Query only IDs (skip JSONB data), then load via em.find() to hit 2LC
+        // Query only IDs (skip JSONB data), then batch-load via findMultiple() to hit 2LC.
+        // findMultiple() issues a single batched query for any cache misses.
         List<Number> ids = em.createNativeQuery(
                 """
                 WITH RECURSIVE sourceRecursive (v_id) AS (
@@ -550,14 +551,8 @@ public class ValueService implements ValueServiceInterface {
                 SELECT distinct v.id FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id = :nodeId
                 """
         ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList();
-        List<ValueEntity> rtrn = new ArrayList<>(ids.size());
-        for (Number id : ids) {
-            ValueEntity v = em.find(ValueEntity.class, id.longValue());
-            if (v != null) {
-                rtrn.add(v);
-            }
-        }
-        return rtrn;
+        List<Long> longIds = ids.stream().map(Number::longValue).toList();
+        return em.unwrap(Session.class).findMultiple(ValueEntity.class, longIds);
     }
 
     //get the values from node that descend from root with the associated value source path (nodeId and index for each source value)
@@ -592,7 +587,8 @@ public class ValueService implements ValueServiceInterface {
             nodeIds.add(nodes.get(i).getId());
         }
         // Query only IDs + node_id (skip JSONB data column transfer).
-        // Entities are loaded via em.find() which hits the 2LC.
+        // Batch-load entities via findMultiple() which hits the 2LC and issues
+        // a single batched query for any cache misses.
         List<Object[]> rows = em.createNativeQuery("""
                 WITH RECURSIVE sourceRecursive (v_id) AS (
                     SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
@@ -605,12 +601,21 @@ public class ValueService implements ValueServiceInterface {
                                   .setParameter("rootId", root.id)
                                   .setParameter("nodeIds", nodeIds)
                                   .getResultList();
-        Map<Long, List<ValueEntity>> result = new HashMap<>();
+        // Collect all value IDs and their node mappings
+        List<Long> valueIds = new ArrayList<>(rows.size());
+        Map<Long, Long> valueToNode = new LinkedHashMap<>();
         for (Object[] row : rows) {
             long valueId = ((Number) row[0]).longValue();
             long nodeId = ((Number) row[1]).longValue();
-            ValueEntity v = em.find(ValueEntity.class, valueId);
+            valueIds.add(valueId);
+            valueToNode.put(valueId, nodeId);
+        }
+        // Batch-load all entities in one call
+        List<ValueEntity> loaded = em.unwrap(Session.class).findMultiple(ValueEntity.class, valueIds);
+        Map<Long, List<ValueEntity>> result = new HashMap<>();
+        for (ValueEntity v : loaded) {
             if (v != null) {
+                Long nodeId = valueToNode.get(v.id);
                 result.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(v);
             }
         }
