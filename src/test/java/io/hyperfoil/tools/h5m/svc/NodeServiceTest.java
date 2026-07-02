@@ -432,6 +432,9 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> calculated = nodeService.calculateSqlAllJsonpathValues(node,sourceValueMap,0);
         assertNotNull(calculated);
         assertEquals(1,calculated.size());
+        ValueEntity first = calculated.getFirst();
+        assertNotNull(first);
+        assertNull(first.id,"calculated value should not have a persisted id");
         assertTrue(calculated.getFirst().data.isArray());
     }
 
