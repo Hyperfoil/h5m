@@ -1047,7 +1047,6 @@ public class NodeService implements NodeServiceInterface {
         newValue.data = found;
         newValue.sources = List.of(input);
         newValue.idx = startingOrdinal;
-        valueService.create(newValue);
         rtrn.add(newValue);
         return rtrn;
     }
