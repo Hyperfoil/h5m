@@ -11,7 +11,7 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-@CommandLine.Command(name="list", aliases = {"show","ls"}, description = "list entities", mixinStandardHelpOptions = true, subcommands={ListFolder.class, ListNode.class, ListValue.class, ListNotification.class})
+@CommandLine.Command(name="list", aliases = {"show","ls"}, description = "list entities", mixinStandardHelpOptions = true, subcommands={ListFolder.class, ListNode.class, ListValue.class, ListNotification.class, ListProcessing.class})
 public class ListCmd implements Callable<Integer> {
 
     /*
