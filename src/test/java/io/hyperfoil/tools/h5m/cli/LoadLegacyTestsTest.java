@@ -70,7 +70,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",new HashedSets<>(), List.of(),Collections.emptyList(),List.of(transformer),Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         assertNotNull(folder.group);
@@ -103,7 +103,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         assertNotNull(folder.group);
@@ -131,7 +131,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         assertNotNull(folder.group);
@@ -152,7 +152,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
 
@@ -178,7 +178,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),List.of(variable));
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
 
@@ -203,7 +203,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),List.of(variable));
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
 
@@ -228,7 +228,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, List.of(fingerprint),List.of(),List.of(),List.of());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
         assertNotNull(folder);
 
         assertNotNull(folder.group);
@@ -258,7 +258,7 @@ public class LoadLegacyTestsTest {
 
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, List.of(fingerprint),List.of(changeDetection),List.of(),List.of(variable));
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
         assertNotNull(folder);
 
         assertNotNull(folder.group);
@@ -375,7 +375,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(), Collections.emptyList(), List.of(t1, t2), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         assertNotNull(folder.group);
@@ -401,7 +401,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(), Collections.emptyList(), List.of(t1, t2), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         // Labels are created once against the coalesced dataset (not per-dataset)
         long scoreCount = folder.group.sources.stream().filter(v -> v.name.equals("Score")).count();
@@ -423,7 +423,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(fingerprint), Collections.emptyList(), List.of(t1, t2), List.of(variable));
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         // Should have fingerprint node (variable resolves even with multiple label matches)
@@ -440,7 +440,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(), Collections.emptyList(), List.of(t), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         // Single transformer should NOT have suffix
         long datasetCount = folder.group.sources.stream().filter(v -> v.name.equals("dataset")).count();
@@ -473,7 +473,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(), Collections.emptyList(), List.of(t1, t2), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         // Dataset should be a JQ node that unwraps and flattens transformer outputs
         NodeEntity dataset = folder.group.sources.stream()
@@ -512,7 +512,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", new HashedSets<>(),
                 List.of(), Collections.emptyList(), List.of(t1, t2), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         // Transformer names should be sanitized (spaces → underscores)
         NodeEntity dataset = folder.group.sources.stream().filter(v -> v.name.equals("dataset")).findFirst().orElse(null);
@@ -558,7 +558,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", schemaPaths,
                 Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         // With dedup, the combining should produce at most 1 unique source
@@ -583,7 +583,7 @@ public class LoadLegacyTestsTest {
         LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", schemaPaths,
                 Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
 
-        FolderEntity folder = loadLegacyTests.createFolder(test);
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
 
         assertNotNull(folder);
         // All nodes should have group set (no orphans)
