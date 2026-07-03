@@ -1,29 +1,28 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
-import jakarta.transaction.Transactional;
-import picocli.CommandLine;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
-@CommandLine.Command(name = "notification", separator = " ",
-    description = "remove a notification config by ID",
-    mixinStandardHelpOptions = true)
-public class RemoveNotification implements Callable<Integer> {
+@CommandDefinition(name = "remove", description = "Remove a notification configuration from a folder", generateHelp = true)
+public class RemoveNotification implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Parameters(index = "0", arity = "1", description = "notification config ID")
+    @Argument(description = "notification config ID", required = true)
     long configId;
 
     @Override
-    @Transactional
-    public Integer call() throws Exception {
-        boolean deleted = NotificationConfig.deleteById(configId);
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        boolean deleted = QuarkusTransaction.requiringNew().call(() -> NotificationConfig.deleteById(configId));
         if (deleted) {
-            System.out.println("Removed notification config " + configId);
-            return 0;
+            invocation.println("Removed notification config " + configId);
+            return CommandResult.SUCCESS;
         } else {
-            System.err.println("Notification config not found: " + configId);
-            return 1;
+            invocation.println("Notification config not found: " + configId);
+            return CommandResult.FAILURE;
         }
     }
 }

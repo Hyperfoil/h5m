@@ -5,12 +5,15 @@ import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
 import io.hyperfoil.tools.h5m.entity.Team;
 import io.hyperfoil.tools.h5m.entity.User;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
 
-@CommandLine.Command(name = "add-member", description = "add a user to a team", mixinStandardHelpOptions = true)
-public class AdminAddMember implements Callable<Integer> {
+@CommandDefinition(name = "add-member", description = "Add a user to a team", generateHelp = true)
+public class AdminAddMember implements Command<H5mCommandInvocation> {
 
     @Inject
     TeamServiceInterface teamService;
@@ -18,26 +21,26 @@ public class AdminAddMember implements Callable<Integer> {
     @Inject
     UserServiceInterface userService;
 
-    @CommandLine.Parameters(index = "0", description = "username")
+    @Argument(description = "username")
     public String username;
 
-    @CommandLine.Parameters(index = "1", description = "team name")
+    @Option(name = "team", acceptNameWithoutDashes = true, description = "team name")
     public String teamName;
 
     @Override
-    public Integer call() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         User user = userService.byUsername(username);
         if (user == null) {
-            System.err.println("User not found: " + username);
-            return 1;
+            invocation.println("User not found: " + username);
+            return CommandResult.FAILURE;
         }
         Team team = teamService.byName(teamName);
         if (team == null) {
-            System.err.println("Team not found: " + teamName);
-            return 1;
+            invocation.println("Team not found: " + teamName);
+            return CommandResult.FAILURE;
         }
         teamService.addMember(team.id, user.id);
-        System.out.println("Added " + username + " to team " + teamName);
-        return 0;
+        invocation.println("Added " + username + " to team " + teamName);
+        return CommandResult.SUCCESS;
     }
 }

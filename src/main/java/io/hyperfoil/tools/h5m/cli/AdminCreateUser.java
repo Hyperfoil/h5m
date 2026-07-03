@@ -3,26 +3,29 @@ package io.hyperfoil.tools.h5m.cli;
 import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
 import io.hyperfoil.tools.h5m.entity.Role;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
 
-@CommandLine.Command(name = "create-user", description = "create a new user", mixinStandardHelpOptions = true)
-public class AdminCreateUser implements Callable<Integer> {
+@CommandDefinition(name = "create-user", description = "Create a new user account", generateHelp = true)
+public class AdminCreateUser implements Command<H5mCommandInvocation> {
 
     @Inject
     UserServiceInterface userService;
 
-    @CommandLine.Parameters(index = "0", description = "username")
+    @Argument(description = "username")
     public String username;
 
-    @CommandLine.Option(names = {"--role"}, description = "role (ADMIN or USER)", defaultValue = "USER")
+    @Option(name = "role", acceptNameWithoutDashes = true, description = "role (ADMIN or USER)", defaultValue = {"USER"})
     public Role role;
 
     @Override
-    public Integer call() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         long id = userService.create(username, role);
-        System.out.println("Created user: " + username + " (id=" + id + ", role=" + role + ")");
-        return 0;
+        invocation.println("Created user: " + username + " (id=" + id + ", role=" + role + ")");
+        return CommandResult.SUCCESS;
     }
 }

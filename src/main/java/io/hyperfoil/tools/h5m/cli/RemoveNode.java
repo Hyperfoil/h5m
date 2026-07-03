@@ -4,35 +4,41 @@ import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
+
 
 import java.util.List;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name="node",separator = " ", description = "remove a node", mixinStandardHelpOptions = true)
-public class RemoveNode implements Callable<Integer> {
+@CommandDefinition(name="remove", description = "Remove a computation node from a folder", generateHelp = true)
+public class RemoveNode implements Command<H5mCommandInvocation> {
 
     @Inject
     NodeServiceInterface nodeService;
 
-    @CommandLine.Parameters(index="0",arity="1",description = "node name") String name;
+    @Argument(description = "node name") String name;
 
-    @CommandLine.Option(names = {"from"},description = "target group / test",arity = "0..1") String groupName;
+    @Option(name = "from", acceptNameWithoutDashes = true, description = "target group / test") String groupName;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
         String fqdn = groupName == null ? name : groupName + NodeEntity.FQDN_SEPARATOR + name;
         List<Node> found = nodeService.findNodeByFqdn(fqdn);
         if(found==null || found.isEmpty()) {
-            System.err.println("could not find " + fqdn);
-            return 1;
+            invocation.println("could not find " + fqdn);
+            return CommandResult.FAILURE;
         }else if (found.size()>1){
-            System.err.println("found too many matching nodes");
-            found.forEach(System.out::println);
-            return 1;
+            invocation.println("found too many matching nodes");
+            found.forEach(n -> invocation.println(n.toString()));
+            return CommandResult.FAILURE;
         }else{
             nodeService.delete(found.getFirst().id());
         }
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

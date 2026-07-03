@@ -58,8 +58,15 @@ public class ProcessingService {
      * ensuring missing children are still calculated.
      */
     @Transactional
-    public void recoverIncompleteProcessing(@Observes @Priority(2) StartupEvent ev) {
-        List<ProcessingTrackerEntity> incomplete = ProcessingTrackerEntity.find("completed", false).list();
+    public void recoverIncompleteProcessing(@Observes @Priority(Integer.MAX_VALUE) StartupEvent ev) {
+        List<ProcessingTrackerEntity> incomplete;
+        try {
+            incomplete = ProcessingTrackerEntity.find("completed", false).list();
+        } catch (Exception e) {
+            // Table may not exist yet (e.g., first startup with SQLite before schema update)
+            Log.debugf("Skipping recovery: %s", e.getMessage());
+            return;
+        }
         if (!incomplete.isEmpty()) {
             Log.infof("Found %d incomplete processing operations to recover", incomplete.size());
             for (ProcessingTrackerEntity tracking : incomplete) {

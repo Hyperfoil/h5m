@@ -2,28 +2,31 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
 
-@CommandLine.Command(name = "create-api-key", description = "create an API key for a user", mixinStandardHelpOptions = true)
-public class AdminCreateApiKey implements Callable<Integer> {
+@CommandDefinition(name = "create-api-key", description = "Generate a new API key for programmatic access", generateHelp = true)
+public class AdminCreateApiKey implements Command<H5mCommandInvocation> {
 
     @Inject
     ApiKeyServiceInterface apiKeyService;
 
-    @CommandLine.Parameters(index = "0", description = "username")
+    @Argument(description = "username", required = true)
     public String username;
 
-    @CommandLine.Option(names = {"--description"}, description = "key description", defaultValue = "")
+    @Option(name = "description", acceptNameWithoutDashes = true, description = "key description", defaultValue = "")
     public String description;
 
     @Override
-    public Integer call() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         String rawKey = apiKeyService.create(username, description);
-        System.out.println("API key created for user: " + username);
-        System.out.println("Key: " + rawKey);
-        System.out.println("WARNING: This key cannot be retrieved again. Store it securely.");
-        return 0;
+        invocation.println("API key created for user: " + username);
+        invocation.println("Key: " + rawKey);
+        invocation.println("WARNING: This key cannot be retrieved again. Store it securely.");
+        return CommandResult.SUCCESS;
     }
 }

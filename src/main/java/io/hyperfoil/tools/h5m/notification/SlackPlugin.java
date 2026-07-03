@@ -10,7 +10,7 @@ import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
 import io.quarkus.qute.Qute;
 import io.vertx.mutiny.core.Vertx;
-import io.vertx.mutiny.core.buffer.Buffer;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.mutiny.ext.web.client.HttpResponse;
 import io.vertx.mutiny.ext.web.client.WebClient;
 import jakarta.annotation.PostConstruct;

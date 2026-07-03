@@ -2,23 +2,25 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.TeamServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
-@CommandLine.Command(name = "create-team", description = "create a new team", mixinStandardHelpOptions = true)
-public class AdminCreateTeam implements Callable<Integer> {
+@CommandDefinition(name = "create-team", description = "Create a new team for organizing access control", generateHelp = true)
+public class AdminCreateTeam implements Command<H5mCommandInvocation> {
 
     @Inject
     TeamServiceInterface teamService;
 
-    @CommandLine.Parameters(index = "0", description = "team name")
+    @Argument(description = "team name")
     public String name;
 
     @Override
-    public Integer call() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         long id = teamService.create(name);
-        System.out.println("Created team: " + name + " (id=" + id + ")");
-        return 0;
+        invocation.println("Created team: " + name + " (id=" + id + ")");
+        return CommandResult.SUCCESS;
     }
 }

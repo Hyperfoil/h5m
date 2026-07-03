@@ -3,21 +3,24 @@ package io.hyperfoil.tools.h5m.cli;
 import io.hyperfoil.tools.h5m.api.svc.TeamServiceInterface;
 import io.hyperfoil.tools.h5m.entity.Team;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
 import java.util.List;
 
-@CommandLine.Command(name = "list-teams", description = "list all teams", mixinStandardHelpOptions = true)
-public class AdminListTeams implements Runnable {
+@CommandDefinition(name = "list-teams", description = "List all teams", generateHelp = true)
+public class AdminListTeams implements Command<H5mCommandInvocation> {
 
     @Inject
     TeamServiceInterface teamService;
 
     @Override
-    public void run() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         List<Team> teams = teamService.list();
-        System.out.println(ListCmd.table(80, teams,
+        invocation.println(ListCmd.table(80, teams,
                 List.of("name", "members"),
                 List.of(t -> t.name, t -> t.members.size())));
+        return CommandResult.SUCCESS;
     }
 }

@@ -4,16 +4,20 @@ import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Arguments;
+import org.aesh.command.option.Option;
 
-@CommandLine.Command(name="split", separator = " ", description = "add split node", mixinStandardHelpOptions = true)
-public class AddSplit  implements Callable<Integer> {
+import java.util.List;
 
-    @CommandLine.Option(names = {"to"},description = "target group / test" ) String groupName;
-    @CommandLine.Parameters(index="0",arity="1",description = "node name") String name;
-    @CommandLine.Parameters(index="1",arity="1",description = "operation") String operation;
+@CommandDefinition(name="split", description = "Add a split node that divides array values into individual elements for downstream processing", generateHelp = true)
+public class AddSplit implements Command<H5mCommandInvocation> {
+
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target group / test") String groupName;
+    @Arguments(description = "name and operation") List<String> args;
 
     @Inject
     NodeGroupServiceInterface nodeGroupService;
@@ -23,27 +27,30 @@ public class AddSplit  implements Callable<Integer> {
 
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
+        String name = (args != null && args.size() >= 1) ? args.get(0) : null;
+        String operation = (args != null && args.size() >= 2) ? args.get(1) : null;
         if(name == null){
-            System.err.println("missing node name");
-            return 1;
+            invocation.println("missing node name");
+            return CommandResult.FAILURE;
         }
         if(groupName == null){
-            System.err.println("missing group name");
-            return 1;
+            invocation.println("missing group name");
+            return CommandResult.FAILURE;
         }
         NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if(foundGroup == null){
-            System.err.println("could not find target group/test "+groupName);
-            return 1;
+            invocation.println("could not find target group/test "+groupName);
+            return CommandResult.FAILURE;
         }
         if(operation == null){
-            System.err.println("missing operation");
-            return 1;
+            invocation.println("missing operation");
+            return CommandResult.FAILURE;
         }
 
 
 
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

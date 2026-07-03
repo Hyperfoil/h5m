@@ -16,20 +16,31 @@ import io.hyperfoil.tools.yaup.HashedLists;
 import io.hyperfoil.tools.yaup.HashedSets;
 import io.hyperfoil.tools.yaup.StringUtil;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Option;
+
 
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@CommandLine.Command(name="load-legacy-tests")
-public class LoadLegacyTests implements Callable<Integer> {
+@CommandDefinition(name = "load-tests", description = "Import test definitions (folder + node graph) from a legacy Horreum PostgreSQL database", generateHelp = true)
+public class LoadLegacyTests implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"username"}, description = "legacy db username", defaultValue = "quarkus") String username;
-    @CommandLine.Option(names = {"password"}, description = "legacy db password", defaultValue = "quarkus") String password;
-    @CommandLine.Option(names = {"url"}, description = "legacy connection url",defaultValue = "jdbc:postgresql://0.0.0.0:5432/horreum") String url;
-    @CommandLine.Option(names = {"testId"}, description = "specify which test to load. Loads all if unspecified" ) Long testId;
+    @Option(name = "username", acceptNameWithoutDashes = true, description = "legacy db username", defaultValue = "quarkus")
+    String username;
+
+    @Option(name = "password", acceptNameWithoutDashes = true, description = "legacy db password", defaultValue = "quarkus")
+    String password;
+
+    @Option(name = "url", acceptNameWithoutDashes = true, description = "legacy connection url", defaultValue = "jdbc:postgresql://0.0.0.0:5432/horreum")
+    String url;
+
+    @Option(name = "testId", acceptNameWithoutDashes = true, description = "specify which test to load. Loads all if unspecified")
+    Long testId;
 
     public static String printTest(Test t){
         StringBuilder sb = new StringBuilder();
@@ -592,7 +603,16 @@ public class LoadLegacyTests implements Callable<Integer> {
     }
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        try {
+            return doExecute(invocation);
+        } catch (Exception e) {
+            log("Error: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
+    }
+
+    private CommandResult doExecute(H5mCommandInvocation invocation) throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put(AgroalPropertiesReader.MAX_SIZE, "1");
         props.put(AgroalPropertiesReader.MIN_SIZE, "1");
@@ -885,6 +905,6 @@ public class LoadLegacyTests implements Callable<Integer> {
         finally {
             ds.close();
         }
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

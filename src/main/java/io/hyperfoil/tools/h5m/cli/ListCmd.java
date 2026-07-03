@@ -4,15 +4,17 @@ import io.hyperfoil.tools.jjq.value.JqNull;
 import io.hyperfoil.tools.jjq.value.JqNumber;
 import io.hyperfoil.tools.jjq.value.JqString;
 import io.hyperfoil.tools.yaup.AsciiArt;
-import picocli.CommandLine;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-@CommandLine.Command(name="list", aliases = {"show","ls"}, description = "list entities", mixinStandardHelpOptions = true, subcommands={ListFolder.class, ListNode.class, ListValue.class, ListNotification.class})
-public class ListCmd implements Callable<Integer> {
+/**
+ * Utility class providing table formatting helpers for CLI commands.
+ * Previously a top-level "list" group command; now table() is used by
+ * entity-group subcommands (ListFolder, ListNode, ListValue, etc.).
+ */
+public class ListCmd {
 
     /*
       HTL HBH HTI HBH HTR
@@ -259,23 +261,12 @@ public class ListCmd implements Callable<Integer> {
         return rtrn;
     }
 
-
-    @CommandLine.Parameters(index="0",arity="0..1")
-    public String name;
-
-    @Override
-    public Integer call() throws Exception {
-        CommandLine cmd = new CommandLine(this);
-        cmd.usage(System.out);
-        return 0;
-    }
-
     public static <T> String table(int maxWidth, List<T> values, Map<String,Function<T,Object>> columns){
         return table(maxWidth,values,List.copyOf(columns.keySet()),List.copyOf(columns.values()));
     }
     public static <T> String table(int maxWidth, List<T> values, List<String> headers, List<Function<T,Object>> accessors){
         Map<String,String> table = DUCKDB_TABLE;
-        return table(maxWidth,values,headers,List.copyOf(accessors),H5m.consoleAttached() ? prefix(AsciiArt.ANSI_DARK_GREY,table) : table);
+        return table(maxWidth,values,headers,List.copyOf(accessors), prefix(AsciiArt.ANSI_DARK_GREY,table));
     }
 
     //creates a text table supporting multi-line headers but not multi-line values

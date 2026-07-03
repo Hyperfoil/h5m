@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.api.svc;
 
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.entity.NodeEntity;
 
 import java.util.List;
 
@@ -33,6 +34,15 @@ public interface NodeServiceInterface {
      * @throws IllegalArgumentException If the configuration is invalid for the given node type.
      */
     Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration);
+
+    /**
+     * Updates a node's name and/or operation. Auto-triggers selective
+     * recalculation when the operation changes.
+     *
+     * @param node The node entity with updated fields.
+     * @return The node ID.
+     */
+    long update(NodeEntity node);
 
     /**
      * Deletes a node by its ID.

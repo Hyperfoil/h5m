@@ -53,7 +53,7 @@
         <h5m.benchmark.warmup>5</h5m.benchmark.warmup>
 
         <h5m.cli.native>true</h5m.cli.native>
-        <lib.aesh>3.5</lib.aesh>
+        <lib.aesh>3.7-dev</lib.aesh>
 
         <!-- dependencies -->
         <lib.duckdb>1.4.4.0</lib.duckdb>
@@ -82,7 +82,7 @@
         <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:jdk-25</quarkus.native.builder-image>
         <quarkus.native.container-build>true</quarkus.native.container-build>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
 
         <skipITs>true</skipITs>
 
@@ -139,6 +139,10 @@
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-aesh</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
             <artifactId>quarkus-agroal</artifactId>
         </dependency>
         <dependency>
@@ -175,10 +179,6 @@
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-picocli</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
             <artifactId>quarkus-qute</artifactId>
         </dependency>
         <dependency>
@@ -192,11 +192,6 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.aesh</groupId>
-            <artifactId>aesh</artifactId>
-            <version>${lib.aesh}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -248,6 +243,11 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-aesh</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -334,6 +334,11 @@
                         <arg>-parameters</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.aesh</groupId>
+                            <artifactId>aesh-processor</artifactId>
+                            <version>${lib.aesh}</version>
+                        </path>
                         <path>
                             <groupId>org.openjdk.jmh</groupId>
                             <artifactId>jmh-generator-annprocess</artifactId>

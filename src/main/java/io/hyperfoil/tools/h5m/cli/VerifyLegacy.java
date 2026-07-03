@@ -7,29 +7,38 @@ import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
-import jakarta.transaction.Transactional;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Option;
+
 
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name = "verifyimport", description = "Compare h5m imported data against Horreum source data")
-public class VerifyLegacy implements Callable<Integer> {
+@CommandDefinition(name = "verify", description = "Verify that imported data matches the original Horreum database values", generateHelp = true)
+public class VerifyLegacy implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"username"}, description = "legacy db username", defaultValue = "quarkus")
+    @Option(name = "username", acceptNameWithoutDashes = true, description = "legacy db username", defaultValue = "quarkus")
     String username;
-    @CommandLine.Option(names = {"password"}, description = "legacy db password", defaultValue = "quarkus")
+
+    @Option(name = "password", acceptNameWithoutDashes = true, description = "legacy db password", defaultValue = "quarkus")
     String password;
-    @CommandLine.Option(names = {"url"}, description = "legacy connection url", defaultValue = "jdbc:postgresql://0.0.0.0:6000/horreum")
+
+    @Option(name = "url", acceptNameWithoutDashes = true, description = "legacy connection url", defaultValue = "jdbc:postgresql://0.0.0.0:6000/horreum")
     String url;
-    @CommandLine.Option(names = {"testId"}, description = "Horreum test ID")
+
+    @Option(name = "testId", acceptNameWithoutDashes = true, description = "Horreum test ID")
     Long testId;
-    @CommandLine.Option(names = {"runId"}, description = "verify a specific run (optional)")
+
+    @Option(name = "runId", acceptNameWithoutDashes = true, description = "verify a specific run (optional)")
     Long runId;
-    @CommandLine.Option(names = {"limit"}, description = "max runs to verify", defaultValue = "5")
+
+    @Option(name = "limit", acceptNameWithoutDashes = true, description = "max runs to verify", defaultValue = "5")
     int limit;
-    @CommandLine.Option(names = {"verbose"}, description = "show detailed mismatch info", defaultValue = "false")
+
+    @Option(name = "verbose", acceptNameWithoutDashes = true, description = "show detailed mismatch info", hasValue = false, defaultValue = "false")
     boolean verbose;
 
     @Inject
@@ -39,11 +48,19 @@ public class VerifyLegacy implements Callable<Integer> {
     FolderService folderService;
 
     @Override
-    @Transactional
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        try {
+            return doExecute(invocation);
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
+    }
+
+    CommandResult doExecute(H5mCommandInvocation invocation) throws Exception {
         if (testId == null) {
-            System.err.println("testId is required");
-            return 1;
+            invocation.println("testId is required");
+            return CommandResult.FAILURE;
         }
 
         Map<String, String> props = new HashMap<>();
@@ -62,8 +79,8 @@ public class VerifyLegacy implements Callable<Integer> {
         try (Connection legacyConn = legacyDs.getConnection()) {
             String testName = getTestName(legacyConn, testId);
             if (testName == null) {
-                System.err.println("Test not found: " + testId);
-                return 1;
+                invocation.println("Test not found: " + testId);
+                return CommandResult.FAILURE;
             }
             System.out.println("Verifying test: " + testName + " (id=" + testId + ")");
 
@@ -150,10 +167,10 @@ public class VerifyLegacy implements Callable<Integer> {
 
             if (totalMismatches == 0 && totalMissing == 0) {
                 System.out.println("\nRESULT: PASS");
-                return 0;
+                return CommandResult.SUCCESS;
             } else {
                 System.out.println("\nRESULT: DIFFERENCES FOUND");
-                return 1;
+                return CommandResult.FAILURE;
             }
         } finally {
             legacyDs.close();

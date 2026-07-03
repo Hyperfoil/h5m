@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.queue;
 
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.vertx.core.impl.ConcurrentHashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,8 +25,8 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     private static final Logger log = LoggerFactory.getLogger(WorkQueue.class);
     //TODO using counters blocks work on different values, change to set of active work
     //private Counters<NodeEntity> counters = new Counters<>();
-    private Set<Work> activeWork = new ConcurrentHashSet<>();
-    private Set<Work> pendingWork = new ConcurrentHashSet<>();
+    private Set<Work> activeWork = ConcurrentHashMap.newKeySet();
+    private Set<Work> pendingWork = ConcurrentHashMap.newKeySet();
     private final AtomicInteger deferredCount = new AtomicInteger(0);
 
     private final ReentrantLock takeLock = new ReentrantLock();

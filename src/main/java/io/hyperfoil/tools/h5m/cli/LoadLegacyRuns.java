@@ -5,11 +5,15 @@ import io.hyperfoil.tools.jjq.value.JqValues;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.api.Folder;
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Option;
+
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -22,10 +26,9 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name="load-legacy-runs")
-public class LoadLegacyRuns implements Callable<Integer> {
+@CommandDefinition(name = "load-runs", description = "Import run data from a legacy Horreum PostgreSQL database and process through the node graph", generateHelp = true)
+public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
 
     @Inject
     FolderService folderService;
@@ -33,43 +36,67 @@ public class LoadLegacyRuns implements Callable<Integer> {
     @Inject
     WorkService workService;
 
-    @CommandLine.Option(names = {"username"}, description = "legacy db username", defaultValue = "quarkus") String username;
-    @CommandLine.Option(names = {"password"}, description = "legacy db password", defaultValue = "quarkus") String password;
-    @CommandLine.Option(names = {"url"}, description = "legacy connection url",defaultValue = "jdbc:postgresql://0.0.0.0:") String url;
-    @CommandLine.Option(names = {"testId"}, description = "specify which test to load. Loads all if unspecified" ) Long testId;
-    @CommandLine.Option(names = {"limit"}, description = "max runs to load", defaultValue = "-1") int limit;
-    @CommandLine.Option(names = {"offset"}, description = "how many runs to skip ", defaultValue = "-1") int offset;
-    @CommandLine.Option(names = {"batch"}, description = "max runs to batch at once", defaultValue = "-1") int batch;
-    @CommandLine.Option(names = {"pause"}, description = "pause for user input after every batch", defaultValue = "false") boolean pause;
+    @Option(name = "username", acceptNameWithoutDashes = true, description = "legacy db username", defaultValue = "quarkus")
+    String username;
+
+    @Option(name = "password", acceptNameWithoutDashes = true, description = "legacy db password", defaultValue = "quarkus")
+    String password;
+
+    @Option(name = "url", acceptNameWithoutDashes = true, description = "legacy connection url", defaultValue = "jdbc:postgresql://0.0.0.0:")
+    String url;
+
+    @Option(name = "testId", acceptNameWithoutDashes = true, description = "specify which test to load. Loads all if unspecified")
+    Long testId;
+
+    @Option(name = "limit", acceptNameWithoutDashes = true, description = "max runs to load", defaultValue = "-1")
+    int limit;
+
+    @Option(name = "offset", acceptNameWithoutDashes = true, description = "how many runs to skip", defaultValue = "-1")
+    int offset;
+
+    @Option(name = "batch", acceptNameWithoutDashes = true, description = "max runs to batch at once", defaultValue = "-1")
+    int batch;
+
+    @Option(name = "pause", acceptNameWithoutDashes = true, description = "pause for user input after every batch", hasValue = false, defaultValue = "false")
+    boolean pause;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        try {
+            return doExecute(invocation);
+        } catch (Exception e) {
+            invocation.println("Error: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
+    }
+
+    private CommandResult doExecute(H5mCommandInvocation invocation) throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put(AgroalPropertiesReader.MAX_SIZE, "1");
         props.put(AgroalPropertiesReader.MIN_SIZE, "1");
         props.put(AgroalPropertiesReader.INITIAL_SIZE, "1");
         props.put(AgroalPropertiesReader.MAX_LIFETIME_S, "57");
         props.put(AgroalPropertiesReader.ACQUISITION_TIMEOUT_S, "54");
-        props.put(AgroalPropertiesReader.PRINCIPAL,username); //username
-        props.put(AgroalPropertiesReader.CREDENTIAL,password);//password
-        props.put(AgroalPropertiesReader.PROVIDER_CLASS_NAME , "org.postgresql.Driver");
-        props.put(AgroalPropertiesReader.JDBC_URL, url );
-        AgroalDataSource ds  = AgroalDataSource.from(new AgroalPropertiesReader()
+        props.put(AgroalPropertiesReader.PRINCIPAL, username);
+        props.put(AgroalPropertiesReader.CREDENTIAL, password);
+        props.put(AgroalPropertiesReader.PROVIDER_CLASS_NAME, "org.postgresql.Driver");
+        props.put(AgroalPropertiesReader.JDBC_URL, url);
+        AgroalDataSource ds = AgroalDataSource.from(new AgroalPropertiesReader()
                 .readProperties(props)
                 .get());
 
-        Map<Long,String> tests = new HashMap<>();
-        try(Connection connection = ds.getConnection()){
-            if(testId!=null && testId > -1){
-                try(PreparedStatement statement = connection.prepareStatement("select name from test where id = ?")){
+        Map<Long, String> tests = new HashMap<>();
+        try (Connection connection = ds.getConnection()) {
+            if (testId != null && testId > -1) {
+                try (PreparedStatement statement = connection.prepareStatement("select name from test where id = ?")) {
                     statement.setLong(1, testId);
-                    try (ResultSet rs = statement.executeQuery()){
-                        while(rs.next()){
+                    try (ResultSet rs = statement.executeQuery()) {
+                        while (rs.next()) {
                             tests.put(testId, rs.getString("name"));
                         }
                     }
                 }
-            }else {
+            } else {
                 try (Statement statement = connection.createStatement()) {
                     try (ResultSet rs = statement.executeQuery("select id,name from test")) {
                         while (rs.next()) {
@@ -78,27 +105,27 @@ public class LoadLegacyRuns implements Callable<Integer> {
                     }
                 }
             }
-            System.out.println("loaded "+tests.size()+" legacy tests");
-            for(Long testId : tests.keySet()){
+            invocation.println("loaded " + tests.size() + " legacy tests");
+            for (Long testId : tests.keySet()) {
                 String name = tests.get(testId);
                 Folder folder = folderService.byName(name);
-                if(folder == null){
-                    System.out.println("Failed to find Folder for test "+name+" id="+testId);
+                if (folder == null) {
+                    invocation.println("Failed to find Folder for test " + name + " id=" + testId);
                     continue;
                 }
                 try (PreparedStatement ps = connection.prepareStatement("select count(id) from run where testid = ? and trashed = false")) {
                     ps.setLong(1, testId);
-                    try (ResultSet rs = ps.executeQuery()){
-                        while(rs.next()){
-                            System.out.println("loading "+rs.getLong(1)+" uploads to "+name);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            invocation.println("loading " + rs.getLong(1) + " uploads to " + name);
                         }
                     }
                 }
                 String runQuery = limit > 0
                         ? "select id,data from run where testid = ? and trashed = false order by id desc limit ?"
                         : "select id,data from run where testid = ? and trashed = false order by id desc";
-                if(offset > 0){
-                    runQuery+=" offset ?";
+                if (offset > 0) {
+                    runQuery += " offset ?";
                 }
                 connection.setAutoCommit(false);
                 try (PreparedStatement ps = connection.prepareStatement(runQuery)) {
@@ -106,9 +133,9 @@ public class LoadLegacyRuns implements Callable<Integer> {
                     ps.setLong(1, testId);
                     if (limit > 0) ps.setInt(2, limit);
                     if (offset > 0) {
-                        if(limit > 0){
+                        if (limit > 0) {
                             ps.setInt(3, offset);
-                        }else{
+                        } else {
                             ps.setInt(2, limit);
                         }
                     }
@@ -117,9 +144,10 @@ public class LoadLegacyRuns implements Callable<Integer> {
                     Scanner scanner = new Scanner(System.in);
                     List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
                     try (ResultSet rs = ps.executeQuery()) {
-                        while(rs.next()){
+                        while (rs.next()) {
+                            if (Thread.interrupted()) throw new InterruptedException("Import interrupted");
                             Long id = rs.getLong(1);
-                            System.out.println(name+" "+id);
+                            invocation.println(name + " " + id);
                             java.io.Reader reader = rs.getCharacterStream("data");
                             StringBuilder sb = new StringBuilder();
                             char[] buf = new char[8192];
@@ -128,17 +156,17 @@ public class LoadLegacyRuns implements Callable<Integer> {
                                 sb.append(buf, 0, charsRead);
                             }
                             JqValue data = JqValues.parse(sb.toString());
-                            batchFutures.add(folderService.upload(folder.name(),null,data));
+                            batchFutures.add(folderService.upload(folder.name(), null, data));
                             count++;
                             batchCount++;
-                            if(batch > 0 && batchCount >= batch){
-                                System.out.println("waiting for batch of " + batchCount + " to complete");
+                            if (batch > 0 && batchCount >= batch) {
+                                invocation.println("waiting for batch of " + batchCount + " to complete");
                                 CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
                                         .orTimeout(10, TimeUnit.MINUTES)
                                         .join();
-                                System.out.println("batch complete");
+                                invocation.println("batch complete");
                                 batchFutures.clear();
-                                if(pause){
+                                if (pause) {
                                     scanner.nextLine();
                                 }
                                 batchCount = 0;
@@ -147,12 +175,12 @@ public class LoadLegacyRuns implements Callable<Integer> {
                     }
                     // Wait for any remaining uploads
                     if (!batchFutures.isEmpty()) {
-                        System.out.println("waiting for final " + batchFutures.size() + " uploads to complete");
+                        invocation.println("waiting for final " + batchFutures.size() + " uploads to complete");
                         CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
                                 .orTimeout(10, TimeUnit.MINUTES)
                                 .join();
                     }
-                    System.out.println("loaded " + count + " runs");
+                    invocation.println("loaded " + count + " runs");
                 } finally {
                     connection.setAutoCommit(true);
                 }
@@ -160,6 +188,6 @@ public class LoadLegacyRuns implements Callable<Integer> {
         } finally {
             ds.close();
         }
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }
