@@ -3,23 +3,27 @@ package io.hyperfoil.tools.h5m.cli;
 import io.hyperfoil.tools.h5m.api.ApiKey;
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
 import java.util.List;
 
-@CommandLine.Command(name = "list-api-keys", description = "list API keys for a user", mixinStandardHelpOptions = true)
-public class AdminListApiKeys implements Runnable {
+@CommandDefinition(name = "list-api-keys", description = "List API keys for a user", generateHelp = true)
+public class AdminListApiKeys implements Command<H5mCommandInvocation> {
 
     @Inject
     ApiKeyServiceInterface apiKeyService;
 
-    @CommandLine.Parameters(index = "0", description = "username")
+    @Argument(description = "username", required = true)
     public String username;
 
     @Override
-    public void run() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         List<ApiKey> keys = apiKeyService.listByUser(username);
-        System.out.println(ListCmd.table(100, keys,
+        invocation.println(ListCmd.table(100, keys,
                 List.of("id", "description", "created", "last_used", "revoked", "expired"),
                 List.of(k -> String.valueOf(k.id()),
                         k -> k.description() != null ? k.description() : "",
@@ -27,5 +31,6 @@ public class AdminListApiKeys implements Runnable {
                         k -> k.lastUsedAt() != null ? k.lastUsedAt().toString() : "never",
                         k -> String.valueOf(k.revoked()),
                         k -> String.valueOf(k.expired()))));
+        return CommandResult.SUCCESS;
     }
 }

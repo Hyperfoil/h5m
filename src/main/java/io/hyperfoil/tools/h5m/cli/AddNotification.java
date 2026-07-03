@@ -7,29 +7,31 @@ import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.notification.NotificationMethod;
 import io.hyperfoil.tools.h5m.svc.NotificationService;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 
-@CommandLine.Command(name = "notification", separator = " ",
-    description = "add a notification config to a folder",
-    mixinStandardHelpOptions = true)
-public class AddNotification implements Callable<Integer> {
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
 
-    @CommandLine.Parameters(index = "0", arity = "1", description = "notification method: ${COMPLETION-CANDIDATES}")
-    NotificationMethod method;
+@CommandDefinition(name = "add", description = "Configure a notification (email, Slack, webhook, or GitHub issue) for change detection events in a folder", generateHelp = true)
+public class AddNotification implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"to"}, description = "target folder name", required = true)
+    @Argument(description = "notification method (WEBHOOK, EMAIL, SLACK, GITHUB_ISSUE)", required = true)
+    String method;
+
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target folder name", required = true, completer = FolderCompleter.class)
     String folderName;
 
-    @CommandLine.Parameters(index = "1", arity = "1", description = "configuration data (URL, email, JSON, etc.)")
+    @Option(name = "data", acceptNameWithoutDashes = true, description = "configuration data (URL, email, JSON, etc.)", required = true)
     String data;
 
-    @CommandLine.Option(names = {"--secrets"}, description = "secret configuration (tokens, passwords)")
+    @Option(name = "secrets", acceptNameWithoutDashes = true, description = "secret configuration (tokens, passwords)")
     String secrets;
 
-    @CommandLine.Option(names = {"--template"}, description = "custom message template with placeholders: {folderName}, {nodeName}, {nodeType}, {changeCount}")
+    @Option(name = "template", acceptNameWithoutDashes = true, description = "custom message template with placeholders: {folderName}, {nodeName}, {nodeType}, {changeCount}")
     String template;
 
     @Inject
@@ -39,26 +41,40 @@ public class AddNotification implements Callable<Integer> {
     NotificationService notificationService;
 
     @Override
-    @Transactional
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        NotificationMethod notificationMethod;
+        try {
+            notificationMethod = NotificationMethod.valueOf(method.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            invocation.println("Invalid notification method: " + method + ". Use WEBHOOK, EMAIL, SLACK, or GITHUB_ISSUE");
+            return CommandResult.FAILURE;
+        }
+
+        if (folderName == null && invocation.hasFolderContext()) {
+            folderName = invocation.getFolderName();
+        }
+
         Folder folder = folderService.byName(folderName);
         if (folder == null) {
-            System.err.println("Folder not found: " + folderName);
-            return 1;
+            invocation.println("Folder not found: " + folderName);
+            return CommandResult.FAILURE;
         }
 
         try {
-            notificationService.validateConfig(method, data);
+            notificationService.validateConfig(notificationMethod, data);
         } catch (IllegalArgumentException e) {
-            System.err.println("Invalid notification config: " + e.getMessage());
-            return 1;
+            invocation.println("Invalid notification config: " + e.getMessage());
+            return CommandResult.FAILURE;
         }
 
-        FolderEntity folderEntity = FolderEntity.findById(folder.id());
-        NotificationConfig config = new NotificationConfig(folderEntity, method, data, secrets);
-        config.template = template;
-        config.persist();
-        System.out.println("Added " + method.label() + " notification to " + folderName + " (id=" + config.id + ")");
-        return 0;
+        long configId = QuarkusTransaction.requiringNew().call(() -> {
+            FolderEntity folderEntity = FolderEntity.findById(folder.id());
+            NotificationConfig config = new NotificationConfig(folderEntity, notificationMethod, data, secrets);
+            config.template = template;
+            config.persist();
+            return config.id;
+        });
+        invocation.println("Added " + notificationMethod.label() + " notification to " + folderName + " (id=" + configId + ")");
+        return CommandResult.SUCCESS;
     }
 }

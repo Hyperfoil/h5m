@@ -4,13 +4,16 @@ import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
 import java.util.Scanner;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name="folder", description = "add a folder", mixinStandardHelpOptions = true)
-public class AddFolder implements Callable<Integer> {
+@CommandDefinition(name="add", description = "Create a new folder for organizing uploaded data and computation nodes", generateHelp = true)
+public class AddFolder implements Command<H5mCommandInvocation> {
 
     @Inject
     FolderServiceInterface folderService;
@@ -18,22 +21,22 @@ public class AddFolder implements Callable<Integer> {
     @Inject
     NodeGroupServiceInterface nodeGroupService;
 
-    @CommandLine.Parameters(index="0",arity="0..1")
+    @Argument(description = "folder name")
     public String name;
 
     @Override
-    public Integer call() throws Exception {
-        if(name == null && H5m.consoleAttached()){
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if(name == null){
             Scanner sc = new Scanner(System.in);
-            System.out.printf("Enter name: ");
+            invocation.print("Enter name: ");
             name = sc.nextLine();
         }
         NodeGroup existingGroup =  nodeGroupService.byName(name);
         if(existingGroup != null){
-            System.err.println(name+" conflicts with an existing node group");
-            return 1;
+            invocation.println(name+" conflicts with an existing node group");
+            return CommandResult.FAILURE;
         }
         folderService.create(name);
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

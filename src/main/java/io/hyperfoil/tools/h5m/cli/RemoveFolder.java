@@ -2,24 +2,26 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
-@CommandLine.Command(name="folder",description = "remove a folder", mixinStandardHelpOptions = true)
-public class RemoveFolder implements Callable<Integer> {
+@CommandDefinition(name="remove", description = "Delete a folder and all its associated nodes and values", generateHelp = true)
+public class RemoveFolder implements Command<H5mCommandInvocation> {
 
     @Inject
     FolderServiceInterface folderService;
 
-    @CommandLine.Parameters
+    @Argument(description = "folder name")
     String name;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         if(folderService.delete(name) == 0){
-            System.err.println("FolderEntity "+name+" not found");
+            invocation.println("FolderEntity "+name+" not found");
         }
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

@@ -2,41 +2,45 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
+
 
 import java.nio.file.Path;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name = "import", separator = " ",
-    description = "import a folder's node graph from a JSON file",
-    mixinStandardHelpOptions = true)
-public class ImportFolder implements Callable<Integer> {
+@CommandDefinition(name = "import", description = "Import a folder's node graph definition from a previously exported JSON file", generateHelp = true)
+public class ImportFolder implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Parameters(index = "0", arity = "1", description = "path to the folder JSON file to import")
+    @Argument(description = "path to the folder JSON file to import", required = true)
     String inputPath;
 
-    @CommandLine.Option(names = {"--overwrite"}, description = "delete and recreate the folder if it already exists")
-    boolean overwrite = false;
+    @Option(name = "overwrite", acceptNameWithoutDashes = true, description = "delete and recreate the folder if it already exists",
+            hasValue = false, defaultValue = "false")
+    boolean overwrite;
 
     @Inject
     FolderServiceInterface folderService;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         Path path = Path.of(inputPath);
 
         if (!path.toFile().exists()) {
-            System.err.println("File not found: " + inputPath);
-            return 1;
+            invocation.println("File not found: " + inputPath);
+            return CommandResult.FAILURE;
         }
 
         try {
             String folderName = folderService.importFolder(path, overwrite);
-            System.out.println("Imported folder '" + folderName + "' from " + path);
-            return 0;
+            invocation.println("Imported folder '" + folderName + "' from " + path);
+            return CommandResult.SUCCESS;
         } catch (Exception e) {
-            System.err.println("Import failed: " + e.getMessage());
-            return 1;
+            invocation.println("Import failed: " + e.getMessage());
+            return CommandResult.FAILURE;
         }
     }
 }

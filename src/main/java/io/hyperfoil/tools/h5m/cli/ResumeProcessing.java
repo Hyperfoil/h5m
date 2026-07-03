@@ -2,19 +2,20 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.svc.ProcessingService;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
 
-@CommandLine.Command(name="resume",description = "resume incomplete processing events")
-public class ResumeProcessing implements Callable<Integer> {
+@CommandDefinition(name = "resume", description = "resume incomplete processing events", generateHelp = true)
+public class ResumeProcessing implements Command<H5mCommandInvocation> {
 
     @Inject
     ProcessingService service;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         service.recoverIncompleteProcessing(null);
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

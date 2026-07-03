@@ -1,24 +1,22 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
 import io.hyperfoil.tools.h5m.svc.ProcessingService;
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.List;
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
 
-@CommandLine.Command(name="processing", separator = " ", description = "remove unfinished processing from queue", mixinStandardHelpOptions = true)
-public class RemoveProcessing implements Callable<Integer> {
+@CommandDefinition(name = "processing", description = "remove unfinished processing from queue", generateHelp = true)
+public class RemoveProcessing implements Command<H5mCommandInvocation> {
 
     @Inject
     ProcessingService service;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         int count = service.removeIncompleteProcessing();
-        System.out.println("removed "+count);
-        return 0;
+        invocation.println("removed " + count);
+        return CommandResult.SUCCESS;
     }
 }

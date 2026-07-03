@@ -7,44 +7,49 @@ import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
+
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@CommandLine.Command(name = "fixedthreshold", separator = " ", description = "add a fixed threshold node", mixinStandardHelpOptions = true)
-public class AddFixedThreshold implements Callable<Integer> {
+@CommandDefinition(name = "fixedthreshold", description = "Add a fixed threshold change detection node that flags values exceeding a configured bound", generateHelp = true)
+public class AddFixedThreshold implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"to"}, description = "target group / test") String groupName;
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target group / test") String groupName;
 
-    @CommandLine.Option(names = {"range"}, arity = "1", description = "node that produces the value to inspect")
+    @Option(name = "range", acceptNameWithoutDashes = true, description = "node that produces the value to inspect")
     String rangeName;
 
-    @CommandLine.Option(names = {"by"}, description = "grouping node", arity = "0..1")
+    @Option(name = "by", acceptNameWithoutDashes = true, description = "grouping node")
     public String groupBy;
 
-    @CommandLine.Option(names = {"fingerprint"}, description = "node names to use as fingerprint")
+    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "node names to use as fingerprint")
     List<String> fingerprints;
 
-    @CommandLine.Option(names = {"--fingerprint-filter", "-ff"}, arity = "0..1", description = "jq filter expression for fingerprints")
+    @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, shortName = 'f', description = "jq filter expression for fingerprints")
     String fingerprintFilter;
 
-    @CommandLine.Option(names = {"min"}, arity = "0..1", description = "minimum threshold value")
+    @Option(name = "min", acceptNameWithoutDashes = true, description = "minimum threshold value")
     Double min;
 
-    @CommandLine.Option(names = {"max"}, arity = "0..1", description = "maximum threshold value")
+    @Option(name = "max", acceptNameWithoutDashes = true, description = "maximum threshold value")
     Double max;
 
-    @CommandLine.Option(names = {"min-inclusive"}, arity = "0..1", description = "whether min boundary value is within range", defaultValue = "true")
+    @Option(name = "min-inclusive", acceptNameWithoutDashes = true, description = "whether min boundary value is within range", defaultValue = {"true"})
     boolean minInclusive;
 
-    @CommandLine.Option(names = {"max-inclusive"}, arity = "0..1", description = "whether max boundary value is within range", defaultValue = "true")
+    @Option(name = "max-inclusive", acceptNameWithoutDashes = true, description = "whether max boundary value is within range", defaultValue = {"true"})
     boolean maxInclusive;
 
-    @CommandLine.Parameters(index = "0", arity = "1", description = "node name") String name;
+    @Argument(description = "node name") String name;
 
     @Inject
     NodeGroupServiceInterface nodeGroupService;
@@ -53,37 +58,38 @@ public class AddFixedThreshold implements Callable<Integer> {
     NodeServiceInterface nodeService;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
         if (name == null || name.isEmpty()) {
-            System.err.println("missing node name");
-            return 1;
+            invocation.println("missing node name");
+            return CommandResult.FAILURE;
         }
         if (groupName == null || groupName.isEmpty()) {
-            System.err.println("missing group name");
-            return 1;
+            invocation.println("missing group name");
+            return CommandResult.FAILURE;
         }
         NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if (foundGroup == null) {
-            System.err.println("node group with name " + groupName + " does not exist");
-            return 1;
+            invocation.println("node group with name " + groupName + " does not exist");
+            return CommandResult.FAILURE;
         }
 
         List<Node> foundNodes = nodeService.findNodeByFqdn(name, foundGroup.id());
         if (!foundNodes.isEmpty()) {
-            System.err.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+            invocation.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
         }
 
         if (rangeName == null || rangeName.isEmpty()) {
-            System.err.println("Missing range");
-            return 1;
+            invocation.println("Missing range");
+            return CommandResult.FAILURE;
         }
         foundNodes = nodeService.findNodeByFqdn(rangeName, foundGroup.id());
         if (foundNodes.isEmpty()) {
-            System.err.println("could not find matching range node by name " + rangeName);
-            return 1;
+            invocation.println("could not find matching range node by name " + rangeName);
+            return CommandResult.FAILURE;
         } else if (foundNodes.size() > 1) {
-            System.err.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-            return 1;
+            invocation.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+            return CommandResult.FAILURE;
         }
         Node rangeNode = foundNodes.getFirst();
 
@@ -91,11 +97,11 @@ public class AddFixedThreshold implements Callable<Integer> {
         if (groupBy != null && !groupBy.isEmpty()) {
             foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id());
             if (foundNodes.isEmpty()) {
-                System.err.println("could not find matching group by node with name" + groupBy);
-                return 1;
+                invocation.println("could not find matching group by node with name" + groupBy);
+                return CommandResult.FAILURE;
             } else if (foundNodes.size() > 1) {
-                System.err.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-                return 1;
+                invocation.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+                return CommandResult.FAILURE;
             }
             groupByNode = foundNodes.getFirst();
         }
@@ -109,19 +115,24 @@ public class AddFixedThreshold implements Callable<Integer> {
             for (String fingerprintName : fingerprintNames) {
                 foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id());
                 if (foundNodes.isEmpty()) {
-                    System.err.println("could not find matching fingerprint node by name " + fingerprintName);
-                    return 1;
+                    invocation.println("could not find matching fingerprint node by name " + fingerprintName);
+                    return CommandResult.FAILURE;
                 } else if (foundNodes.size() > 1) {
-                    System.err.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-                    return 1;
+                    invocation.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+                    return CommandResult.FAILURE;
                 }
                 fingerprintNodes.add(foundNodes.getFirst().id());
             }
         }
 
-        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
-        nodeService.createConfigured(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
+        try {
+            Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+            nodeService.createConfigured(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
+        } catch (Exception e) {
+            invocation.println("Error creating node: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
 
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }
