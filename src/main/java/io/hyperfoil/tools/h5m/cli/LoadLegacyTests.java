@@ -10,6 +10,9 @@ import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;
+import io.hyperfoil.tools.h5m.api.View;
+import io.hyperfoil.tools.h5m.api.ViewComponent;
+import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.yaup.HashedLists;
@@ -147,6 +150,12 @@ public class LoadLegacyTests implements Callable<Integer> {
 
     @Inject
     NodeService nodeService;
+
+    @Inject
+    ViewServiceInterface viewService;
+
+    /** Result of creating a folder with its label-to-node tracking data */
+    record FolderImportResult(FolderEntity folder, NodeTracking nodeTracking) {}
 
     public static String pad(int pad,String message){
         if(pad==0){
@@ -338,7 +347,7 @@ public class LoadLegacyTests implements Callable<Integer> {
         return input.replaceAll("[^a-zA-Z0-9_$]","_");
     }
 
-    public FolderEntity createFolder(Test test){
+    public FolderImportResult createFolder(Test test){
         FolderEntity folder = new FolderEntity();
         folder.name = test.name;
         folder.group = new NodeGroupEntity(test.name);
@@ -590,7 +599,7 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //this should not happen and is an error
             }
         }
-        return folder;
+        return new FolderImportResult(folder, nodeTracking);
     }
 
     @Override
@@ -880,13 +889,95 @@ public class LoadLegacyTests implements Callable<Integer> {
                 }
                 //TODO create a folderService method that persists an entity
                 //FolderEntity.persist(folder);
-                FolderEntity folder = createFolder(test);
-                folderService.create(folder);
+                FolderImportResult result = createFolder(test);
+                long folderId = folderService.create(result.folder());
+                importViews(connection, test, folderId, result.folder().name, result.nodeTracking());
             }
         }
         finally {
             ds.close();
         }
         return 0;
+    }
+
+    /**
+     * Import Horreum views for a test into h5m.
+     * Queries the view and viewcomponent tables, resolves label names to h5m node IDs
+     * using the NodeTracking from folder creation (avoids an extra DB round-trip).
+     */
+    private void importViews(Connection connection, Test test, long folderId, String folderName,
+                              NodeTracking nodeTracking) throws SQLException {
+        try (PreparedStatement viewStmt = connection.prepareStatement(
+                "SELECT id, name FROM view WHERE test_id = ? ORDER BY name")) {
+            viewStmt.setLong(1, test.id());
+            try (ResultSet viewRs = viewStmt.executeQuery()) {
+                while (viewRs.next()) {
+                    long viewId = viewRs.getLong("id");
+                    String viewName = viewRs.getString("name");
+
+                    List<ViewComponent> components = new ArrayList<>();
+                    try (PreparedStatement compStmt = connection.prepareStatement(
+                            "SELECT headername, headerorder, labels FROM viewcomponent WHERE view_id = ? ORDER BY headerorder")) {
+                        compStmt.setLong(1, viewId);
+                        try (ResultSet compRs = compStmt.executeQuery()) {
+                            while (compRs.next()) {
+                                String headerName = compRs.getString("headername");
+                                int headerOrder = compRs.getInt("headerorder");
+                                String labelsJson = compRs.getString("labels");
+
+                                JqValue labelsArray = JqValues.parse(labelsJson);
+                                if (labelsArray == null || !labelsArray.isArray() || labelsArray.length() == 0) {
+                                    continue;
+                                }
+
+                                if (labelsArray.length() > 1) {
+                                    System.out.println("  Warning: view '" + viewName + "' component '" + headerName
+                                            + "' references " + labelsArray.length() + " labels, using only the first");
+                                }
+
+                                String labelName = labelsArray.getElement(0).asText();
+
+                                // Resolve label name to h5m node using NodeTracking
+                                // from folder creation (nodes already persisted with IDs)
+                                List<NodeEntity> labelNodes = nodeTracking.getLabelNodes(labelName);
+                                NodeEntity node = labelNodes.isEmpty() ? null : labelNodes.getFirst();
+
+                                if (node != null) {
+                                    components.add(new ViewComponent(
+                                            null, node.id, node.name,
+                                            node.type().display(), headerName, headerOrder));
+                                } else {
+                                    System.out.println("  Warning: label '" + labelName + "' not found for view '" + viewName + "'");
+                                }
+                            }
+                        }
+                    }
+
+                    if (components.isEmpty()) {
+                        System.out.println("  Skipping view '" + viewName + "' (no components resolved)");
+                        continue;
+                    }
+
+                    if ("Default".equals(viewName)) {
+                        // Check if Default view already exists (created by folderService.create)
+                        List<View> existing = viewService.getViews(folderName);
+                        View defaultView = existing.stream()
+                                .filter(v -> "Default".equals(v.name()))
+                                .findFirst().orElse(null);
+                        if (defaultView != null) {
+                            viewService.updateView(defaultView.id(),
+                                    new View(defaultView.id(), "Default", folderId, components));
+                        } else {
+                            viewService.createView(folderName,
+                                    new View(null, "Default", null, components));
+                        }
+                    } else {
+                        viewService.createView(folderName,
+                                new View(null, viewName, null, components));
+                    }
+                    System.out.println("  Imported view '" + viewName + "' with " + components.size() + " columns");
+                }
+            }
+        }
     }
 }
