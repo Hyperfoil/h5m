@@ -10,10 +10,10 @@ import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.Immutable;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Mutability;
-import org.hibernate.type.SqlTypes;
-import org.hibernate.type.descriptor.java.Immutability;
+import io.hyperfoil.tools.jjq.jakarta.JqValueJavaType;
+import io.hyperfoil.tools.jjq.jakarta.JqValueJdbcType;
+import org.hibernate.annotations.JavaType;
+import org.hibernate.annotations.JdbcType;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -29,10 +29,10 @@ import java.util.stream.Collectors;
 @Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class ValueEntity extends PanacheEntity {
 
-    @Column(columnDefinition = "JSONB")
-    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "BYTEA")
+    @JdbcType(JqValueJdbcType.class)
+    @JavaType(JqValueJavaType.class)
     @Basic(fetch = FetchType.LAZY)
-    @Mutability(Immutability.class)
     public JqValue data;
 
     //not yet used but the idea is to sort multiple values based on idx to preserve node output order for next nodes input
