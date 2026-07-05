@@ -263,7 +263,7 @@ public class FolderService implements FolderServiceInterface {
             //only queue the top level and let new values queue the remaining
             //that matches the re-calculation workflow
             List<Work> works = folder.group.getTopLevelNodes().stream()
-                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue)))
+                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue.id)))
                     .toList();
 
             if (works.isEmpty()) {

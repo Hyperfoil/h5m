@@ -88,7 +88,7 @@ public class ProcessingService {
         Log.infof("Re-triggering processing for upload %d in folder %d", tracking.referenceId, tracking.folderId);
         // Use all source nodes (not just top-level) to handle mid-cascade crashes
         List<Work> works = List.copyOf(folder.group.sources).stream()
-                .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue)))
+                .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id)))
                 .toList();
         if (!works.isEmpty()) {
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(rootValue.id));
@@ -167,7 +167,7 @@ public class ProcessingService {
         for (ValueEntity rootValue : rootValues) {
             rootValueIds.add(rootValue.id);
             for (NodeEntity sourceNode : List.copyOf(folder.group.sources)) {
-                Work w = new Work(sourceNode, new ArrayList<>(sourceNode.sources), List.of(rootValue));
+                Work w = new Work(sourceNode, new ArrayList<>(sourceNode.sources), List.of(rootValue.id));
                 w.dispatch = false;
                 works.add(w);
             }
@@ -297,7 +297,7 @@ public class ProcessingService {
         for (ValueEntity rootValue : rootValues) {
             rootValueIds.add(rootValue.id);
             for (NodeEntity node : nodesToQueue) {
-                Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue));
+                Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id));
                 w.dispatch = false; // suppress external notifications during recalculation
                 works.add(w);
             }

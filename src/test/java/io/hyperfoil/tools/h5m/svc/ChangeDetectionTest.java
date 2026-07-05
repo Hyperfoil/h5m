@@ -86,7 +86,7 @@ public class ChangeDetectionTest extends FreshDb {
     public void event_fires_when_threshold_violated() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         // value 5.0 is below min=10 → violation
         ThresholdFixture fixture = setupThreshold(5.0);
-        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue()));
+        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue().id));
 
         workService.execute(work);
 
@@ -101,7 +101,7 @@ public class ChangeDetectionTest extends FreshDb {
     public void event_does_not_fire_when_no_violation() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         // value 50.0 is within [10, 100] → no violation
         ThresholdFixture fixture = setupThreshold(50.0);
-        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue()));
+        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue().id));
 
         workService.execute(work);
 
@@ -112,14 +112,14 @@ public class ChangeDetectionTest extends FreshDb {
     public void recalculation_does_not_fire_when_value_unchanged() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         // first calculation: value 5.0 is below min=10 → violation, event fires
         ThresholdFixture fixture = setupThreshold(5.0);
-        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue()));
+        Work work = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue().id));
         workService.execute(work);
 
         assertEquals(1, eventObserver.getEvents().size(), "first calculation should fire event");
         eventObserver.clear();
 
         // recalculation: same data, should produce identical value → deduplicated, no event
-        Work recalc = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue()));
+        Work recalc = new Work(fixture.ft(), new ArrayList<>(fixture.ft().sources), List.of(fixture.rootValue().id));
         workService.execute(recalc);
 
         assertEquals(0, eventObserver.getEvents().size(), "recalculation with identical value should not fire event");
@@ -137,7 +137,7 @@ public class ChangeDetectionTest extends FreshDb {
         rootValue.persist();
         tm.commit();
 
-        Work work = new Work(jqNode, new ArrayList<>(jqNode.sources), List.of(rootValue));
+        Work work = new Work(jqNode, new ArrayList<>(jqNode.sources), List.of(rootValue.id));
         workService.execute(work);
 
         assertEquals(0, eventObserver.getEvents().size(), "should not fire ChangeDetectedEvent for non-detection nodes");

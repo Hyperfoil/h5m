@@ -39,8 +39,11 @@ public class WorkQueueTest extends FreshDb {
         ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
         ValueEntity rootValue2 = new ValueEntity(null,rootNode,JqValues.parse("\"text2\""));
 
-        Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1));
-        Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2));
+        rootValue1.persist();
+        rootValue2.persist();
+
+        Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1.id));
+        Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2.id));
 
         assertEquals(work1.hashCode(),work2.hashCode(),"both worth should have the same hashcode despite different values");
 
@@ -66,8 +69,8 @@ public class WorkQueueTest extends FreshDb {
         rootValue.persist();
 
 
-        Work first = new Work(aNode,aNode.sources,List.of(rootValue));
-        Work second = new Work(aNode,aNode.sources,List.of(rootValue));
+        Work first = new Work(aNode,aNode.sources,List.of(rootValue.id));
+        Work second = new Work(aNode,aNode.sources,List.of(rootValue.id));
 
         assertEquals(first.hashCode(),second.hashCode(),"work with different id but same scope should have the same hash");
         q.addWorks(List.of(first, second));
