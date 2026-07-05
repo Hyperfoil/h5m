@@ -51,6 +51,14 @@ public class NodeService implements NodeServiceInterface {
     private static final ConcurrentHashMap<String, JqProgram> JQ_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, JqProgram> JSONATA_CACHE = new ConcurrentHashMap<>();
 
+    // Shared GraalJS engine — thread-safe and designed for reuse.  Creating a
+    // new Engine per evaluation allocates heavyweight Truffle metadata
+    // (JSFunctionData, ShapeExt, FrameDescriptor, etc.) that accumulates
+    // faster than GC can reclaim it during bulk imports.
+    private static final Engine JS_ENGINE = Engine.newBuilder("js")
+            .option("engine.WarnInterpreterOnly", "false")
+            .build();
+
     private static JqProgram compileJq(String filter) {
         return JQ_CACHE.computeIfAbsent(filter, JqProgram::compile);
     }
@@ -1240,12 +1248,10 @@ public class NodeService implements NodeServiceInterface {
             return Collections.emptyList();
         }
         List<JqValue> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
-        try(Context context = Context.newBuilder("js").engine(Engine.newBuilder("js").option("engine.WarnInterpreterOnly", "false").build())
+        try(Context context = Context.newBuilder("js").engine(JS_ENGINE)
                 .allowExperimentalOptions(true)
                 .option("js.foreign-object-prototype", "true")
                 .option("js.global-property", "true")
-//                .out(out)
-//                .err(out)
                 .build()){
             context.enter();
             context.getBindings("js").putMember("isInstanceLike", new ProxyJqObject.InstanceCheck());
@@ -1363,7 +1369,7 @@ public class NodeService implements NodeServiceInterface {
             return true;
         }
         try (Context context = Context.newBuilder("js")
-                .engine(Engine.newBuilder("js").option("engine.WarnInterpreterOnly", "false").build())
+                .engine(JS_ENGINE)
                 .allowExperimentalOptions(true)
                 .option("js.foreign-object-prototype", "true")
                 .option("js.global-property", "true")
