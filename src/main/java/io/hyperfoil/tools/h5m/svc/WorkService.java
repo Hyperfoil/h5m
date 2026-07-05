@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -365,12 +366,8 @@ public class WorkService implements WorkServiceInterface {
                             }else{
                                 //update the existing value's data via native SQL
                                 //(@Immutable entities can't be updated through Hibernate)
-                                String updateSql = switch (db.kind()) {
-                                    case POSTGRESQL -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
-                                    case SQLITE     -> "UPDATE value SET data = json(:data) WHERE id = :id";
-                                };
-                                em.createNativeQuery(updateSql)
-                                    .setParameter("data", newValue.data.toJsonString())
+                                em.createNativeQuery("UPDATE value SET data = :data WHERE id = :id")
+                                    .setParameter("data", JqValues.serializeToBytes(newValue.data))
                                     .setParameter("id", existingValue.getId())
                                     .executeUpdate();
                                 // Evict from 2LC since cached value is now stale

@@ -20,8 +20,11 @@ import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,6 +42,12 @@ public class ValueServiceTest extends FreshDb {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    FolderService folderService;
+
+    @Inject
+    WorkService workService;
 
     @Test
     public void delete_does_not_cascade_and_delete_ancestor() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
@@ -1590,6 +1599,445 @@ public class ValueServiceTest extends FreshDb {
 
     }
 
+    // ---- Tests targeting BYTEA column migration edge cases (issue #173) ----
+
+    @Test
+    public void getGroupedValues_sorted_by_numeric_values() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        // Verifies that getGroupedValues sorts by numeric value, not lexicographic text.
+        // Text sort would produce "10", "2", "20" — numeric sort should give 2, 10, 20.
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity buildIdNode = new JqNode("build_id");
+        buildIdNode.sources = List.of(rootNode);
+        buildIdNode.persist();
+
+        // Create 3 uploads with build_id values that differ in text vs numeric order
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
+        root1.persist();
+        ValueEntity t1 = new ValueEntity(null, throughputNode, JqNumber.of(100));
+        t1.sources = List.of(root1);
+        t1.persist();
+        ValueEntity b1 = new ValueEntity(null, buildIdNode, JqNumber.of(10));
+        b1.sources = List.of(root1);
+        b1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
+        root2.persist();
+        ValueEntity t2 = new ValueEntity(null, throughputNode, JqNumber.of(200));
+        t2.sources = List.of(root2);
+        t2.persist();
+        ValueEntity b2 = new ValueEntity(null, buildIdNode, JqNumber.of(2));
+        b2.sources = List.of(root2);
+        b2.persist();
+
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("r3"));
+        root3.persist();
+        ValueEntity t3 = new ValueEntity(null, throughputNode, JqNumber.of(300));
+        t3.sources = List.of(root3);
+        t3.persist();
+        ValueEntity b3 = new ValueEntity(null, buildIdNode, JqNumber.of(20));
+        b3.sources = List.of(root3);
+        b3.persist();
+        tm.commit();
+
+        List<JqValue> results = valueService.getGroupedValues(rootNode.id, null, null, buildIdNode.id);
+
+        assertEquals(3, results.size(), "should have 3 grouped results: " + results);
+        // Numeric sort: build_id 2 → 10 → 20
+        JqObject first = (JqObject) results.get(0);
+        JqObject second = (JqObject) results.get(1);
+        JqObject third = (JqObject) results.get(2);
+        assertEquals(200, first.get("throughput").asDouble(0), "first row should be build_id=2 (throughput=200)");
+        assertEquals(100, second.get("throughput").asDouble(0), "second row should be build_id=10 (throughput=100)");
+        assertEquals(300, third.get("throughput").asDouble(0), "third row should be build_id=20 (throughput=300)");
+    }
+
+    @Test
+    public void getGroupedValues_sorted_by_string_values() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        // Verifies that getGroupedValues sorts correctly by string sort keys.
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity valueNode = new JqNode("value");
+        valueNode.sources = List.of(rootNode);
+        valueNode.persist();
+        NodeEntity labelNode = new JqNode("label");
+        labelNode.sources = List.of(rootNode);
+        labelNode.persist();
+
+        // Insert in non-alphabetical order: gamma, alpha, beta
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
+        root1.persist();
+        ValueEntity v1 = new ValueEntity(null, valueNode, JqNumber.of(1));
+        v1.sources = List.of(root1);
+        v1.persist();
+        ValueEntity l1 = new ValueEntity(null, labelNode, JqString.of("gamma"));
+        l1.sources = List.of(root1);
+        l1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
+        root2.persist();
+        ValueEntity v2 = new ValueEntity(null, valueNode, JqNumber.of(2));
+        v2.sources = List.of(root2);
+        v2.persist();
+        ValueEntity l2 = new ValueEntity(null, labelNode, JqString.of("alpha"));
+        l2.sources = List.of(root2);
+        l2.persist();
+
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("r3"));
+        root3.persist();
+        ValueEntity v3 = new ValueEntity(null, valueNode, JqNumber.of(3));
+        v3.sources = List.of(root3);
+        v3.persist();
+        ValueEntity l3 = new ValueEntity(null, labelNode, JqString.of("beta"));
+        l3.sources = List.of(root3);
+        l3.persist();
+        tm.commit();
+
+        List<JqValue> results = valueService.getGroupedValues(rootNode.id, null, null, labelNode.id);
+
+        assertEquals(3, results.size(), "should have 3 grouped results: " + results);
+        // String sort: alpha → beta → gamma
+        JqObject first = (JqObject) results.get(0);
+        JqObject second = (JqObject) results.get(1);
+        JqObject third = (JqObject) results.get(2);
+        assertEquals(2, first.get("value").asDouble(0), "first row should be label=alpha (value=2)");
+        assertEquals(3, second.get("value").asDouble(0), "second row should be label=beta (value=3)");
+        assertEquals(1, third.get("value").asDouble(0), "third row should be label=gamma (value=1)");
+    }
+
+    @Test
+    public void getGroupedValues_with_fingerprint_filter() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        // Verifies that getGroupedValues fingerprint filter works correctly —
+        // only rows matching the fingerprint should be returned.
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity throughputNode = new JqNode("throughput");
+        throughputNode.sources = List.of(rootNode);
+        throughputNode.persist();
+        NodeEntity fpNode = new JqNode("env");
+        fpNode.sources = List.of(rootNode);
+        fpNode.persist();
+
+        // Two uploads with different fingerprints
+        ValueEntity root1 = new ValueEntity(null, rootNode, JqString.of("r1"));
+        root1.persist();
+        ValueEntity t1 = new ValueEntity(null, throughputNode, JqNumber.of(100));
+        t1.sources = List.of(root1);
+        t1.persist();
+        ValueEntity fp1 = new ValueEntity(null, fpNode, JqString.of("prod"));
+        fp1.sources = List.of(root1);
+        fp1.persist();
+
+        ValueEntity root2 = new ValueEntity(null, rootNode, JqString.of("r2"));
+        root2.persist();
+        ValueEntity t2 = new ValueEntity(null, throughputNode, JqNumber.of(200));
+        t2.sources = List.of(root2);
+        t2.persist();
+        ValueEntity fp2 = new ValueEntity(null, fpNode, JqString.of("dev"));
+        fp2.sources = List.of(root2);
+        fp2.persist();
+
+        ValueEntity root3 = new ValueEntity(null, rootNode, JqString.of("r3"));
+        root3.persist();
+        ValueEntity t3 = new ValueEntity(null, throughputNode, JqNumber.of(300));
+        t3.sources = List.of(root3);
+        t3.persist();
+        ValueEntity fp3 = new ValueEntity(null, fpNode, JqString.of("prod"));
+        fp3.sources = List.of(root3);
+        fp3.persist();
+        tm.commit();
+
+        // Filter for "prod" fingerprint only
+        List<JqValue> results = valueService.getGroupedValues(
+                rootNode.id, null, Map.of(fpNode.id, JqString.of("prod")), null);
+
+        assertEquals(2, results.size(), "should only return prod rows: " + results);
+        for (JqValue row : results) {
+            JqObject obj = (JqObject) row;
+            assertEquals("prod", obj.get("env").asText(), "all rows should have env=prod: " + obj);
+        }
+    }
+
+    @Test
+    public void findMatchingFingerprint_numeric_domain_ordering() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies that findMatchingFingerprint sorts by numeric domain value, not
+        // lexicographic text. Text sort of "2","10","20","100","3" would give
+        // "10","100","2","20","3" — numeric sort should give 2,3,10,20,100.
+        tm.begin();
+        NodeGroupEntity group = new NodeGroupEntity("fmf_numeric_domain");
+        group.persist();
+        NodeEntity rootNode = group.root;
+        NodeEntity fpNode = new JqNode("fp", ".fp", List.of(rootNode));
+        fpNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".range", List.of(rootNode));
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".domain", List.of(rootNode));
+        domainNode.persist();
+
+        // Create 5 uploads with numeric domain values that differ in text vs numeric order
+        int[] domains = {2, 10, 20, 100, 3};
+        ValueEntity[] rootValues = new ValueEntity[domains.length];
+        ValueEntity[] rangeValues = new ValueEntity[domains.length];
+        ValueEntity[] domainValues = new ValueEntity[domains.length];
+        ValueEntity[] fpValues = new ValueEntity[domains.length];
+
+        for (int i = 0; i < domains.length; i++) {
+            rootValues[i] = new ValueEntity(null, rootNode, JqString.of("root" + i));
+            rootValues[i].persist();
+            rangeValues[i] = new ValueEntity(null, rangeNode, JqNumber.of(domains[i] * 10));
+            rangeValues[i].sources = List.of(rootValues[i]);
+            rangeValues[i].persist();
+            domainValues[i] = new ValueEntity(null, domainNode, JqNumber.of(domains[i]));
+            domainValues[i].sources = List.of(rootValues[i]);
+            domainValues[i].persist();
+            fpValues[i] = new ValueEntity(null, fpNode, JqString.of("fp"));
+            fpValues[i].sources = List.of(rootValues[i]);
+            fpValues[i].persist();
+        }
+        tm.commit();
+
+        // Get all range values sorted by domain ascending (preceedingValues=true, no pivot limit)
+        List<ValueEntity> found = valueService.findMatchingFingerprint(
+                rangeNode, rootNode, fpValues[0], domainNode, null, -1, 0, true);
+
+        assertEquals(5, found.size(), "should find all 5 range values: " + found);
+
+        // Verify numeric order: domain 2, 3, 10, 20, 100 → range 20, 30, 100, 200, 1000
+        // Use getValueData() to eagerly load lazy data field (avoids LazyInitializationException on SQLite)
+        double[] expectedRange = {20, 30, 100, 200, 1000};
+        for (int i = 0; i < found.size(); i++) {
+            JqValue data = valueService.getValueData(found.get(i).getId());
+            Double actual = data != null ? data.tryDouble() : null;
+            assertNotNull(actual, "range value should be numeric at index " + i);
+            assertEquals(expectedRange[i], actual, 0.01,
+                    "wrong order at index " + i + " — likely text sort instead of numeric sort. Found: " + found);
+        }
+    }
+
+    @Test
+    public void native_update_roundtrip_complex_json() throws Exception {
+        // Verifies that writing complex JSON data via native SQL (the same path
+        // WorkService uses for value updates) and reading it back produces identical data.
+        // Tests nested objects, arrays, floats, integers, and strings — the kinds of
+        // structures found in real QVSS uploads.
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        // A realistic nested JSON document mimicking QVSS data structure
+        JqValue complexData = JqValues.parse("""
+                {
+                  "env": {"BUILD_ID": 4, "HOST": "mwperf4", "USER": "jenkins"},
+                  "config": {"cgroup": {"cpu": "0,2,4,6", "mem_max": "12G"}},
+                  "timing": {"start": "2023-03-13T14:01:07Z", "stop": "2023-03-13T14:48:03Z"},
+                  "results": {
+                    "quarkus-jvm": {
+                      "startup": {"timings": [2441, 2452, 2489], "avStartTime": 2460.667},
+                      "load": {"throughput": [17415.86, 18415.86, 17990.0], "avThroughput": 17940.553}
+                    },
+                    "spring-jvm": {
+                      "startup": {"timings": [5254, 5261, 5206], "avStartTime": 5240.333},
+                      "load": {"throughput": [6916.66, 7303.08, 6204.26], "avThroughput": 6808.0}
+                    }
+                  }
+                }
+                """);
+        ValueEntity value = new ValueEntity(null, rootNode, complexData);
+        value.persist();
+        Long valueId = value.id;
+        tm.commit();
+
+        // Update the value via native SQL — same pattern as WorkService.execute()
+        JqValue updatedData = JqValues.parse("""
+                {
+                  "env": {"BUILD_ID": 5, "HOST": "mwperf4", "USER": "jenkins"},
+                  "config": {"cgroup": {"cpu": "0,2,4,6", "mem_max": "16G"}},
+                  "timing": {"start": "2023-03-14T10:00:00Z", "stop": "2023-03-14T10:45:00Z"},
+                  "results": {
+                    "quarkus-jvm": {
+                      "startup": {"timings": [2100, 2150, 2200], "avStartTime": 2150.0},
+                      "load": {"throughput": [20000.5, 21000.3, 19500.7], "avThroughput": 20167.167}
+                    }
+                  }
+                }
+                """);
+        tm.begin();
+        em.createNativeQuery("UPDATE value SET data = :data WHERE id = :id")
+                .setParameter("data", updatedData.toJsonString().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .setParameter("id", valueId)
+                .executeUpdate();
+        // Evict from 2LC since we updated via native SQL
+        em.getEntityManagerFactory().getCache().evict(ValueEntity.class, valueId);
+        tm.commit();
+
+        // Read it back and verify the data survived the roundtrip
+        tm.begin();
+        ValueEntity reloaded = ValueEntity.findById(valueId);
+        assertNotNull(reloaded, "value should exist after update");
+        assertNotNull(reloaded.data, "data should not be null after update");
+
+        // Verify specific fields survived the native SQL update
+        JqValue env = reloaded.data.getField("env");
+        assertEquals(5, env.getField("BUILD_ID").asInt(0), "BUILD_ID should be updated to 5");
+        assertEquals("mwperf4", env.getField("HOST").asText(), "HOST should be preserved");
+
+        JqValue config = reloaded.data.getField("config");
+        assertEquals("16G", config.getField("cgroup").getField("mem_max").asText(), "mem_max should be updated to 16G");
+
+        JqValue results = reloaded.data.getField("results");
+        JqValue quarkusStartup = results.getField("quarkus-jvm").getField("startup");
+        assertEquals(2150.0, quarkusStartup.getField("avStartTime").asDouble(0), 0.01, "avStartTime should be updated");
+
+        // Array should survive roundtrip
+        JqValue timings = quarkusStartup.getField("timings");
+        assertEquals(2100, timings.getElement(0).asInt(0), "first timing should be 2100");
+        assertEquals(2150, timings.getElement(1).asInt(0), "second timing should be 2150");
+        assertEquals(2200, timings.getElement(2).asInt(0), "third timing should be 2200");
+
+        // Verify the spring-jvm key was removed (not in updated data)
+        assertTrue(results.getField("spring-jvm").isNull(), "spring-jvm should not exist in updated data");
+        tm.commit();
+    }
+
+    @Test
+    public void getGroupedValues_qvss_sorted_by_build_id() throws Exception {
+        // End-to-end test using real QVSS data: imports the node graph from the
+        // Horreum-exported nodes.json, uploads 3 real QVSS runs with BUILD_IDs
+        // 4, 21, and 62, then verifies getGroupedValues sorts by BUILD_ID numerically
+        // (4, 21, 62) — not lexicographically ("21", "4", "62").
+        folderService.importFolder(Path.of("src/test/resources/qvss/nodes.json"), false);
+
+        // Upload 3 runs with BUILD_IDs that differ in text vs numeric sort order
+        for (String runFile : List.of("/qvss/15248.json", "/qvss/15769.json", "/qvss/16326.json")) {
+            try (InputStream is = getClass().getResourceAsStream(runFile)) {
+                JqValue runData = JqValues.parse(is.readAllBytes());
+                folderService.upload("quarkus-spring-boot-comparison", "$", runData)
+                        .future.orTimeout(60, TimeUnit.SECONDS).join();
+            }
+        }
+
+        // Find the root node and build_id node (named "build" in the QVSS node graph — 
+        // the Horreum variable that maps to the BUILD_ID extractor)
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "quarkus-spring-boot-comparison").firstResult();
+        Long rootNodeId = folder.group.root.id;
+        // The "build" node extracts env.BUILD_ID from the transformed dataset
+        Long buildNodeId = folder.group.sources.stream()
+                .filter(n -> "build".equals(n.name))
+                .findFirst()
+                .map(n -> n.id)
+                .orElse(null);
+        tm.commit();
+
+        assertNotNull(buildNodeId, "should find 'build' node in QVSS node graph");
+
+        // Get grouped values sorted by build node
+        List<JqValue> results = valueService.getGroupedValues(rootNodeId, null, null, buildNodeId);
+
+        // Each QVSS upload produces 4 datasets (quarkus-jvm, quarkus-native,
+        // spring-jvm, spring-native), so 3 uploads × 4 datasets = 12 rows.
+        // All datasets within one upload share the same BUILD_ID.
+        assertTrue(results.size() >= 3, "should have at least 3 grouped results (one per upload): " + results.size());
+
+        // Verify numeric sort order of BUILD_ID: 4, 21, 62
+        // Each row's "build" field should be in ascending numeric order
+        Double prevBuildId = null;
+        for (int i = 0; i < results.size(); i++) {
+            JqObject row = (JqObject) results.get(i);
+            if (row.has("build")) {
+                double buildId = row.get("build").asDouble(-1);
+                if (prevBuildId != null) {
+                    assertTrue(buildId >= prevBuildId,
+                            "BUILD_ID should be in ascending numeric order at index " + i +
+                                    ": prev=" + prevBuildId + " current=" + buildId +
+                                    " (text sort would put '4' after '21')");
+                }
+                prevBuildId = buildId;
+            }
+        }
+        assertNotNull(prevBuildId, "at least one row should have a 'build' field");
+    }
+
+    @Test
+    public void findMatchingFingerprint_numeric_domain_comparison() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies that findMatchingFingerprint domain comparison (GTLT) uses
+        // numeric semantics, not text. With pivot domain=20 and preceedingValues=true,
+        // should return values with domain <= 20 (i.e., 2, 3, 10, 20) — not text
+        // comparison where "3" > "20".
+        tm.begin();
+        NodeGroupEntity group = new NodeGroupEntity("fmf_numeric_comparison");
+        group.persist();
+        NodeEntity rootNode = group.root;
+        NodeEntity fpNode = new JqNode("fp", ".fp", List.of(rootNode));
+        fpNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".range", List.of(rootNode));
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".domain", List.of(rootNode));
+        domainNode.persist();
+
+        // Create 5 uploads: domain values 2, 10, 20, 100, 3
+        int[] domains = {2, 10, 20, 100, 3};
+        ValueEntity[] rootValues = new ValueEntity[domains.length];
+        ValueEntity[] rangeValues = new ValueEntity[domains.length];
+        ValueEntity[] domainValues = new ValueEntity[domains.length];
+        ValueEntity[] fpValues = new ValueEntity[domains.length];
+
+        for (int i = 0; i < domains.length; i++) {
+            rootValues[i] = new ValueEntity(null, rootNode, JqString.of("root" + i));
+            rootValues[i].persist();
+            rangeValues[i] = new ValueEntity(null, rangeNode, JqNumber.of(domains[i] * 10));
+            rangeValues[i].sources = List.of(rootValues[i]);
+            rangeValues[i].persist();
+            domainValues[i] = new ValueEntity(null, domainNode, JqNumber.of(domains[i]));
+            domainValues[i].sources = List.of(rootValues[i]);
+            domainValues[i].persist();
+            fpValues[i] = new ValueEntity(null, fpNode, JqString.of("fp"));
+            fpValues[i].sources = List.of(rootValues[i]);
+            fpValues[i].persist();
+        }
+        tm.commit();
+
+        // pivot domain=20, preceedingValues=true → should get domain <= 20: {2, 3, 10, 20}
+        // domainValues[2] has domain=20, use it as pivot
+        List<ValueEntity> preceding = valueService.findMatchingFingerprint(
+                rangeNode, rootNode, fpValues[0], domainNode, domainValues[2], null, -1, 0, true);
+
+        assertEquals(4, preceding.size(),
+                "should find 4 values with domain <= 20 (2, 3, 10, 20): " + preceding);
+
+        // Verify ascending numeric order: range 20 (d=2), 30 (d=3), 100 (d=10), 200 (d=20)
+        // Use getValueData() to eagerly load lazy data field (avoids LazyInitializationException on SQLite)
+        double[] expectedPreceding = {20, 30, 100, 200};
+        for (int i = 0; i < preceding.size(); i++) {
+            JqValue data = valueService.getValueData(preceding.get(i).getId());
+            Double actual = data != null ? data.tryDouble() : null;
+            assertNotNull(actual, "range value should be numeric at index " + i);
+            assertEquals(expectedPreceding[i], actual, 0.01,
+                    "wrong value at index " + i + " in preceding results: " + preceding);
+        }
+
+        // pivot domain=10, preceedingValues=false → should get domain >= 10: {10, 20, 100}
+        // domainValues[1] has domain=10
+        List<ValueEntity> following = valueService.findMatchingFingerprint(
+                rangeNode, rootNode, fpValues[0], domainNode, domainValues[1], null, -1, 0, false);
+
+        assertEquals(3, following.size(),
+                "should find 3 values with domain >= 10 (10, 20, 100): " + following);
+
+        // Verify ascending numeric order: range 100 (d=10), 200 (d=20), 1000 (d=100)
+        double[] expectedFollowing = {100, 200, 1000};
+        for (int i = 0; i < following.size(); i++) {
+            JqValue data = valueService.getValueData(following.get(i).getId());
+            Double actual = data != null ? data.tryDouble() : null;
+            assertNotNull(actual, "range value should be numeric at index " + i);
+            assertEquals(expectedFollowing[i], actual, 0.01,
+                    "wrong value at index " + i + " in following results: " + following);
+        }
+    }
+
 }
-
-

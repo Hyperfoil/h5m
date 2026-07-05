@@ -1,0 +1,346 @@
+{
+  "folder": "quarkus-spring-boot-comparison",
+  "nodes": [
+    {
+      "id": 1,
+      "name": "",
+      "type": "root",
+      "operation": null,
+      "sources": []
+    },
+    {
+      "id": 2,
+      "name": "runtimeName",
+      "type": "jq",
+      "operation": "[.results[]? | to_entries[] | .key]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "name": "rssStartup",
+      "type": "jq",
+      "operation": "[.results[]?.rss.avStartupRss]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "name": "maxRss",
+      "type": "jq",
+      "operation": "[.results[]?.load.avMaxRss]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "name": "avBuildTime",
+      "type": "jq",
+      "operation": "[.results[]?.build.avBuildTime]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 6,
+      "name": "avTimeToFirstRequest",
+      "type": "jq",
+      "operation": "[.results[]?.startup.avStartTime]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "name": "avThroughput",
+      "type": "jq",
+      "operation": "[.results[]?.load.avThroughput]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 8,
+      "name": "rssFirstRequest",
+      "type": "jq",
+      "operation": "[.results[]?.rss.avFirstRequestRss]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 9,
+      "name": "maxThroughputDensity",
+      "type": "jq",
+      "operation": "[.results[]?.load.maxThroughputDensity]",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 10,
+      "name": "buildId",
+      "type": "jq",
+      "operation": ".env.BUILD_ID",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 11,
+      "name": "buildUrl",
+      "type": "jq",
+      "operation": ".env.BUILD_URL",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 12,
+      "name": "quarkusVersion",
+      "type": "jq",
+      "operation": ".config.QUARKUS_VERSION",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 13,
+      "name": "springVersion",
+      "type": "jq",
+      "operation": ".config.SPRING_BOOT_VERSION",
+      "sources": [
+        1
+      ]
+    },
+    {
+      "id": 14,
+      "name": "transformer_quarkus_sb_comparison_transformer",
+      "type": "ecma",
+      "operation": "({runtimeName, rssStartup, maxRss, avBuildTime, avTimeToFirstRequest, avThroughput, rssFirstRequest, maxThroughputDensity, buildId, buildUrl, quarkusVersion, springVersion}) => {  \n   var map = runtimeName.map((name, i) => ({\n   runtime: name.split('-')[0],\n   buildType: name.split('-').slice(1).join('-'),\n   rssStartup: rssStartup[i],\n   maxRss: maxRss[i],\n   avBuildTime: avBuildTime[i],\n   avTimeToFirstRequest: avTimeToFirstRequest[i],\n   avThroughput: avThroughput[i],\n   rssFirstRequest: rssFirstRequest[i],\n   maxThroughputDensity: maxThroughputDensity[i],\n   buildId: buildId,\n   buildUrl: buildUrl,\n   version: ((name.split('-')[0].substring(0, 6) == 'spring' ) ? springVersion: quarkusVersion )\n}))\nreturn map;\n}",
+      "sources": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    },
+    {
+      "id": 15,
+      "name": "dataset",
+      "type": "jq",
+      "operation": "if type == \"array\" then .[] else . end",
+      "sources": [
+        14
+      ]
+    },
+    {
+      "id": 16,
+      "name": "version",
+      "type": "jq",
+      "operation": ".version",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Runtime",
+      "type": "jq",
+      "operation": ".runtime",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 18,
+      "name": "avTimeToFirstRequest",
+      "type": "jq",
+      "operation": ".avTimeToFirstRequest",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 19,
+      "name": "avThroughput",
+      "type": "jq",
+      "operation": ".avThroughput",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 20,
+      "name": "avBuildTime",
+      "type": "jq",
+      "operation": ".avBuildTime",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 21,
+      "name": "build",
+      "type": "jq",
+      "operation": ".buildId",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 22,
+      "name": "maxRss",
+      "type": "jq",
+      "operation": ".maxRss",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 23,
+      "name": "rssStartup",
+      "type": "jq",
+      "operation": ".rssStartup",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 24,
+      "name": "rssFirstRequest",
+      "type": "jq",
+      "operation": ".rssFirstRequest",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 25,
+      "name": "buildType",
+      "type": "jq",
+      "operation": ".buildType",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 26,
+      "name": "maxThroughputDensity",
+      "type": "jq",
+      "operation": ".maxThroughputDensity",
+      "sources": [
+        15
+      ]
+    },
+    {
+      "id": 27,
+      "name": "quarkus-spring-boot-comparison_fingerprint",
+      "type": "fp",
+      "operation": null,
+      "sources": [
+        17,
+        25
+      ]
+    },
+    {
+      "id": 28,
+      "name": "rd.avTimeToFirstRequest.3523655",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":5,\"threshold\":0.1,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        18
+      ]
+    },
+    {
+      "id": 29,
+      "name": "rd.avTimeToFirstRequest.3523656",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":1,\"threshold\":0.2,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        18
+      ]
+    },
+    {
+      "id": 30,
+      "name": "rd.avThroughput.3525317",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":1,\"threshold\":0.2,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        19
+      ]
+    },
+    {
+      "id": 31,
+      "name": "rd.avThroughput.3525318",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":5,\"threshold\":0.1,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        19
+      ]
+    },
+    {
+      "id": 32,
+      "name": "rd.avBuildTime.3525320",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":5,\"threshold\":0.1,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        20
+      ]
+    },
+    {
+      "id": 33,
+      "name": "rd.avBuildTime.3525321",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":1,\"threshold\":0.2,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        20
+      ]
+    },
+    {
+      "id": 34,
+      "name": "rd.avTimeToFirstRequest.3525323",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":1,\"threshold\":0.2,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        18
+      ]
+    },
+    {
+      "id": 35,
+      "name": "rd.avTimeToFirstRequest.3525324",
+      "type": "rd",
+      "operation": "{\"filter\":\"mean\",\"window\":5,\"threshold\":0.1,\"minPrevious\":5}",
+      "sources": [
+        27,
+        15,
+        18
+      ]
+    }
+  ]
+}

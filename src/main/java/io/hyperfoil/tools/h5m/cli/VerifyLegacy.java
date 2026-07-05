@@ -488,7 +488,7 @@ public class VerifyLegacy implements Callable<Integer> {
                     UNION ALL
                     SELECT ve.child_id FROM value_edge ve JOIN descendants d ON ve.parent_id = d.vid
                 )
-                SELECT n.name, v.idx, v.data::text
+                SELECT n.name, v.idx, convert_from(v.data, 'UTF-8')
                 FROM value v
                 JOIN node n ON v.node_id = n.id
                 JOIN descendants d ON v.id = d.vid
