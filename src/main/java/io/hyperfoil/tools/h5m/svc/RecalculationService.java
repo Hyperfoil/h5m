@@ -33,6 +33,18 @@ public class RecalculationService {
     }
 
     /**
+     * Cancels running recalculation trackers for the given folder and node.
+     * If nodeId >= 0, only cancels trackers for that specific node.
+     * If nodeId < 0, cancels all running trackers for the folder.
+     */
+    public void cancel(String folderName, long nodeId) {
+        trackers.values().stream()
+                .filter(t -> t.getFolderName().equals(folderName) && t.isRunning())
+                .filter(t -> nodeId < 0 || t.getNodeId() == nodeId)
+                .forEach(RecalculationTracker::cancel);
+    }
+
+    /**
      * Returns the tracker for the given recalculation ID, or null if not found.
      * Lazily evicts completed/failed entries that have exceeded the retention period
      * since completion.

@@ -104,7 +104,11 @@ public class ProcessingService {
         Log.infof("Re-triggering processing for upload %d in folder %d", tracking.referenceId, tracking.folderId);
         // Use all source nodes (not just top-level) to handle mid-cascade crashes
         List<Work> works = List.copyOf(folder.group.sources).stream()
-                .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id)))
+                .map(node -> {
+                    Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id));
+                    w.folderId = folder.id;
+                    return w;
+                })
                 .toList();
         if (!works.isEmpty()) {
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(rootValue.id));
@@ -185,13 +189,18 @@ public class ProcessingService {
             for (NodeEntity sourceNode : List.copyOf(folder.group.sources)) {
                 Work w = new Work(sourceNode, new ArrayList<>(sourceNode.sources), List.of(rootValue.id));
                 w.dispatch = false;
+                w.folderId = folder.id;
+                w.recalcTrackerId = recoveryTracker.id;
                 works.add(w);
             }
         }
         if (!works.isEmpty()) {
             long recoveryTrackerId = recoveryTracker.id;
+            workService.registerRecalculation(folder.id, recoveryTrackerId);
+            long folderIdForCompletion = folder.id;
             CompletableFuture<Void> future = workService.createTracked(works, rootValueIds);
             future.whenComplete((v, t) -> {
+                workService.completeRecalculation(folderIdForCompletion, recoveryTrackerId);
                 QuarkusTransaction.requiringNew().run(() -> {
                     ProcessingTrackerEntity entity = ProcessingTrackerEntity.findById(recoveryTrackerId);
                     if (entity != null) {
@@ -290,15 +299,41 @@ public class ProcessingService {
      * @return recalculation status with progress tracking
      */
     private RecalculationTracker doRecalculate(FolderEntity folder, long nodeId,
-                                               ProcessingType trackingType,
-                                               Collection<NodeEntity> nodesToQueue) {
+                                                ProcessingType trackingType,
+                                                Collection<NodeEntity> nodesToQueue) {
         // Reject if uploads are in progress to avoid conflicting Work items
         // with different dispatch flags (upload=true vs recalculate=false)
-        long inFlight = ProcessingTrackerEntity.count(
+        long inFlightUploads = ProcessingTrackerEntity.count(
                 "type = ?1 and folderId = ?2 and completed = false", ProcessingType.UPLOAD, folder.id);
-        if (inFlight > 0) {
+        if (inFlightUploads > 0) {
             throw new IllegalStateException(
-                    "Cannot recalculate while " + inFlight + " upload(s) are in progress for folder " + folder.name);
+                    "Cannot recalculate while " + inFlightUploads + " upload(s) are in progress for folder " + folder.name);
+        }
+
+        // Cancel any existing recalculation that overlaps with this one.
+        // For node-scoped: cancel same-node recalcs AND full-folder recalcs (which include this node).
+        // For full-folder: cancel all recalculations for the folder.
+        // Scoped cancellation allows independent recalculations of different nodes to coexist.
+        @SuppressWarnings("unchecked")
+        List<ProcessingTrackerEntity> inFlightTrackers = nodeId >= 0
+                ? ProcessingTrackerEntity.list(
+                    "folderId = ?1 and completed = false and (type = ?2 or (type = ?3 and referenceId = ?4))",
+                    folder.id, ProcessingType.RECALCULATE, ProcessingType.RECALCULATE_NODE, nodeId)
+                : ProcessingTrackerEntity.list(
+                    "folderId = ?1 and completed = false and type in (?2, ?3)",
+                    folder.id, ProcessingType.RECALCULATE, ProcessingType.RECALCULATE_NODE);
+        if (!inFlightTrackers.isEmpty()) {
+            Log.infof("Cancelling %d in-flight recalculation(s) for folder '%s' (nodeId=%d) before starting new one",
+                    inFlightTrackers.size(), folder.name, nodeId);
+            for (ProcessingTrackerEntity inFlight : inFlightTrackers) {
+                workService.cancelRecalculation(inFlight.id);
+                workService.completeRecalculation(folder.id, inFlight.id);
+                inFlight.completed = true;
+            }
+            recalculationService.cancel(folder.name, nodeId);
+            for (ProcessingTrackerEntity inFlight : inFlightTrackers) {
+                workService.clearCancellation(inFlight.id);
+            }
         }
 
         List<ValueEntity> rootValues = valueService.getValues(folder.group.root);
@@ -308,6 +343,10 @@ public class ProcessingService {
             return recalculationService.create(folder.name, nodeId, 0, COMPLETED);
         }
 
+        // Track for crash recovery — create before Work items so they can reference the tracker ID
+        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(trackingType, folder.id, nodeId);
+        tracking.persist();
+
         List<Work> works = new ArrayList<>();
         Set<Long> rootValueIds = new HashSet<>();
         for (ValueEntity rootValue : rootValues) {
@@ -315,17 +354,19 @@ public class ProcessingService {
             for (NodeEntity node : nodesToQueue) {
                 Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id));
                 w.dispatch = false; // suppress external notifications during recalculation
+                w.folderId = folder.id;
+                w.recalcTrackerId = tracking.id;
                 works.add(w);
             }
         }
 
         if (works.isEmpty()) {
+            tracking.completed = true;
             return recalculationService.create(folder.name, nodeId, 0, COMPLETED);
         }
 
-        // Track for crash recovery
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(trackingType, folder.id, nodeId);
-        tracking.persist();
+        // Register as active — gates uploads until this recalculation completes
+        workService.registerRecalculation(folder.id, tracking.id);
 
         CompletableFuture<Void> future = workService.createTracked(works, rootValueIds);
 
@@ -341,7 +382,10 @@ public class ProcessingService {
 
         // Mark completed and null out ephemeral data after recalculation finishes
         long trackingId = tracking.id;
+        long folderIdForCompletion = folder.id;
         future.whenComplete((v, t) -> {
+            // Ungate uploads for this folder (this recalculation is done)
+            workService.completeRecalculation(folderIdForCompletion, trackingId);
             if (t != null) {
                 Log.errorf(t, "Recalculation failed for folder '%s' (nodeId=%d)", folder.name, nodeId);
             }

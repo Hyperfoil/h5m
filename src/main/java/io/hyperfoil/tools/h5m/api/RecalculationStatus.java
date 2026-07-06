@@ -16,5 +16,5 @@ public record RecalculationStatus(
         String error,
         long durationMs
 ) {
-    public enum State { RUNNING, COMPLETED, FAILED }
+    public enum State { RUNNING, COMPLETED, FAILED, CANCELLED }
 }

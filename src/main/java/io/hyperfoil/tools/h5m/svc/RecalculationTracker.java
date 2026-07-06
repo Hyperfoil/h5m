@@ -54,7 +54,19 @@ public class RecalculationTracker {
 
     public void incrementCompleted() { completedRoots.incrementAndGet(); }
 
+    public boolean isRunning() { return state == RecalculationStatus.State.RUNNING; }
+
     public RecalculationStatus.State getState() { return state; }
+
+    /**
+     * Cancels this recalculation. Sets state to CANCELLED and completes the
+     * future exceptionally so that the ProcessingService completion callback fires.
+     */
+    public void cancel() {
+        state = RecalculationStatus.State.CANCELLED;
+        completedAt = System.currentTimeMillis();
+        future.completeExceptionally(new java.util.concurrent.CancellationException("Recalculation cancelled"));
+    }
 
     /**
      * Creates an immutable snapshot of the current progress for REST responses.

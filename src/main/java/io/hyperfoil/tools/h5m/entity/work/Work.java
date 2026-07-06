@@ -29,6 +29,16 @@ public class Work implements Runnable, Comparable<Work>{
      *  Set to false for recalculations and bulk imports. */
     public boolean dispatch = true;
 
+    /** The folder this work belongs to. Used for upload gating — uploads are
+     *  held while a recalculation is active for the same folder. */
+    public long folderId = -1;
+
+    /** The ProcessingTrackerEntity ID for the recalculation that created this work.
+     *  null for upload work (never cancelled). Non-null for recalculation work —
+     *  used to scope cancellation to a specific recalculation without affecting
+     *  other recalculations or uploads for the same folder. */
+    public Long recalcTrackerId = null;
+
     public Work(){
         retryCount = 0;
     }
