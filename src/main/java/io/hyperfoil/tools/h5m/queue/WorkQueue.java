@@ -435,22 +435,30 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     @Override
     public boolean addAll(Collection<? extends Runnable> c) {
         fullyLock();
+        boolean added = false;
+        boolean wasEmpty = runnables.isEmpty();
         try {
-            for(Runnable r : runnables){
-                if( r instanceof Work work && isPending(work)){
+            for (Runnable r : c) {
+                if (r instanceof Work work && isPending(work)) {
                     //do not add something already in queue
-                }else{
-                    if( r instanceof Work work){
+                } else {
+                    if (r instanceof Work work) {
                         pendingWork.add(work);
                     }
                     runnables.add(r);
+                    added = true;
                 }
             }
-            sort();
-        }finally {
+            if (added) {
+                sort();
+                if(wasEmpty){
+                    signalNotEmpty();
+                }
+            }
+        } finally {
             fullyUnlock();
         }
-        return false;
+        return added;
     }
 
     @Override
