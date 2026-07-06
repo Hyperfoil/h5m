@@ -111,6 +111,100 @@ public class WorkQueueTest extends FreshDb {
     }
 
     @Test
+    public void addAll_adds_new_items() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b");
+        bNode.persist();
+        Work aWork = new Work(aNode, null, null);
+        Work bWork = new Work(bNode, null, null);
+        tm.commit();
+
+        boolean added = q.addAll(List.of(aWork, bWork));
+
+        assertTrue(added, "addAll should return true when new items are added");
+        assertEquals(2, q.size());
+        assertTrue(q.isPending(aWork));
+        assertTrue(q.isPending(bWork));
+    }
+
+    @Test
+    public void addAll_rejects_all_duplicates() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        Work aWork = new Work(aNode, null, null);
+        tm.commit();
+
+        q.addWorks(List.of(aWork));
+        assertEquals(1, q.size());
+
+        boolean added = q.addAll(List.of(aWork));
+
+        assertFalse(added, "addAll should return false when items added are duplicates");
+        assertEquals(1, q.size(), "queue size should not change");
+    }
+
+    @Test
+    public void addAll_check_and_adds_only_new() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b");
+        bNode.persist();
+        Work aWork = new Work(aNode, null, null);
+        Work bWork = new Work(bNode, null, null);
+        tm.commit();
+
+        q.addWorks(List.of(aWork));
+        int sizeBefore = q.size();
+        assertEquals(1,sizeBefore,"aWork has one work pending aNode");
+
+        boolean added = q.addAll(List.of(aWork, bWork));
+
+        assertTrue(added, "addAll should return true when at least one item is new");
+        assertTrue(q.isPending(aWork), "aWork should still be pending — it was skipped, not removed");
+        assertTrue(q.isPending(bWork), "bWork should be pending — it was newly added");
+        assertEquals(sizeBefore + 1, q.size(), "exactly one item (bWork) should have been added");
+    }
+
+
+    @Test
+    public void addAll_wakes_sleeping_thread() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        Work aWork = new Work(aNode, null, null);
+        tm.commit();
+
+        Runnable[] result = new Runnable[1];
+        Thread t2 = new Thread(() -> {
+            try {
+                result[0] = q.take();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        t2.start();
+        Thread.sleep(100);
+
+        assertNull(result[0], "thread should be sleeping. Has no work yet");
+
+        q.addAll(List.of(aWork));
+
+        t2.join(500);
+        assertNotNull(result[0], "thread should have woken up and taken the work");
+    }
+
+    @Test
     public void poll_return_first_non_blocked() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         WorkQueue q = new WorkQueue();
 
