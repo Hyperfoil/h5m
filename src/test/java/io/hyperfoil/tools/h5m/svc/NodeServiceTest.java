@@ -1775,6 +1775,23 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
+    public void jsonpathToJq_size_function(){
+        assertEquals(".ghz.config | length",
+                NodeService.jsonpathToJq("$.ghz.config.size()"));
+    }
+    @Test
+    public void jsonpathToJq_size_in_array(){
+        assertEquals(".state.throughput[3].cumulative[.state.throughput[3].cumulative | length-1].rate",
+                NodeService.jsonpathToJq("$.state.throughput[3].cumulative[$.state.throughput[3].cumulative.size()-1].rate"));
+    }
+
+    @Test
+    public void jsonpathToJq_keyvalue_function(){
+        assertEquals(".results[]? | to_entries[] | .key",
+                NodeService.jsonpathToJq("$.results[*].keyvalue().key"));
+    }
+
+    @Test
     public void jsonpathToJq_filter_with_quoted_fields_and_trailing_path() {
         assertEquals(
                 ".faban.summary.benchResults.driverSummary[]? | select(.[\"@name\"] == \"MfgDriver\").customStats.stat[0].passed.[\"text()\"]",

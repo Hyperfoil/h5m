@@ -1128,13 +1128,19 @@ public class NodeService implements NodeServiceInterface {
         }
         return idx;
     }
-    public static String jsonpathToJq(String jsonpath) {
+        public static String jsonpathToJq(String jsonpath) {
         if (jsonpath == null || jsonpath.isEmpty()) return ".";
         String jq = jsonpath;
-        if (jq.startsWith("$.")) jq = jq.substring(1);
-        else if (jq.equals("$")) return ".";
+        if(jq.equals("$")){
+            return ".";
+        }
+        jq = jq.replace("$.",".");
+        jq = jq.replace("[*].*", "[]?");
         jq = jq.replace("[*]", "[]?");
         jq = jq.replace(".*", "[]?");
+        jq = jq.replace(".size()"," | length");
+            jq = jq.replace(".keyvalue()"," | to_entries[] | ");
+
         // Convert PostgreSQL jsonpath filter expressions to JQ select()
         // ? (@.field == "value") → [] | select(.field == "value")
         // ? (@.field != "value") → [] | select(.field != "value")
