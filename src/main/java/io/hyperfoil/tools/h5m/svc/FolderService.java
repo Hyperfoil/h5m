@@ -29,6 +29,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.WebApplicationException;
 import org.hibernate.query.NativeQuery;
 
 import java.io.IOException;
@@ -72,6 +73,9 @@ public class FolderService implements FolderServiceInterface {
     @Override
     @Transactional
     public long create(String name){
+        if(FolderEntity.find("name",name).firstResult() !=null){
+            throw new WebApplicationException("Folder already exists:" + name, 409);
+        }
         FolderEntity entity = new FolderEntity();
         entity.name = name;
         entity.group = new NodeGroupEntity(name); //TODO do we auto-create a nodeGroup?
