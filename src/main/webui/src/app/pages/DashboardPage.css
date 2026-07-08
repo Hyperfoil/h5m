@@ -1,0 +1,9 @@
+ .create-folder-btn {
+    border-radius: 2rem !important;
+    background-color: var(--cds-layer) !important;
+  }
+
+  .cds--btn.create-folder-btn:hover {
+     background-color: var(--cds-layer-hover) !important;
+   }
+
