@@ -281,7 +281,7 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JqNode.class,entity,"Js should be dropped when function is null");
@@ -296,7 +296,7 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JqNode.class,entity,"Js should be dropped when function returns input");
@@ -311,7 +311,7 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JsNode.class,entity,"Should create a JsNode that returns combined values");
@@ -328,25 +328,20 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JsNode.class,entity,"Should create a JsNode that returns combined values");
         assertNotNull(entity.operation);
         assertFalse(JsNode.isNullEmptyOrIdentityFunction(entity.operation),"js node should have an operation that returns the input");
-        // Multi-extractor single-param labels now use a JQ combiner as their single source
-        assertEquals(1,entity.sources.size(),"label should have 1 source (the JQ combiner node)");
-        assertInstanceOf(JqNode.class,entity.sources.get(0),"source should be a JQ combiner node");
+        // Multi-extractor single-param labels source directly from extractor nodes
+        assertEquals(2,entity.sources.size(),"label should have 2 sources (direct extractor nodes)");
     }
     @Test
-    public void createNodesFromLabel_multi_extractor_single_param_creates_jq_combiner(){
-        // Mirrors the rhivos "Autobench Multi Core" pattern:
-        // - scalar extractor "workload" matches every dataset item (e.g., 10 values)
-        // - array extractor "results" only matches items with results (e.g., 1 value)
-        // Separate extractor nodes would produce mismatched counts (10 vs 1),
-        // causing calculateSourceValuePermutations to return null.
-        // The JQ combiner extracts both fields from the same input in one expression,
-        // producing one combined object per dataset item — no permutation needed.
+    public void createNodesFromLabel_multi_extractor_single_param_direct_sources(){
+        // Multi-extractor single-param labels wire the JS function directly to
+        // the extractor nodes. At runtime, createParameters() builds a combined
+        // object from the source values using node names as keys.
         LoadLegacyTests.Extractor workload = new LoadLegacyTests.Extractor("workload","$.workload",false);
         LoadLegacyTests.Extractor results = new LoadLegacyTests.Extractor("results","$.results.*",true);
         LoadLegacyTests.Label label = new LoadLegacyTests.Label(-1,"Autobench",
@@ -356,28 +351,16 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JsNode.class, entity);
         assertEquals("Autobench", entity.name);
 
-        // Single source: the JQ combiner node, not the 2 raw extractors
-        assertEquals(1, entity.sources.size(), "should have 1 source (JQ combiner), not 2 separate extractors");
-        NodeEntity combiner = entity.sources.get(0);
-        assertInstanceOf(JqNode.class, combiner);
-        assertTrue(combiner.name.endsWith("_extract"), "combiner name should end with _extract");
-
-        // The combiner's JQ expression builds an object with both extractor fields
-        // Scalar extractor uses "// null", array extractor uses "try [...] catch null"
-        assertTrue(combiner.operation.contains("workload"), "JQ expression should reference workload extractor");
-        assertTrue(combiner.operation.contains("results"), "JQ expression should reference results extractor");
-        assertTrue(combiner.operation.contains("// null"), "scalar extractor should use // null fallback");
-        assertTrue(combiner.operation.contains("try"), "array extractor should use try/catch for error suppression");
-
-        // The combiner sources from the parent (group root in this test)
-        assertEquals(1, combiner.sources.size());
-        assertEquals(group.root, combiner.sources.get(0));
+        // Should source directly from the 2 extractor nodes (no combiner)
+        assertEquals(2, entity.sources.size(), "should have 2 sources (direct extractor nodes)");
+        assertTrue(entity.sources.stream().anyMatch(s -> "workload".equals(s.name)), "should have workload source");
+        assertTrue(entity.sources.stream().anyMatch(s -> "results".equals(s.name)), "should have results source");
     }
     @Test
     public void createFolder_two_transformers_creates_two_pipelines() {
@@ -551,14 +534,13 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label, group.root, group, tracker, new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label, group.root, group, tracker, new HashSet<>(), false);
 
         assertNotNull(entity);
-        assertEquals(1, entity.sources.size());
-        NodeEntity combiner = entity.sources.get(0);
-        assertInstanceOf(JqNode.class, combiner);
-        assertTrue(combiner.operation.contains("\"My Score\""), "extractor name with spaces should be quoted");
-        assertTrue(combiner.operation.contains("\"Other Value\""), "extractor name with spaces should be quoted");
+        // Should source directly from the 2 extractor nodes (no combiner)
+        assertEquals(2, entity.sources.size(), "should have 2 direct sources");
+        assertTrue(entity.sources.stream().anyMatch(s -> "My Score".equals(s.name)));
+        assertTrue(entity.sources.stream().anyMatch(s -> "Other Value".equals(s.name)));
     }
 
     @Test
@@ -609,18 +591,22 @@ public class LoadLegacyTestsTest {
             assertNotNull(n.group, "node " + n.name + " should have group set");
             assertEquals(folder.group, n.group, "node " + n.name + " should belong to the folder group");
         }
-        // The numbered variants (metric0, metric1) should be in the group's sources
+        // Variant nodes keep their original extractor names (no suffixing).
+        // The combiner node gets the label name "metric".
         long variantCount = folder.group.sources.stream()
-                .filter(v -> v.name.startsWith("metric") && v.name.matches("metric\\d+"))
+                .filter(v -> v.name.equals("val"))
                 .count();
-        assertTrue(variantCount >= 1, "numbered variant nodes should be in the group\n"
+        assertTrue(variantCount >= 1, "variant extractor nodes (named 'val') should be in the group\n"
+                + folder.group.sources.stream().map(NodeEntity::toString).collect(Collectors.joining("\n")));
+        assertTrue(folder.group.sources.stream().anyMatch(v -> v.name.equals("metric") && v instanceof JsNode),
+                "combiner node named 'metric' should be in the group\n"
                 + folder.group.sources.stream().map(NodeEntity::toString).collect(Collectors.joining("\n")));
     }
 
     @Test
-    public void createNodesFromLabel_jq_combiner_reused_across_labels() {
+    public void createNodesFromLabel_shared_extractors_across_labels() {
         // When two labels with different functions but same extractors call createNodesFromLabel,
-        // the second should reuse the existing JQ combiner instead of creating a duplicate
+        // the extractor nodes should be reused (same instances)
         LoadLegacyTests.Extractor ext1 = new LoadLegacyTests.Extractor("a","$.a",false);
         LoadLegacyTests.Extractor ext2 = new LoadLegacyTests.Extractor("b","$.b",false);
 
@@ -630,31 +616,29 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity node1 = loadLegacyTests.createNodesFromLabel(label1, group.root, group, tracker, new HashSet<>());
-        NodeEntity node2 = loadLegacyTests.createNodesFromLabel(label2, group.root, group, tracker, new HashSet<>());
+        NodeEntity node1 = loadLegacyTests.createNodesFromLabel(label1, group.root, group, tracker, new HashSet<>(), false);
+        NodeEntity node2 = loadLegacyTests.createNodesFromLabel(label2, group.root, group, tracker, new HashSet<>(), false);
 
         assertNotNull(node1);
         assertNotNull(node2);
-        // Both should be JsNodes with a JQ combiner as source
         assertInstanceOf(JsNode.class, node1);
         assertInstanceOf(JsNode.class, node2);
-        assertEquals(1, node1.sources.size());
-        assertEquals(1, node2.sources.size());
-        // Both should reference the SAME combiner instance (reused, not duplicated)
+        // Both should source directly from the same extractor nodes (reused)
+        assertEquals(2, node1.sources.size(), "first label should have 2 sources");
+        assertEquals(2, node2.sources.size(), "second label should have 2 sources");
         assertSame(node1.sources.get(0), node2.sources.get(0),
-                "both labels should reuse the same JQ combiner node");
-        // Only one combiner should exist in the group
+                "both labels should share the same first extractor node");
+        // No combiner nodes should exist
         long combinerCount = group.sources.stream()
                 .filter(v -> v.name.endsWith("_extract"))
                 .count();
-        assertEquals(1, combinerCount, "should have exactly 1 combiner node, not duplicates");
+        assertEquals(0, combinerCount, "should have no combiner nodes");
     }
 
     @Test
-    public void createNodesFromLabel_jq_combiner_wraps_filter_paths_in_first() {
-        // Non-array extractors with jsonpath filter expressions produce a stream in JQ.
-        // Without first(), object construction creates cartesian products (nested objects).
-        // With first(), each field gets a single value.
+    public void createNodesFromLabel_filter_extractors_direct_sources() {
+        // Non-array extractors with jsonpath filter expressions become JQ nodes.
+        // With direct wiring, these extractor nodes are direct sources of the JS function.
         LoadLegacyTests.Extractor ext1 = new LoadLegacyTests.Extractor("count",
                 "$.data[*] ? (@.name == \"target\") .result.\"text()\"", false);
         LoadLegacyTests.Extractor ext2 = new LoadLegacyTests.Extractor("target",
@@ -665,19 +649,13 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label, group.root, group, tracker, new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label, group.root, group, tracker, new HashSet<>(), false);
 
         assertNotNull(entity);
-        assertEquals(1, entity.sources.size());
-        NodeEntity combiner = entity.sources.get(0);
-        assertInstanceOf(JqNode.class, combiner);
-        // Both scalar extractors have filters, so their paths should be wrapped in first()
-        assertTrue(combiner.operation.contains("first("), "filter-chain paths should be wrapped in first()");
-        // Should not contain bare select() outside first()
-        String op = combiner.operation;
-        int firstIdx = op.indexOf("first(");
-        int selectIdx = op.indexOf("select(");
-        assertTrue(selectIdx > firstIdx, "select() should be inside first(), not standalone");
+        assertEquals(2, entity.sources.size(), "should have 2 direct sources");
+        assertTrue(entity.sources.stream().allMatch(s -> s instanceof JqNode), "sources should be JQ nodes");
+        assertTrue(entity.sources.stream().anyMatch(s -> "count".equals(s.name)));
+        assertTrue(entity.sources.stream().anyMatch(s -> "target".equals(s.name)));
     }
 
     @Test @Disabled("not sure why it is failing atm")
@@ -689,7 +667,7 @@ public class LoadLegacyTestsTest {
         NodeGroupEntity group = new NodeGroupEntity();
         LoadLegacyTests.NodeTracking tracker = new LoadLegacyTests.NodeTracking();
 
-        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>());
+        NodeEntity entity = loadLegacyTests.createNodesFromLabel(label1,group.root,group,tracker,new HashSet<>(), false);
 
         assertNotNull(entity);
         assertInstanceOf(JsNode.class,entity,"Should create a JsNode that returns combined values");
