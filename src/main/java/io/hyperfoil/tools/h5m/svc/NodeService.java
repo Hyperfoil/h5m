@@ -293,18 +293,24 @@ public class NodeService implements NodeServiceInterface {
      * @return
      */
     @Transactional
-    public List<Map<String, ValueEntity>> calculateSourceValuePermutations(NodeEntity node, ValueEntity root) {
-        List<Map<String, ValueEntity>> rtrn = new ArrayList<>();
+    /**
+     * Builds source value permutations for a node, keyed by source node ID.
+     * Using node ID (not name) as the map key avoids collisions when multiple
+     * source nodes share the same name (e.g., extractors from different schema
+     * versions). Each consumer resolves the source node by ID to access its data.
+     */
+    public List<Map<Long, ValueEntity>> calculateSourceValuePermutations(NodeEntity node, ValueEntity root) {
+        List<Map<Long, ValueEntity>> rtrn = new ArrayList<>();
         // Batch-fetch descendant values for all source nodes in a single query instead of N separate queries
         Map<Long, List<ValueEntity>> descendantsByNode = valueService.getDescendantValuesByNodes(root, node.sources);
-        Map<String,List<ValueEntity>> nodeValues = new HashMap<>();
+        Map<Long,List<ValueEntity>> nodeValues = new LinkedHashMap<>();
         for (int i = 0, size = node.sources.size(); i < size; i++) {
             NodeEntity source = node.sources.get(i);
             List<ValueEntity> found = descendantsByNode.getOrDefault(source.getId(), List.of());
             if (found.isEmpty() && source.sources.isEmpty()) {
                 found = List.of(root);
             }
-            nodeValues.put(source.name, found);
+            nodeValues.put(source.getId(), found);
         }
 
         int maxNodeValuesLength = nodeValues.values().stream().map(Collection::size).max(Integer::compareTo).orElse(0);
@@ -314,29 +320,28 @@ public class NodeService implements NodeServiceInterface {
             //to ensure sequence
             for(int i=0; i< maxNodeValuesLength; i++) {
                 int idx = i;
-                Map<String, ValueEntity> sourceValuesAtIndex = node.sources.stream()
-                                                                           .filter(n->nodeValues.get(n.name).size()>idx)
-                                                                           .collect(Collectors.toMap(n->n.name,n->nodeValues.get(n.name).get(idx)));
+                Map<Long, ValueEntity> sourceValuesAtIndex = node.sources.stream()
+                                                                           .filter(n->nodeValues.get(n.getId()).size()>idx)
+                                                                           .collect(Collectors.toMap(NodeEntity::getId,n->nodeValues.get(n.getId()).get(idx)));
                 //TODO splitting?
                 rtrn.add(sourceValuesAtIndex);
             }
         } else { //NxN or byLength time
             switch (node.multiType){
                 case Length -> {
-                    //I think this is functionally equivalent
                     for(int i=0; i< maxNodeValuesLength; i++){
-                        Map<String, ValueEntity> sourceValuesAtIndex = new HashMap<>();
+                        Map<Long, ValueEntity> sourceValuesAtIndex = new HashMap<>();
                         int idx = i;//thanks java
                         for(NodeEntity n : node.sources){
-                            List<ValueEntity> nValues = nodeValues.get(n.name);
+                            List<ValueEntity> nValues = nodeValues.get(n.getId());
                             if(nValues.size()==1){
                                 if(idx == 0){
-                                    sourceValuesAtIndex.put(n.name,nValues.get(idx));
+                                    sourceValuesAtIndex.put(n.getId(),nValues.get(idx));
                                 }else if (n.scalarMethod.equals(NodeEntity.ScalarVariableMethod.All)){
-                                    sourceValuesAtIndex.put(n.name,nValues.getFirst());
+                                    sourceValuesAtIndex.put(n.getId(),nValues.getFirst());
                                 }
                             }else if(nValues.size()>idx){
-                                sourceValuesAtIndex.put(n.name,nValues.get(idx));
+                                sourceValuesAtIndex.put(n.getId(),nValues.get(idx));
                             }else{
                                 //do nothing with a missing value
                             }
@@ -345,22 +350,20 @@ public class NodeService implements NodeServiceInterface {
                     }
                 }
                 case NxN -> {
-                    List<Map<String, ValueEntity>> valuePermutations = new ArrayList<>();
-                    List<String> multiNodes = nodeValues.entrySet().stream().filter(e->e.getValue().size()>1).map(Map.Entry::getKey).toList();
-                    List<String> scalarNodes = nodeValues.entrySet().stream().filter(e->e.getValue().size()==1).map(Map.Entry::getKey).toList();
+                    List<Map<Long, ValueEntity>> valuePermutations = new ArrayList<>();
                     int permutations = nodeValues.values().stream().map(List::size).reduce(1,(a,b)-> b > 0 ? a*b : a );
                     for( int i=0; i<permutations; i++ ) {
                         valuePermutations.add(new HashMap<>());
                     }
                     int loopCount = 1;
                     for( NodeEntity sourceNode : node.sources ){
-                        List<ValueEntity> valueList = nodeValues.get(sourceNode.name);
+                        List<ValueEntity> valueList = nodeValues.get(sourceNode.getId());
                         if( !valueList.isEmpty() ){
                             if ( valueList.size() == 1 ) {
                                 if ( sourceNode.scalarMethod.equals(NodeEntity.ScalarVariableMethod.First) ){
-                                    valuePermutations.getFirst().put(sourceNode.name, valueList.getFirst());
+                                    valuePermutations.getFirst().put(sourceNode.getId(), valueList.getFirst());
                                 }else{
-                                    valuePermutations.forEach(m->m.put(sourceNode.name, valueList.getFirst()));
+                                    valuePermutations.forEach(m->m.put(sourceNode.getId(), valueList.getFirst()));
                                 }
                             } else {//just the multivalue entries
                                 int valueCount = valueList.size();
@@ -371,7 +374,7 @@ public class NodeService implements NodeServiceInterface {
                                     for (int valueIndex = 0; valueIndex < valueList.size(); valueIndex++) {
                                         for (int i = 0; i < perValue; i++) {
                                             int permutationIndex = loopIndex * perLoop + valueIndex * perValue + i;
-                                            valuePermutations.get(permutationIndex).put(sourceNode.name, valueList.get(valueIndex));
+                                            valuePermutations.get(permutationIndex).put(sourceNode.getId(), valueList.get(valueIndex));
                                         }
                                     }
                                 }
@@ -408,9 +411,9 @@ public class NodeService implements NodeServiceInterface {
                 for(int vIdx=0; vIdx<roots.size(); vIdx++){
                     ValueEntity root =  roots.get(vIdx);
                     try {
-                        List<Map<String, ValueEntity>> combinations = calculateSourceValuePermutations(node,root);
+                        List<Map<Long, ValueEntity>> combinations = calculateSourceValuePermutations(node,root);
                         for(int i=0;i<combinations.size();i++){
-                            Map<String, ValueEntity> combination =  combinations.get(i);
+                            Map<Long, ValueEntity> combination =  combinations.get(i);
                             List<ValueEntity> createdValues = calculateNodeValues(node,combination,rtrn.size());
                             rtrn.addAll(createdValues);
                         }
@@ -456,7 +459,7 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateNodeValues(NodeEntity node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateNodeValues(NodeEntity node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         return switch(node.type()){
             case JQ -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
             case JS -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
@@ -1002,7 +1005,7 @@ public class NodeService implements NodeServiceInterface {
 
 
     @Transactional
-    public List<ValueEntity> calculateSplitValues(SplitNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateSplitValues(SplitNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         if(sourceValues.isEmpty()){
             return rtrn;
@@ -1012,7 +1015,7 @@ public class NodeService implements NodeServiceInterface {
         }
         //this will naively do the split with entities but using json_each would be good
         //TODO should this be done in db with json_each?
-        ValueEntity v = sourceValues.get(node.sources.getFirst().name);
+        ValueEntity v = sourceValues.get(node.sources.getFirst().getId());
         if(v!=null){
             if(v.data instanceof JqArray jqArr){
                 for(int i=0;i<jqArr.length();i++){
@@ -1034,7 +1037,7 @@ public class NodeService implements NodeServiceInterface {
 
 
     //jsonata cannot operate on multiple inputs at once so source
-    public List<ValueEntity> calculateJsonataValues(JsonataNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJsonataValues(JsonataNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         if(sourceValues.size()>1 || node.sources.size()>1){
             System.err.println("jsonata only supports one input at a time");
             return Collections.emptyList();
@@ -1057,7 +1060,7 @@ public class NodeService implements NodeServiceInterface {
             newValue.idx = startingOrdinal+1;
             newValue.node = node;
             newValue.data = result;
-            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
             return List.of(newValue);
 
         } catch (JsonataException e) {
@@ -1249,18 +1252,45 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateJsValues(JsNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJsValues(JsNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         List<String> params = JsNode.getParameterNames(node.operation);
         if(params == null){
             System.err.println("Error occurred reading parameters from js function\n"+node.operation);
             return Collections.emptyList();
         }
-        List<JqValue> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
+        // Build name-keyed map for createParameters — use source node names as keys
+        // so JS function parameter matching works (e.g., value["rhivos_target"]).
+        // When multiple sources share the same name (multi-schema variants), append
+        // the source node ID to create unique keys. The multi-schema combiner function
+        // uses Object.values() which doesn't depend on key names.
+        // When sources are empty (source-less nodes), use the value's node name as key.
+        Map<String, ValueEntity> namedSourceValues = new LinkedHashMap<>();
+        if (!node.sources.isEmpty()) {
+            Set<String> seenNames = new HashSet<>();
+            for (NodeEntity source : node.sources) {
+                ValueEntity v = sourceValues.get(source.getId());
+                if (v != null) {
+                    String key = source.name;
+                    if (!seenNames.add(key)) {
+                        // Name collision — append node ID to make unique
+                        key = key + "_" + source.getId();
+                    }
+                    namedSourceValues.put(key, v);
+                }
+            }
+        } else {
+            for (ValueEntity v : sourceValues.values()) {
+                namedSourceValues.put(v.node != null ? v.node.name : String.valueOf(v.id), v);
+            }
+        }
+        List<JqValue> input = JsNode.createParameters(node.operation, namedSourceValues,
+                node.sources.isEmpty() ? sourceValues.size() : node.sources.size());
         try(Context context = Context.newBuilder("js").engine(Engine.newBuilder("js").option("engine.WarnInterpreterOnly", "false").build())
                 .allowExperimentalOptions(true)
                 .option("js.foreign-object-prototype", "true")
                 .option("js.global-property", "true")
+                .timeZone(java.time.ZoneId.of("UTC"))
 //                .out(out)
 //                .err(out)
                 .build()){
@@ -1299,7 +1329,7 @@ public class NodeService implements NodeServiceInterface {
                             newValue.idx = startingOrdinal+rtrn.size()+1;
                             newValue.node = node;
                             newValue.data = data;
-                            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+                            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
                             rtrn.add(newValue);
                         }else{
                             System.err.println("null data from value "+resolvedValue);
@@ -1359,12 +1389,12 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         JqObject.Builder fpBuilder = JqObject.builder();
         TreeMap<String, JqValue> sorted = new TreeMap<>();
         for (NodeEntity source : node.sources) {
-            if (sourceValues.containsKey(source.name)) {
-                sorted.put(source.name, sourceValues.get(source.name).data);
+            if (sourceValues.containsKey(source.getId())) {
+                sorted.put(source.name, sourceValues.get(source.getId()).data);
             }
         }
         sorted.forEach(fpBuilder::put);
@@ -1372,7 +1402,7 @@ public class NodeService implements NodeServiceInterface {
         newValue.idx = startingOrdinal+1;
         newValue.node = node;
         newValue.data = fpBuilder.build();
-        newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+        newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
         return List.of(newValue);
     }
     public boolean evaluateFingerprintFilter(String filter, JqValue fingerprint) {
@@ -1402,7 +1432,7 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateJqValues(JqNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJqValues(JqNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
 
         boolean isNullInput = JqNode.isNullInput(node.operation);
@@ -1420,8 +1450,8 @@ public class NodeService implements NodeServiceInterface {
         List<JqValue> sourceData = new ArrayList<>();
         if (!node.sources.isEmpty()) {
             List.copyOf(node.sources).forEach(sourceNode -> {
-                if (sourceValues.containsKey(sourceNode.name)) {
-                    sourceData.add(sourceValues.get(sourceNode.name).data);
+                if (sourceValues.containsKey(sourceNode.getId())) {
+                    sourceData.add(sourceValues.get(sourceNode.getId()).data);
                 }
             });
         } else {
@@ -1453,8 +1483,8 @@ public class NodeService implements NodeServiceInterface {
                     newValue.node = node;
                     newValue.data = jqResult;
                     newValue.sources = node.sources.stream()
-                            .filter(n -> sourceValues.containsKey(n.name))
-                            .map(n -> sourceValues.get(n.name))
+                            .filter(n -> sourceValues.containsKey(n.getId()))
+                            .map(n -> sourceValues.get(n.getId()))
                             .collect(Collectors.toList());
                     rtrn.add(newValue);
                 }

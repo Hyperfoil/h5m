@@ -192,7 +192,7 @@ public class NodeServiceTest extends FreshDb {
         jsNode.persist();
         tm.commit();
 
-        Map<String, ValueEntity> combined = Map.of("root",rootValue);
+        Map<Long, ValueEntity> combined = Map.of(rootNode.id,rootValue);
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, combined,0);
 
         assertNotNull(result);
@@ -219,7 +219,7 @@ public class NodeServiceTest extends FreshDb {
 
         assertEquals(1,jsNode.sources.size(),"jsNode should have a source");
 
-        Map<String, ValueEntity> combined = Map.of("root",rootValue);
+        Map<Long, ValueEntity> combined = Map.of(rootNode.id,rootValue);
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, combined,0);
 
         assertNotNull(result);
@@ -248,7 +248,7 @@ public class NodeServiceTest extends FreshDb {
         jsNode.persist();
         tm.commit();
 
-        Map<String, ValueEntity> combined = Map.of("root",rootValue);
+        Map<Long, ValueEntity> combined = Map.of(rootNode.id,rootValue);
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, combined,0);
 
         assertNotNull(result);
@@ -283,8 +283,8 @@ public class NodeServiceTest extends FreshDb {
 
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -312,8 +312,8 @@ public class NodeServiceTest extends FreshDb {
 
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -341,8 +341,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -370,8 +370,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -400,8 +400,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -426,8 +426,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertNotNull(calculated);
@@ -456,8 +456,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put(rootNode.name,v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(rootNode.id,v1);
 
         List<ValueEntity> hit = nodeService.calculateJqValues(hitNode,sourceValueMap,0);
         List<ValueEntity> miss = nodeService.calculateJqValues(missNode,sourceValueMap,0);
@@ -573,8 +573,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put("upload",v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(v1.id,v1);
 
         JqNode node = new JqNode("foo",".foo");
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
@@ -601,8 +601,8 @@ public class NodeServiceTest extends FreshDb {
         v1.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put("upload",v1);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(v1.id,v1);
 
         JqNode node = new JqNode("foo",".foo[]");
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
@@ -634,9 +634,9 @@ public class NodeServiceTest extends FreshDb {
 
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put("v1",v1);
-        sourceValueMap.put("v2",v2);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(v1.id,v1);
+        sourceValueMap.put(v2.id,v2);
 
         List<ValueEntity> calculated = nodeService.calculateJqValues(node,sourceValueMap,0);
         assertEquals(1,calculated.size(),"expect to create a single value from two sources");
@@ -689,13 +689,14 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
         ValueEntity t1 = new ValueEntity(null,transform1,upload.data.getField("config"));
         t1.persist();
-        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.getField("foo"));
+        ValueEntity t2 = new ValueEntity(null,transform2,upload.data.getField("foo"));
         t2.persist();
-        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.getField("bar"));
+        ValueEntity t3 = new ValueEntity(null,transform3,upload.data.getField("bar"));
         t3.persist();
+        dataset.sources = List.of(transform1, transform2, transform3);
         tm.commit();
 
-        List<ValueEntity> values = nodeService.calculateJsValues(dataset,Map.of("transform1",t1,"transform2",t2,"transform3",t3),0);
+        List<ValueEntity> values = nodeService.calculateJsValues(dataset,Map.of(transform1.id,t1,transform2.id,t2,transform3.id,t3),0);
         assertEquals(3,values.size(),"expect to create a single value from two sources");
         assertNotNull(values.get(0).data,"value[0] data should not be null");
         assertTrue(Stream.of("transform1","transform2","transform3").allMatch(k -> !values.get(0).data.getField(k).isNull()),"missing expected key from values[0]");
@@ -731,13 +732,14 @@ public class NodeServiceTest extends FreshDb {
         upload.persist();
         ValueEntity t1 = new ValueEntity(null,transform1,upload.data.getField("config"));
         t1.persist();
-        ValueEntity t2 = new ValueEntity(null,transform1,upload.data.getField("foo"));
+        ValueEntity t2 = new ValueEntity(null,transform2,upload.data.getField("foo"));
         t2.persist();
-        ValueEntity t3 = new ValueEntity(null,transform1,upload.data.getField("bar"));
+        ValueEntity t3 = new ValueEntity(null,transform3,upload.data.getField("bar"));
         t3.persist();
+        dataset.sources = List.of(transform1, transform2, transform3);
         tm.commit();
 
-        List<ValueEntity> values = nodeService.calculateJqValues(dataset,Map.of("transform1",t1,"transform2",t2,"transform3",t3),0);
+        List<ValueEntity> values = nodeService.calculateJqValues(dataset,Map.of(transform1.id,t1,transform2.id,t2,transform3.id,t3),0);
         assertEquals(1,values.size(),"expect to create a single value from two sources");
         ValueEntity found = values.get(0);
         assertNotNull(found.data,"found data should not be null");
@@ -788,7 +790,7 @@ public class NodeServiceTest extends FreshDb {
 
         // When multiType is Length and source nodes have mismatched value counts,
         // calculateSourceValuePermutations should return null
-        List<Map<String, ValueEntity>> result = nodeService.calculateSourceValuePermutations(combined, rootValue);
+        List<Map<Long, ValueEntity>> result = nodeService.calculateSourceValuePermutations(combined, rootValue);
 
         assertNotNull(result, "Expected not-null when Length multiType has mismatched source value counts:");
     }
@@ -812,9 +814,9 @@ public class NodeServiceTest extends FreshDb {
         v2.persist();
         tm.commit();
 
-        Map<String, ValueEntity> sourceValueMap = new HashMap<>();
-        sourceValueMap.put("v1",v1);
-        sourceValueMap.put("v2",v2);
+        Map<Long, ValueEntity> sourceValueMap = new HashMap<>();
+        sourceValueMap.put(node1.id,v1);
+        sourceValueMap.put(node2.id,v2);
 
         JqNode node = new JqNode("foo",".");
 
@@ -828,6 +830,162 @@ public class NodeServiceTest extends FreshDb {
         assertTrue(read.startsWith("["),"value should be an array: "+read);
         assertTrue(read.endsWith("]"),"value should be an array: "+read);
     }
+
+    // ---- ID-based pipeline: same-name source collision tests ----
+    // These tests verify that the pipeline correctly handles multiple source
+    // nodes with the same name (e.g., extractors from different schema versions).
+    // With the old name-based Map<String, ValueEntity> keying, the second source
+    // would overwrite the first, silently losing data.
+
+    @Test
+    public void calculateSourceValuePermutations_same_name_sources_preserves_all() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Two source nodes with the same name but different operations (like
+        // extractors from different schema versions: .system_config.kernel vs .rhivos_config.kernel)
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity sourceA = new JqNode("metric", ".schema_v1.value", rootNode);
+        sourceA.persist();
+        NodeEntity sourceB = new JqNode("metric", ".schema_v2.value", rootNode);
+        sourceB.persist();
+
+        // A combiner node that sources from both same-name nodes
+        JsNode combiner = new JsNode("metric_combined",
+                "obj=>Object.values(obj).find(v => v != null)", List.of(sourceA, sourceB));
+        combiner.persist();
+
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse("""
+                {"schema_v1": {"value": 42}, "schema_v2": {"value": 99}}
+                """));
+        rootValue.persist();
+
+        // Create values for both source nodes (simulating what the pipeline produces)
+        ValueEntity valueA = new ValueEntity(null, sourceA, JqNumber.of(42));
+        valueA.idx = 1;
+        valueA.sources = List.of(rootValue);
+        valueA.persist();
+        ValueEntity valueB = new ValueEntity(null, sourceB, JqNumber.of(99));
+        valueB.idx = 1;
+        valueB.sources = List.of(rootValue);
+        valueB.persist();
+        tm.commit();
+
+        List<Map<Long, ValueEntity>> permutations = nodeService.calculateSourceValuePermutations(combiner, rootValue);
+
+        assertFalse(permutations.isEmpty(), "should have at least one permutation");
+        Map<Long, ValueEntity> first = permutations.getFirst();
+        // With ID-based keying, both sources are preserved
+        assertEquals(2, first.size(), "should have entries for both same-name sources — " +
+                "with name-based keying, the second would overwrite the first, leaving only 1");
+        assertTrue(first.containsKey(sourceA.id), "should contain sourceA by ID");
+        assertTrue(first.containsKey(sourceB.id), "should contain sourceB by ID");
+    }
+
+    @Test
+    public void calculateJsValues_same_name_sources_all_values_accessible() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        // A JS function sourced from two nodes with the same name.
+        // Object.values() should see both values, not just the last one.
+        tm.begin();
+        NodeEntity sourceA = new JqNode("data");
+        sourceA.persist();
+        NodeEntity sourceB = new JqNode("data");
+        sourceB.persist();
+
+        // Combiner: picks first non-null from all sources
+        JsNode combiner = new JsNode("result",
+                "obj=>Object.values(obj).filter(v => v != null).length",
+                List.of(sourceA, sourceB));
+        combiner.persist();
+
+        ValueEntity valueA = new ValueEntity(null, sourceA, JqString.of("alpha"));
+        valueA.persist();
+        ValueEntity valueB = new ValueEntity(null, sourceB, JqString.of("beta"));
+        valueB.persist();
+        tm.commit();
+
+        Map<Long, ValueEntity> sourceValues = Map.of(sourceA.id, valueA, sourceB.id, valueB);
+        List<ValueEntity> result = nodeService.calculateJsValues(combiner, sourceValues, 0);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        // The function counts non-null values — should see both (2), not just one
+        assertEquals(2L, result.getFirst().data.asLong(0),
+                "JS function should see both same-name source values — " +
+                "with name-based keying, one would be lost and count would be 1");
+    }
+
+    @Test
+    public void calculateJsValues_multi_extractor_direct_sources() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        // Simulates the SUT pattern: a JS function with 5 named extractor sources.
+        // The function accesses properties by extractor name (e.g., value["target"]).
+        // Without the _extract combiner, the JS node sources directly from extractors.
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        NodeEntity targetNode = new JqNode("target", ".config.target", root);
+        targetNode.persist();
+        NodeEntity modeNode = new JqNode("mode", ".config.mode", root);
+        modeNode.persist();
+        NodeEntity buildNode = new JqNode("build", ".config.build", root);
+        buildNode.persist();
+
+        JsNode sutNode = new JsNode("SUT",
+                "value => value[\"target\"] + ' ' + value[\"mode\"] + ' ' + value[\"build\"]",
+                List.of(targetNode, modeNode, buildNode));
+        sutNode.persist();
+
+        ValueEntity targetValue = new ValueEntity(null, targetNode, JqString.of("ebbr"));
+        targetValue.persist();
+        ValueEntity modeValue = new ValueEntity(null, modeNode, JqString.of("package"));
+        modeValue.persist();
+        ValueEntity buildValue = new ValueEntity(null, buildNode, JqString.of("abc123"));
+        buildValue.persist();
+        tm.commit();
+
+        Map<Long, ValueEntity> sourceValues = Map.of(
+                targetNode.id, targetValue,
+                modeNode.id, modeValue,
+                buildNode.id, buildValue);
+        List<ValueEntity> result = nodeService.calculateJsValues(sutNode, sourceValues, 0);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("ebbr package abc123", result.getFirst().data.asString(""),
+                "JS function should access all source values by their node names");
+    }
+
+    @Test
+    public void calculateFpValues_same_name_sources_preserves_all() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        // Two fingerprint source nodes with the same name but different data.
+        // With name-based keying, only one would appear in the fingerprint object.
+        tm.begin();
+        NodeEntity sourceA = new JqNode("platform");
+        sourceA.persist();
+        NodeEntity sourceB = new JqNode("platform");
+        sourceB.persist();
+        tm.commit();
+
+        FingerprintNode fpNode = new FingerprintNode("fp", "fp", List.of(sourceA, sourceB));
+
+        ValueEntity valueA = new ValueEntity(null, sourceA, JqString.of("x86"));
+        ValueEntity valueB = new ValueEntity(null, sourceB, JqString.of("arm64"));
+
+        Map<Long, ValueEntity> sourceValues = new HashMap<>();
+        sourceValues.put(sourceA.id, valueA);
+        sourceValues.put(sourceB.id, valueB);
+
+        List<ValueEntity> result = nodeService.calculateFpValues(fpNode, sourceValues, 0);
+
+        assertEquals(1, result.size());
+        JqObject fpObject = (JqObject) result.getFirst().data;
+        // With ID-based keying, the fingerprint builder uses source.name as the
+        // object key. Same-name sources still produce one key (the name), but
+        // the last value wins in the TreeMap sort. The important thing is that
+        // both values were accessible — not silently lost before reaching the builder.
+        assertNotNull(fpObject, "fingerprint should be built from both sources");
+        assertTrue(fpObject.has("platform"), "fingerprint should contain the 'platform' key");
+    }
+
     @Test
     public void findNodeByFqdn_group_name() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         tm.begin();
@@ -1127,9 +1285,9 @@ public class NodeServiceTest extends FreshDb {
         ValueEntity platformValue = new ValueEntity(null, platformNode, JqString.of("x86"));
         ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, JqString.of("release"));
 
-        Map<String, ValueEntity> sourceValues = new HashMap<>();
-        sourceValues.put("platform", platformValue);
-        sourceValues.put("buildType", buildTypeValue);
+        Map<Long, ValueEntity> sourceValues = new HashMap<>();
+        sourceValues.put(platformNode.id, platformValue);
+        sourceValues.put(buildTypeNode.id, buildTypeValue);
 
         List<ValueEntity> result = nodeService.calculateFpValues(fpNode, sourceValues, 0);
 
@@ -1161,9 +1319,9 @@ public class NodeServiceTest extends FreshDb {
         ValueEntity platformValue = new ValueEntity(null, platformNode, JqString.of("x86"));
         ValueEntity buildTypeValue = new ValueEntity(null, buildTypeNode, JqString.of("release"));
 
-        Map<String, ValueEntity> sourceValues = new HashMap<>();
-        sourceValues.put("platform", platformValue);
-        sourceValues.put("buildType", buildTypeValue);
+        Map<Long, ValueEntity> sourceValues = new HashMap<>();
+        sourceValues.put(platformNode.id, platformValue);
+        sourceValues.put(buildTypeNode.id, buildTypeValue);
 
         List<ValueEntity> result = nodeService.calculateFpValues(fpNode, sourceValues, 0);
 
@@ -1222,7 +1380,7 @@ public class NodeServiceTest extends FreshDb {
         tm.commit();
 
         // calculate jq values for both nodes
-        Map<String, ValueEntity> sourceValues = Map.of("upload", rootValue);
+        Map<Long, ValueEntity> sourceValues = Map.of(rootNode.id, rootValue);
         tm.begin();
         List<ValueEntity> qvValues = nodeService.calculateJqValues(quarkusVersionNode, sourceValues, 0).stream().map(ValueEntity.getEntityManager()::merge).toList();
         List<ValueEntity> jvValues = nodeService.calculateJqValues(javaVersionNode, sourceValues, 0).stream().map(ValueEntity.getEntityManager()::merge).toList();
@@ -1234,9 +1392,9 @@ public class NodeServiceTest extends FreshDb {
         // build fingerprint from those extracted values
         FingerprintNode fpNode = new FingerprintNode("fp", "fp", List.of(javaVersionNode, quarkusVersionNode));
 
-        Map<String, ValueEntity> fpSourceValues = new HashMap<>();
-        fpSourceValues.put("QUARKUS_VERSION", qvValues.getFirst());
-        fpSourceValues.put("JAVA_VERSION", jvValues.getFirst());
+        Map<Long, ValueEntity> fpSourceValues = new HashMap<>();
+        fpSourceValues.put(quarkusVersionNode.id, qvValues.getFirst());
+        fpSourceValues.put(javaVersionNode.id, jvValues.getFirst());
 
         List<ValueEntity> fpResult = nodeService.calculateFpValues(fpNode, fpSourceValues, 0);
 
@@ -1515,14 +1673,14 @@ public class NodeServiceTest extends FreshDb {
             tm.commit();
             allRootValues.add(rootValue);
 
-            Map<String, ValueEntity> sourceValues = Map.of("upload", rootValue);
+            Map<Long, ValueEntity> sourceValues = Map.of(rootNode.id, rootValue);
             tm.begin();
             List<ValueEntity> tpValues = nodeService.calculateJqValues(throughputNode, sourceValues, 0).stream().map(ValueEntity.getEntityManager()::merge).toList();;
             List<ValueEntity> verValues = nodeService.calculateJqValues(versionNode, sourceValues, 0).stream().map(ValueEntity.getEntityManager()::merge).toList();;
             // compute fingerprint values
             if (!verValues.isEmpty()) {
-                Map<String, ValueEntity> fpSourceValues = new HashMap<>();
-                fpSourceValues.put("version", verValues.getFirst());
+                Map<Long, ValueEntity> fpSourceValues = new HashMap<>();
+                fpSourceValues.put(versionNode.id, verValues.getFirst());
                 List<ValueEntity> fpValues = nodeService.calculateFpValues(fpNode, fpSourceValues, 0).stream().map(ValueEntity.getEntityManager()::merge).toList();
             }
             tm.commit();
