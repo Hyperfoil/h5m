@@ -172,7 +172,7 @@ public class Work implements Runnable, Comparable<Work>{
             // only need entity IDs and will reload via em.find() in their own
             // transactions.  Without this, queued Work objects retain the full
             // parsed JSON tree (e.g. 3 MB per rhivos run) until GC collects them.
-            sourceValues = null;
+            sourceValueIds = null;
             sourceNodes = null;
             activeNodes = null;
         }
