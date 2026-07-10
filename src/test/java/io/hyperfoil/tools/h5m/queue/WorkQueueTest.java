@@ -237,5 +237,41 @@ public class WorkQueueTest extends FreshDb {
         assertFalse(q.isPending(cWork),"c should not be in the queue");
     }
 
+    @Test
+    public void poll_return_child_node_with_different_sourceValue() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity parentNode = new JqNode("parent",".",rootNode);
+        parentNode.persist();
+        NodeEntity childNode = new JqNode("child",".",parentNode);
+        childNode.persist();
+
+        ValueEntity valueOne = new ValueEntity(null,rootNode);
+        valueOne.persist();
+        ValueEntity valueTwo = new ValueEntity(null,rootNode);
+        valueTwo.persist();
+
+
+        Work parentWork = new Work(parentNode, parentNode.sources,List.of(valueOne.id));
+        Work childWork = new Work(childNode,childNode.sources,List.of(valueTwo.id));
+        tm.commit();
+
+        q.addWorks(List.of(parentWork, childWork));
+
+        Runnable firstRunnable = q.poll();
+        assertEquals(parentWork,firstRunnable,"first runnable should be parentWork");
+        assertFalse(q.isPending(parentWork),"parentWork should be removed from the q");
+
+        Runnable polled = q.poll();
+
+        assertNotNull(polled,"poll should pull childWork");
+        assertEquals(childWork,polled,"poll should be childWork");
+        assertFalse(q.isPending(childWork),"childWork should remain in the queue");
+    }
+
+
 
 }
