@@ -3,7 +3,9 @@ package io.hyperfoil.tools.h5m.rest;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.api.ProcessingType;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
+import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
@@ -171,7 +173,7 @@ public class RestEndpointTest extends FreshDb {
                 .body("{\"key\": \"value\"}")
                 .when().post("/api/folder/upload-test/upload")
                 .then()
-                .statusCode(204);
+                .statusCode(200);
 
         given()
                 .when().get("/api/folder/upload-test/structure")
@@ -443,21 +445,11 @@ public class RestEndpointTest extends FreshDb {
     }
 
     @Test
-    public void node_create_sql_jsonpath() {
-        createFolder("sql-test");
-        Long groupId = getGroupId("sql-test");
+    public void node_create_jq_from_jsonpath() {
+        createFolder("jq-jsonpath-test");
+        Long groupId = getGroupId("jq-jsonpath-test");
 
-        Long nodeId = createNodeWithType(groupId, "sql-node", NodeType.SQL_JSONPATH_NODE.name(), "$.foo.bar");
-
-        assertTrue(nodeId > 0, "should return a valid node ID");
-    }
-
-    @Test
-    public void node_create_sql_jsonpath_all() {
-        createFolder("sql-all-test");
-        Long groupId = getGroupId("sql-all-test");
-
-        Long nodeId = createNodeWithType(groupId, "sql-all-node", NodeType.SQL_JSONPATH_ALL_NODE.name(), "$.foo[*]");
+        Long nodeId = createNodeWithType(groupId, "jq-node", NodeType.JQ.name(), ".foo.bar");
 
         assertTrue(nodeId > 0, "should return a valid node ID");
     }
@@ -477,7 +469,7 @@ public class RestEndpointTest extends FreshDb {
                 .body("{\"key\": \"hello\"}")
                 .when().post("/api/folder/e2e-test/upload")
                 .then()
-                .statusCode(204);
+                .statusCode(200);
 
         // Wait for the work queue to finish processing the upload
         long deadline = System.currentTimeMillis() + 10_000;
@@ -514,7 +506,7 @@ public class RestEndpointTest extends FreshDb {
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                    .orTimeout(30, TimeUnit.SECONDS).join();
+                    .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
         given()
@@ -537,7 +529,7 @@ public class RestEndpointTest extends FreshDb {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
                 folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                        .orTimeout(30, TimeUnit.SECONDS).join();
+                        .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }
 
@@ -558,7 +550,7 @@ public class RestEndpointTest extends FreshDb {
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                    .orTimeout(30, TimeUnit.SECONDS).join();
+                    .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
         // Find the root value ID — the upload itself
@@ -860,7 +852,7 @@ public class RestEndpointTest extends FreshDb {
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
             folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                    .orTimeout(30, TimeUnit.SECONDS).join();
+                    .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
         // Get view data — should return filtered results with only start_time and end_time columns
@@ -903,7 +895,7 @@ public class RestEndpointTest extends FreshDb {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
                 folderService.upload("rhivos-perf-comprehensive", "$", runData)
-                        .orTimeout(30, TimeUnit.SECONDS).join();
+                        .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }
 
@@ -981,12 +973,12 @@ public class RestEndpointTest extends FreshDb {
         given().contentType(MediaType.APPLICATION_JSON)
                 .body("{\"throughput\": 115, \"build_id\": 201}")
                 .when().post("/api/folder/lv-test/upload")
-                .then().statusCode(204);
+                .then().statusCode(200);
 
         given().contentType(MediaType.APPLICATION_JSON)
                 .body("{\"throughput\": 100, \"build_id\": 202}")
                 .when().post("/api/folder/lv-test/upload")
-                .then().statusCode(204);
+                .then().statusCode(200);
 
         long deadline = System.currentTimeMillis() + 10_000;
         while (!workService.isIdle() && System.currentTimeMillis() < deadline) {
@@ -1015,6 +1007,93 @@ public class RestEndpointTest extends FreshDb {
                 .when().get("/api/folder/123/labelValues")
                 .then()
                 .statusCode(404);
+    }
+
+    @Test
+    public void upload_returns_uploadId() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        createFolder("upload-id-test");
+
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"cpu\": 95}")
+                .when().post("/api/folder/upload-id-test/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        assertTrue(uploadId > 0, "uploadId should be a positive number");
+
+        tm.begin();
+        ProcessingTrackerEntity entity = ProcessingTrackerEntity
+                .find("type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, uploadId)
+                .firstResult();
+        assertNotNull(entity, "ProcessingTrackerEntity should exist for the returned uploadId");
+        assertEquals(uploadId, entity.referenceId, "referenceId in DB should match the returned uploadId");
+        tm.commit();
+
+    }
+
+    @Test
+    public void FolderUpload_empty_body_returns_error() {
+        createFolder("test-empty");
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .when().post("/api/folder/test-empty/upload")
+                .then()
+                .statusCode(400);
+    }
+
+    @Test
+    public void FolderUpload_tracking_record_created() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        createFolder("test-tracking");
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"cpu\": 95}")
+                .when().post("/api/folder/test-tracking/upload")
+                .then()
+                .extract().as(Long.class);
+
+        tm.begin();
+        ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
+                "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, uploadId).firstResult();
+        tm.commit();
+        assertNotNull(entity);
+        assertTrue(entity.completed);
+    }
+
+    @Test
+    public void Upload_nonExistingFolder_returns_error() {
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"cpu\": 95}")
+                .when().post("/api/folder/test-folderg/upload")
+                .then()
+                .statusCode(500);
+    }
+
+    @Test
+    public void multiple_uploads_return_unique_ids() {
+        createFolder("upload-unique-ids-test");
+
+        Long uploadId1 = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"cpu\": 95}")
+                .when().post("/api/folder/upload-unique-ids-test/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        Long uploadId2 = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"cpu\": 99}")
+                .when().post("/api/folder/upload-unique-ids-test/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        assertNotEquals(uploadId1, uploadId2, "Each upload should return a unique ID");
+
+
     }
 
 }

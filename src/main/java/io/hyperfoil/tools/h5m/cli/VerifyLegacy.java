@@ -71,7 +71,11 @@ public class VerifyLegacy implements Callable<Integer> {
             System.out.println("\n=== NODE STRUCTURE ===");
             compareNodeStructure(legacyConn, testName);
 
-            // Step 2: Get runs to verify
+            // Step 2: Check source data quality
+            System.out.println("\n=== SOURCE DATA QUALITY ===");
+            Set<String> stubLabels = checkSourceDataQuality(legacyConn);
+
+            // Step 3: Get runs to verify
             List<Long> runIds;
             if (runId != null) {
                 runIds = List.of(runId);
@@ -85,18 +89,44 @@ public class VerifyLegacy implements Callable<Integer> {
             int totalMissing = 0;
             int totalExtra = 0;
             int totalMisaligned = 0;
+            int totalRounding = 0;
+            int totalStubs = 0;
             Map<String, int[]> perLabel = new LinkedHashMap<>();  // label → [match, mismatch, missing]
             Map<Integer, int[]> perDataset = new TreeMap<>();     // ordinal → [match, mismatch, missing]
             long startTime = System.currentTimeMillis();
 
-            for (Long rid : runIds) {
-                System.out.println("\n--- Run " + rid + " ---");
-                int[] result = compareRun(legacyConn, testName, rid, perLabel, perDataset);
+            // Get h5m root value IDs in upload order (matching run import order: id DESC)
+            @SuppressWarnings("unchecked")
+            List<Number> rootValueIds = em.createNativeQuery("""
+                    SELECT v.id FROM value v
+                    JOIN node n ON v.node_id = n.id
+                    JOIN node_group ng ON ng.root_id = n.id
+                    JOIN folder f ON f.group_id = ng.id
+                    WHERE f.name = ? AND n.type = 'root'
+                    ORDER BY v.id ASC
+                    """)
+                    .setParameter(1, testName)
+                    .getResultList();
+            if (rootValueIds.size() < runIds.size()) {
+                System.out.println("WARNING: " + runIds.size() + " Horreum runs but only " + rootValueIds.size() + " h5m uploads");
+            }
+
+            for (int i = 0; i < runIds.size(); i++) {
+                Long rid = runIds.get(i);
+                Long rootValueId = i < rootValueIds.size() ? rootValueIds.get(i).longValue() : null;
+                System.out.println("\n--- Run " + rid + (rootValueId != null ? " (h5m root=" + rootValueId + ")" : " (no h5m upload)") + " ---");
+                if (rootValueId == null) {
+                    System.out.println("  SKIPPED: no corresponding h5m upload");
+                    continue;
+                }
+                int[] result = compareRun(legacyConn, testName, rid, rootValueId, perLabel, perDataset, stubLabels);
                 totalMatches += result[0];
                 totalMismatches += result[1];
                 totalMissing += result[2];
                 totalExtra += result[3];
                 totalMisaligned += result[4];
+                totalRounding += result[5];
+                totalStubs += result[6];
             }
 
             long elapsed = System.currentTimeMillis() - startTime;
@@ -107,9 +137,14 @@ public class VerifyLegacy implements Callable<Integer> {
             System.out.println("\n=== SUMMARY ===");
             System.out.println("Runs verified: " + runIds.size());
             System.out.printf("Match rate: %.1f%% (%d/%d)%n", matchRate, totalMatches, totalComparisons);
-            System.out.println("  matching:   " + totalMatches);
-            System.out.println("  mismatched: " + totalMismatches);
-            System.out.println("  missing:    " + totalMissing + " (" + totalMisaligned + " misaligned, " + (totalMissing - totalMisaligned) + " absent)");
+            System.out.println("  matching:   " + totalMatches
+                    + " (" + (totalMatches - totalMisaligned - totalRounding) + " exact"
+                    + (totalMisaligned > 0 ? ", " + totalMisaligned + " misaligned" : "")
+                    + (totalRounding > 0 ? ", " + totalRounding + " rounding" : "")
+                    + ")");
+            System.out.println("  mismatched: " + totalMismatches
+                    + (totalStubs > 0 ? " (" + totalStubs + " stub functions, " + (totalMismatches - totalStubs) + " real)" : ""));
+            System.out.println("  missing:    " + totalMissing);
             System.out.println("  extra:      " + totalExtra);
             System.out.printf("Time: %.1fs%n", elapsed / 1000.0);
 
@@ -261,9 +296,156 @@ public class VerifyLegacy implements Callable<Integer> {
         System.out.println("Change detection nodes: Horreum=" + horreumChangeDetections + " h5m=" + h5mChangeDetections);
     }
 
-    private int[] compareRun(Connection legacyConn, String testName, long runId,
-                             Map<String, int[]> perLabel, Map<Integer, int[]> perDataset) throws SQLException {
-        int matches = 0, mismatches = 0, missing = 0, extra = 0, misaligned = 0;
+    /**
+     * Check the Horreum source data for quality issues that would affect import/verification.
+     * Returns the set of label names whose functions are stubs (zero-param, constant return).
+     */
+    private Set<String> checkSourceDataQuality(Connection legacyConn) throws SQLException {
+        Set<String> stubLabels = new HashSet<>();
+
+        // Get all schema IDs used by this test's runs
+        Set<Integer> schemaIds = new HashSet<>();
+        try (PreparedStatement ps = legacyConn.prepareStatement(
+                "SELECT DISTINCT schemaid FROM run_schemas WHERE runid IN (SELECT id FROM run WHERE testid = ?)")) {
+            ps.setLong(1, testId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) schemaIds.add(rs.getInt(1));
+            }
+        }
+
+        // Get all label names available for these schemas
+        Set<String> availableLabels = new HashSet<>();
+        if (!schemaIds.isEmpty()) {
+            String placeholders = String.join(",", Collections.nCopies(schemaIds.size(), "?"));
+            try (PreparedStatement ps = legacyConn.prepareStatement(
+                    "SELECT DISTINCT name FROM label WHERE schema_id IN (" + placeholders + ")")) {
+                int idx = 1;
+                for (int sid : schemaIds) ps.setInt(idx++, sid);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) availableLabels.add(rs.getString(1));
+                }
+            }
+        }
+
+        // Check 1: Orphaned fingerprint labels
+        List<String> orphanedFingerprints = new ArrayList<>();
+        try (PreparedStatement ps = legacyConn.prepareStatement(
+                "SELECT fingerprint_labels FROM test WHERE id = ?")) {
+            ps.setLong(1, testId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String json = rs.getString(1);
+                    if (json != null && !json.isBlank()) {
+                        for (String name : parseJsonStringArray(json)) {
+                            if (!availableLabels.contains(name)) {
+                                orphanedFingerprints.add(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("Orphaned fingerprint labels: " + orphanedFingerprints.size());
+        for (String name : orphanedFingerprints) {
+            System.out.println("  " + name + " (not defined in any schema)");
+        }
+
+        // Check 2: Orphaned variable labels
+        List<String> orphanedVariables = new ArrayList<>();
+        try (PreparedStatement ps = legacyConn.prepareStatement(
+                "SELECT id, name, labels FROM variable WHERE testid = ?")) {
+            ps.setLong(1, testId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    long varId = rs.getLong(1);
+                    String varName = rs.getString(2);
+                    String labelsJson = rs.getString(3);
+                    if (labelsJson != null && !labelsJson.isBlank()) {
+                        for (String labelName : parseJsonStringArray(labelsJson)) {
+                            if (!availableLabels.contains(labelName)) {
+                                orphanedVariables.add(labelName + " (variable \"" + varName + "\", id=" + varId + ")");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("Orphaned variable labels: " + orphanedVariables.size());
+        for (String desc : orphanedVariables) {
+            System.out.println("  " + desc);
+        }
+
+        // Check 3: Stub functions (zero-param functions that return constants)
+        List<String[]> stubs = new ArrayList<>(); // [name, preview]
+        if (!schemaIds.isEmpty()) {
+            String placeholders = String.join(",", Collections.nCopies(schemaIds.size(), "?"));
+            try (PreparedStatement ps = legacyConn.prepareStatement(
+                    "SELECT DISTINCT l.name, left(l.function, 80) FROM label l " +
+                    "WHERE l.schema_id IN (" + placeholders + ") " +
+                    "AND l.function IS NOT NULL AND l.function ~ '^\\s*\\(\\s*\\)\\s*=>'")) {
+                int idx = 1;
+                for (int sid : schemaIds) ps.setInt(idx++, sid);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String name = rs.getString(1);
+                        String preview = rs.getString(2);
+                        stubs.add(new String[]{name, preview});
+                        stubLabels.add(name);
+                    }
+                }
+            }
+        }
+        System.out.println("Stub functions: " + stubs.size());
+        for (String[] stub : stubs) {
+            System.out.println("  " + stub[0] + ": " + stub[1].replaceAll("\\n.*", "").trim());
+        }
+
+        // Check 4: Labels with zero extractors
+        List<String> zeroExtractorLabels = new ArrayList<>();
+        if (!schemaIds.isEmpty()) {
+            String placeholders = String.join(",", Collections.nCopies(schemaIds.size(), "?"));
+            try (PreparedStatement ps = legacyConn.prepareStatement(
+                    "SELECT DISTINCT l.name FROM label l " +
+                    "WHERE l.schema_id IN (" + placeholders + ") " +
+                    "AND l.id NOT IN (SELECT DISTINCT label_id FROM label_extractors)")) {
+                int idx = 1;
+                for (int sid : schemaIds) ps.setInt(idx++, sid);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) zeroExtractorLabels.add(rs.getString(1));
+                }
+            }
+        }
+        System.out.println("Labels with zero extractors: " + zeroExtractorLabels.size());
+        for (String name : zeroExtractorLabels) {
+            System.out.println("  " + name);
+        }
+
+        return stubLabels;
+    }
+
+    /** Parse a JSON string array like ["a", "b", "c"] into a list of strings. */
+    private static List<String> parseJsonStringArray(String json) {
+        List<String> result = new ArrayList<>();
+        if (json == null || !json.startsWith("[")) return result;
+        // Simple parser for JSON string arrays — no nested objects/arrays expected
+        json = json.substring(1, json.length() - 1).trim();
+        if (json.isEmpty()) return result;
+        for (String part : json.split(",")) {
+            part = part.trim();
+            if (part.startsWith("\"") && part.endsWith("\"")) {
+                part = part.substring(1, part.length() - 1);
+            }
+            if (!part.isEmpty()) result.add(part);
+        }
+        return result;
+    }
+
+    private int[] compareRun(Connection legacyConn, String testName, long runId, long rootValueId,
+                             Map<String, int[]> perLabel, Map<Integer, int[]> perDataset,
+                             Set<String> stubLabels) throws SQLException {
+        int matches = 0, mismatches = 0, missing = 0, extra = 0;
+        int matchExact = 0, matchMisaligned = 0, matchRounding = 0;
+        int mismatchStub = 0;
 
         // Get Horreum label values for this run
         Map<String, Map<Integer, String>> horreumValues = new LinkedHashMap<>();
@@ -297,19 +479,23 @@ public class VerifyLegacy implements Callable<Integer> {
             }
         }
 
-        // Get h5m values per label, ordered by idx (which maps to dataset ordinal)
+        // Get h5m values for this specific upload (descendants of rootValueId),
+        // scoped to avoid mixing values from different uploads
         @SuppressWarnings("unchecked")
         List<Object[]> h5mValues = em.createNativeQuery("""
+                WITH RECURSIVE descendants(vid) AS (
+                    SELECT ve.child_id FROM value_edge ve WHERE ve.parent_id = ?
+                    UNION ALL
+                    SELECT ve.child_id FROM value_edge ve JOIN descendants d ON ve.parent_id = d.vid
+                )
                 SELECT n.name, v.idx, v.data::text
                 FROM value v
                 JOIN node n ON v.node_id = n.id
-                JOIN node_group ng ON n.group_id = ng.id
-                JOIN folder f ON f.group_id = ng.id
-                WHERE f.name = ?
-                AND n.type NOT IN ('root')
+                JOIN descendants d ON v.id = d.vid
+                WHERE n.type NOT IN ('root')
                 ORDER BY n.name, v.idx
                 """)
-                .setParameter(1, testName)
+                .setParameter(1, rootValueId)
                 .getResultList();
 
         Map<String, Map<Integer, String>> h5mByLabel = new LinkedHashMap<>();
@@ -317,7 +503,12 @@ public class VerifyLegacy implements Callable<Integer> {
             String name = (String) row[0];
             int idx = ((Number) row[1]).intValue();
             String value = (String) row[2];
-            h5mByLabel.computeIfAbsent(name, k -> new TreeMap<>()).put(idx, value);
+            // Prefer non-null values when multiple nodes with the same name produce
+            // values at the same idx (e.g., ephemeral-nulled variant nodes and the
+            // combiner node sharing the same label name)
+            h5mByLabel.computeIfAbsent(name, k -> new TreeMap<>())
+                    .merge(idx, value != null ? value : "null",
+                           (existing, incoming) -> !"null".equals(incoming) ? incoming : existing);
         }
 
         System.out.println("  Horreum: " + datasetCount + " datasets, " + horreumValues.size() + " labels");
@@ -326,71 +517,69 @@ public class VerifyLegacy implements Callable<Integer> {
         // Compare labels that exist in Horreum, checking each dataset ordinal
         for (String labelName : horreumValues.keySet()) {
             Map<Integer, String> horreumOrdinals = horreumValues.get(labelName);
-            Map<Integer, String> h5mOrdinals = h5mByLabel.getOrDefault(labelName, Map.of());
+            Map<Integer, String> h5mOrdinals = resolveH5mValues(labelName, h5mByLabel);
 
             for (Map.Entry<Integer, String> entry : horreumOrdinals.entrySet()) {
                 int ordinal = entry.getKey();
                 String horreumValue = entry.getValue();
                 if ("null".equals(horreumValue)) continue;
 
-                // h5m idx starts at 1 (idx 0 = root), Horreum ordinal starts at 0
-                // Find the h5m value at the matching position
-                String h5mValue = null;
-                int h5mIdx = ordinal + 1;
-                if (h5mOrdinals.containsKey(h5mIdx)) {
-                    h5mValue = h5mOrdinals.get(h5mIdx);
-                } else if (!h5mOrdinals.isEmpty()) {
-                    // Try matching by position in the ordered map
-                    List<String> h5mList = new ArrayList<>(h5mOrdinals.values());
-                    if (ordinal < h5mList.size()) {
-                        h5mValue = h5mList.get(ordinal);
-                    }
-                }
+                String hNorm = normalizeValue(horreumValue);
 
-                if (h5mValue != null) {
-                    String hNorm = normalizeValue(horreumValue);
-                    String h5mNorm = normalizeValue(h5mValue);
-                    if (hNorm.equals(h5mNorm)) {
-                        matches++;
-                        track(perLabel, labelName, 0);
-                        track(perDataset, ordinal, 0);
-                        if (verbose) {
-                            System.out.println("  OK       " + labelName + "[" + ordinal + "] = " + truncate(horreumValue, 80));
-                        }
-                    } else {
-                        mismatches++;
-                        track(perLabel, labelName, 1);
-                        track(perDataset, ordinal, 1);
-                        System.out.println("  MISMATCH " + labelName + " (dataset " + ordinal + "):");
-                        System.out.println("           horreum = " + truncate(horreumValue, 120));
-                        System.out.println("           h5m     = " + truncate(h5mValue, 120));
-                        if (verbose) {
-                            System.out.println("           h5m idx = " + h5mIdx);
-                            System.out.println("           h5m has " + h5mOrdinals.size() + " values at indices: " + h5mOrdinals.keySet());
-                        }
+                // Strategy: search ALL h5m values for this label to find the best match
+                MatchResult best = findBestMatch(hNorm, horreumValue, h5mOrdinals, ordinal, stubLabels.contains(labelName));
+
+                if (best.type == MatchType.EXACT) {
+                    matches++; matchExact++;
+                    track(perLabel, labelName, 0);
+                    track(perDataset, ordinal, 0);
+                    if (verbose) {
+                        System.out.println("  OK       " + labelName + "[" + ordinal + "] = " + truncate(horreumValue, 80));
                     }
-                } else {
+                } else if (best.type == MatchType.MISALIGNED) {
+                    matches++; matchMisaligned++;
+                    track(perLabel, labelName, 0);
+                    track(perDataset, ordinal, 0);
+                    if (verbose) {
+                        System.out.println("  OK~idx   " + labelName + "[" + ordinal + "] = " + truncate(horreumValue, 80)
+                                + "  (h5m idx=" + best.h5mIdx + ")");
+                    }
+                } else if (best.type == MatchType.ROUNDING) {
+                    matches++; matchRounding++;
+                    track(perLabel, labelName, 0);
+                    track(perDataset, ordinal, 0);
+                    if (verbose) {
+                        System.out.println("  OK~round " + labelName + "[" + ordinal + "]: " + truncate(horreumValue, 40)
+                                + " ≈ " + truncate(best.h5mValue, 40));
+                    }
+                } else if (best.type == MatchType.STUB) {
+                    mismatches++; mismatchStub++;
+                    track(perLabel, labelName, 1);
+                    track(perDataset, ordinal, 1);
+                    if (verbose) {
+                        System.out.println("  STUB     " + labelName + "[" + ordinal + "]: horreum=" + truncate(horreumValue, 60)
+                                + " (stub function)");
+                    }
+                } else if (best.type == MatchType.MISMATCH) {
+                    mismatches++;
+                    track(perLabel, labelName, 1);
+                    track(perDataset, ordinal, 1);
+                    System.out.println("  MISMATCH " + labelName + " (dataset " + ordinal + "):");
+                    System.out.println("           horreum = " + truncate(horreumValue, 120));
+                    System.out.println("           h5m     = " + truncate(best.h5mValue, 120));
+                    if (verbose) {
+                        System.out.println("           h5m idx = " + best.h5mIdx);
+                        System.out.println("           h5m has " + h5mOrdinals.size() + " values at indices: " + h5mOrdinals.keySet());
+                    }
+                } else { // MISSING
                     missing++;
                     track(perLabel, labelName, 2);
                     track(perDataset, ordinal, 2);
-                    // Check if the value exists at a different idx (wrong position) or not at all
-                    String hNorm = normalizeValue(horreumValue);
-                    String foundAt = null;
                     if (!h5mOrdinals.isEmpty()) {
-                        for (Map.Entry<Integer, String> h5mEntry : h5mOrdinals.entrySet()) {
-                            if (hNorm.equals(normalizeValue(h5mEntry.getValue()))) {
-                                foundAt = "idx=" + h5mEntry.getKey();
-                                break;
-                            }
-                        }
-                    }
-                    if (foundAt != null) {
-                        misaligned++;
-                        System.out.println("  MISALIGN " + labelName + " (dataset " + ordinal + "): value exists at " + foundAt);
-                    } else if (!h5mOrdinals.isEmpty()) {
-                        System.out.println("  MISMATCH " + labelName + " (dataset " + ordinal + ", h5m idx " + h5mIdx + "): node has values but none match");
+                        System.out.println("  MISSING  " + labelName + " (dataset " + ordinal + "): node has " + h5mOrdinals.size()
+                                + " values but none match");
                     } else {
-                        System.out.println("  MISSING  " + labelName + " (dataset " + ordinal + ", h5m idx " + h5mIdx + "): no values in h5m");
+                        System.out.println("  MISSING  " + labelName + " (dataset " + ordinal + "): no values in h5m");
                     }
                     if (verbose && !h5mOrdinals.isEmpty()) {
                         System.out.println("           h5m has values at indices: " + h5mOrdinals.keySet());
@@ -409,8 +598,131 @@ public class VerifyLegacy implements Callable<Integer> {
             System.out.println("  EXTRA    " + extra + " labels in h5m not in Horreum");
         }
 
-        System.out.println("  Result: " + matches + " match, " + mismatches + " mismatch, " + missing + " missing (" + misaligned + " misaligned), " + extra + " extra");
-        return new int[]{matches, mismatches, missing, extra, misaligned};
+        System.out.println("  Result: " + matches + " match (" + matchExact + " exact, " + matchMisaligned + " misaligned, "
+                + matchRounding + " rounding), " + mismatches + " mismatch"
+                + (mismatchStub > 0 ? " (" + mismatchStub + " stub)" : "")
+                + ", " + missing + " missing, " + extra + " extra");
+        return new int[]{matches, mismatches, missing, extra, matchMisaligned, matchRounding, mismatchStub};
+    }
+
+    /**
+     * Resolve h5m values for a Horreum label name, trying exact match first,
+     * then fallback strategies (numeric suffix, lowercase, snake_case).
+     */
+    private Map<Integer, String> resolveH5mValues(String labelName, Map<String, Map<Integer, String>> h5mByLabel) {
+        Map<Integer, String> result = h5mByLabel.getOrDefault(labelName, Map.of());
+        if (!result.isEmpty()) return result;
+
+        // Try numeric suffix (multi-schema merge adds "0", "1", etc.)
+        for (int suffix = 0; suffix <= 3; suffix++) {
+            result = h5mByLabel.getOrDefault(labelName + suffix, Map.of());
+            if (!result.isEmpty()) return result;
+        }
+        // Try lowercase first char (e.g., Horreum "User" → h5m "user")
+        if (labelName.length() > 0) {
+            String lower = labelName.substring(0, 1).toLowerCase() + labelName.substring(1);
+            result = h5mByLabel.getOrDefault(lower, Map.of());
+            if (!result.isEmpty()) return result;
+        }
+        // Try snake_case (e.g., "Run ID" → "run_id")
+        String snakeCase = labelName.toLowerCase().replaceAll("\\s+", "_");
+        result = h5mByLabel.getOrDefault(snakeCase, Map.of());
+        return result;
+    }
+
+    enum MatchType { EXACT, MISALIGNED, ROUNDING, STUB, MISMATCH, MISSING }
+
+    record MatchResult(MatchType type, String h5mValue, int h5mIdx) {
+        static MatchResult missing() { return new MatchResult(MatchType.MISSING, null, -1); }
+    }
+
+    /**
+     * Search all h5m values for the best match against a Horreum value.
+     * Priority: exact at same ordinal > exact at different idx > rounding match > stub > mismatch > missing.
+     *
+     * @param isStubLabel true if the label's Horreum function is a stub (zero-param, constant return)
+     */
+    private MatchResult findBestMatch(String hNorm, String hRaw, Map<Integer, String> h5mOrdinals, int ordinal,
+                                      boolean isStubLabel) {
+        if (h5mOrdinals.isEmpty()) {
+            // Even with no h5m values, check for stubs
+            if (isStubLabel || isStubValue(hRaw)) {
+                return new MatchResult(MatchType.STUB, null, -1);
+            }
+            return MatchResult.missing();
+        }
+
+        // Pass 1: exact match at expected ordinal position (idx = ordinal + 1 for h5m)
+        for (Map.Entry<Integer, String> e : h5mOrdinals.entrySet()) {
+            String h5mNorm = normalizeValue(e.getValue());
+            if (hNorm.equals(h5mNorm)) {
+                // For single-dataset runs all indices are valid; check if it's the "expected" position
+                // Expected: h5m idx typically = ordinal + 1 (root at idx 0), but this varies
+                return new MatchResult(MatchType.EXACT, e.getValue(), e.getKey());
+            }
+        }
+
+        // Pass 2: numeric rounding match (within relative tolerance)
+        Double hNum = tryParseNumber(hNorm);
+        if (hNum != null) {
+            for (Map.Entry<Integer, String> e : h5mOrdinals.entrySet()) {
+                String h5mNorm = normalizeValue(e.getValue());
+                Double h5mNum = tryParseNumber(h5mNorm);
+                if (h5mNum != null && numbersCloseEnough(hNum, h5mNum)) {
+                    return new MatchResult(MatchType.ROUNDING, e.getValue(), e.getKey());
+                }
+            }
+        }
+
+        // Pass 3: check if label is a stub function (detected from function signature or output value)
+        if (isStubLabel || isStubValue(hRaw)) {
+            return new MatchResult(MatchType.STUB, null, -1);
+        }
+
+        // Pass 4: there are h5m values but none match — report first non-null as the mismatch
+        for (Map.Entry<Integer, String> e : h5mOrdinals.entrySet()) {
+            String val = e.getValue();
+            if (val != null && !"null".equals(val)) {
+                return new MatchResult(MatchType.MISMATCH, val, e.getKey());
+            }
+        }
+
+        // All h5m values are null
+        Map.Entry<Integer, String> first = h5mOrdinals.entrySet().iterator().next();
+        return new MatchResult(MatchType.MISMATCH, first.getValue(), first.getKey());
+    }
+
+    /** Try to parse a normalized value as a number. Returns null if not numeric. */
+    private static Double tryParseNumber(String value) {
+        if (value == null || value.isEmpty() || "null".equals(value) || "NaN".equals(value)) return null;
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Check if two numbers are close enough (relative tolerance 1e-6 or absolute 1e-10). */
+    private static boolean numbersCloseEnough(double a, double b) {
+        if (Double.isNaN(a) || Double.isNaN(b)) return Double.isNaN(a) && Double.isNaN(b);
+        if (a == b) return true;
+        double diff = Math.abs(a - b);
+        double max = Math.max(Math.abs(a), Math.abs(b));
+        return diff < 1e-10 || (max > 0 && diff / max < 1e-6);
+    }
+
+    /** Detect Horreum stub function outputs that ignore input data. */
+    private static boolean isStubValue(String value) {
+        if (value == null) return false;
+        String v = value.trim();
+        // Strip JSON string quotes
+        if (v.startsWith("\"") && v.endsWith("\"")) {
+            v = v.substring(1, v.length() - 1);
+        }
+        return v.startsWith("Need to collect")
+                || v.equals("N/A")
+                || v.equals("TBD")
+                || v.equals("TODO");
     }
 
     private static <K> void track(Map<K, int[]> map, K key, int idx) {

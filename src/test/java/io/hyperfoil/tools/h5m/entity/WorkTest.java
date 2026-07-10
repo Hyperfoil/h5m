@@ -22,10 +22,12 @@ public class WorkTest {
         NodeEntity rootNode = new JqNode("root",".root");
         NodeEntity relativeDifference = new RelativeDifference();
         ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        rootValue1.id = 1L;
         ValueEntity rootValue2 = new ValueEntity(null,rootNode,JqValues.parse("\"text2\""));
+        rootValue2.id = 2L;
 
-        Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1));
-        Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2));
+        Work work1 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue1.id));
+        Work work2 = new Work(relativeDifference,List.of(rootNode),List.of(rootValue2.id));
 
         assertEquals(work1.hashCode(),work2.hashCode(),"both work should have the same hash code despite different values");
         assertEquals(work1,work2,"work1 and work2 should be considered equal despite different source values");
@@ -38,9 +40,10 @@ public class WorkTest {
         activeNode.sources=List.of(rootNode);
 
         ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse("\"root\""));
+        rootValue.id = 1L;
 
-        Work work1 = new Work(activeNode,activeNode.sources,List.of(rootValue));
-        Work work2 = new Work(activeNode,activeNode.sources,List.of(rootValue));
+        Work work1 = new Work(activeNode,activeNode.sources,List.of(rootValue.id));
+        Work work2 = new Work(activeNode,activeNode.sources,List.of(rootValue.id));
 
         assertTrue(work1.hashCode() == work2.hashCode(),"same activeNode, source node, source values should have same hashcode");
     }
@@ -58,14 +61,15 @@ public class WorkTest {
         range.sources = List.of(rootNode);
 
         ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse("\"root\""));
+        rootValue.id = 1L;
 
         FingerprintNode fingerprintNode = new FingerprintNode();
         fingerprintNode.sources = List.of(fingerprint1,fingerprint2);
         RelativeDifference rd = new RelativeDifference();
         rd.sources = List.of(fingerprintNode,range,domain);
 
-        Work work1 = new Work(rd,rd.sources,List.of(rootValue));
-        Work work2 = new Work(rd,rd.sources,List.of(rootValue));
+        Work work1 = new Work(rd,rd.sources,List.of(rootValue.id));
+        Work work2 = new Work(rd,rd.sources,List.of(rootValue.id));
 
         assertTrue(work1.hashCode() == work2.hashCode(),"same activeNode, source node, source values should have same hashcode");
 
@@ -90,9 +94,10 @@ public class WorkTest {
         two.sources = List.of(one);
 
         ValueEntity value = new ValueEntity(null,root);
+        value.id = 1L;
 
-        Work wOne = new Work(one,null, List.of(value));
-        Work wTwo = new Work(two,null, List.of(value));
+        Work wOne = new Work(one,null, List.of(value.id));
+        Work wTwo = new Work(two,null, List.of(value.id));
 
         assertTrue(wTwo.dependsOn(wOne));
     }
@@ -104,10 +109,12 @@ public class WorkTest {
         two.sources = List.of(one);
 
         ValueEntity value1 = new ValueEntity(null,root);
+        value1.id = 1L;
         ValueEntity value2 = new ValueEntity(null,one);
+        value2.id = 2L;
 
-        Work wOne = new Work(one,null, List.of(value1));
-        Work wTwo = new Work(two,null, List.of(value2));
+        Work wOne = new Work(one,null, List.of(value1.id));
+        Work wTwo = new Work(two,null, List.of(value2.id));
 
         assertFalse(wTwo.dependsOn(wOne));
     }

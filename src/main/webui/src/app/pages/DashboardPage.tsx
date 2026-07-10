@@ -1,10 +1,12 @@
 import type { FolderSummary } from '@client/types.gen.ts';
 
 import {
+  Button,
   Column,
   ErrorBoundary,
   Grid,
   InlineLoading,
+  Modal,
   SkeletonText,
   StructuredListBody,
   StructuredListCell,
@@ -14,10 +16,14 @@ import {
   Tag,
   Tile,
 } from '@carbon/react';
-import { getDashboardSummariesOptions } from '@client/@tanstack/react-query.gen.ts';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { FolderAdd, TrashCan } from '@carbon/icons-react';
+import { getDashboardSummariesOptions,deleteFolderMutation } from '@client/@tanstack/react-query.gen.ts';
+import { CreateFolderModal } from '@app/components/CreateFolderModal';
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useState,Suspense } from 'react';
+import {useNavigate } from 'react-router-dom';
+import '@app/pages/DashboardPage.css';
+import { AxiosError } from 'axios';
 
 function formatDate(date?: string | null): string {
   if (!date) return '—';
@@ -40,10 +46,13 @@ function folderStatus(summary: FolderSummary): { label: string; type: 'green' | 
   return { label: 'No uploads', type: 'gray' };
 }
 
+
+
 const SummaryCards = ({ summaries }: { summaries: FolderSummary[] }) => {
   const totalUploads = summaries.reduce((sum, s) => sum + (s.uploadCount ?? 0), 0);
   const totalChanges = summaries.reduce((sum, s) => sum + (s.changeCount ?? 0), 0);
   const foldersWithChanges = summaries.filter((s) => (s.changeCount ?? 0) > 0).length;
+
 
   return (
     <Grid condensed style={{ marginBottom: 'var(--cds-spacing-05)' }}>
@@ -81,8 +90,27 @@ const SummaryCards = ({ summaries }: { summaries: FolderSummary[] }) => {
 
 const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirmFolder, setConfirmFolder] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const deleteFolder = useMutation({
+    ...deleteFolderMutation(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries();
+      setConfirmFolder(null);
+    },
+    onError: (e: AxiosError<Error>) => {
+      if (e.response?.status === 500) {
+              setDeleteError('This folder contains nodes or uploaded data and cannot be deleted. Please remove all nodes and data first.');
+            } else {
+              setDeleteError(e.message ?? 'Failed to delete folder');
+            }
+    },
+  });
 
   return (
+    <>
     <StructuredListWrapper selection>
       <StructuredListHead>
         <StructuredListRow head>
@@ -93,6 +121,7 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
           <StructuredListCell head>Changes</StructuredListCell>
           <StructuredListCell head>Last Upload</StructuredListCell>
           <StructuredListCell head>Last Change</StructuredListCell>
+          <StructuredListCell head>Actions</StructuredListCell>
         </StructuredListRow>
       </StructuredListHead>
       <StructuredListBody>
@@ -123,29 +152,73 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
               </StructuredListCell>
               <StructuredListCell>{formatDate(summary.lastUpload as unknown as string)}</StructuredListCell>
               <StructuredListCell>{formatDate(summary.lastChange as unknown as string)}</StructuredListCell>
+              <StructuredListCell>
+                <Button
+                  kind="danger--ghost"
+                  size="sm"
+                  hasIconOnly
+                  renderIcon={TrashCan}
+                  iconDescription="Delete folder"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmFolder(summary.name ?? '');
+                  }}
+                />
+              </StructuredListCell>
             </StructuredListRow>
           );
         })}
       </StructuredListBody>
     </StructuredListWrapper>
+
+    <Modal
+      open={confirmFolder !== null}
+      danger
+      modalHeading={`Delete "${confirmFolder ?? ''}"`}
+      primaryButtonText="Delete"
+      secondaryButtonText="Cancel"
+      onRequestClose={() => { setConfirmFolder(null); setDeleteError(null); }}
+      onSecondarySubmit={() => { setConfirmFolder(null); setDeleteError(null); }}
+      onRequestSubmit={() => {
+        deleteFolder.mutate({ path: { name: confirmFolder ?? '' } });
+      }}
+    >
+      <p>Are you sure you want to delete this folder? This action cannot be undone.</p>
+      {deleteError && (
+        <p style={{ color: 'var(--cds-support-error)', marginTop: '0.5rem' }}>
+          {deleteError}
+        </p>
+      )}
+    </Modal>
+    </>
   );
 };
 
 const DashboardContent = () => {
   const { data: summaries } = useSuspenseQuery(getDashboardSummariesOptions());
-
-  if (summaries.length === 0) {
-    return (
-      <Tile>
-        <p>No folders configured yet. Create a folder and upload data to get started.</p>
-      </Tile>
-    );
-  }
-
+  const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <SummaryCards summaries={summaries} />
-      <FolderTable summaries={summaries} />
+      <Button
+        kind="primary"
+        size="md"
+        renderIcon={FolderAdd}
+        onClick={() => setIsOpen(true)}
+        className="create-folder-btn"
+        style={{ margin: 'var(--cds-spacing-05)' }}>
+        Create Folder
+      </Button>
+      {summaries.length === 0 ? (
+        <Tile>
+          <p>No folders configured yet. Create a folder and upload data to get started.</p>
+        </Tile>
+      ) : (
+        <>
+          <SummaryCards summaries={summaries} />
+          <FolderTable summaries={summaries} />
+        </>
+      )}
+      <CreateFolderModal open={isOpen} onClose={()=>setIsOpen(false)} />
     </>
   );
 };

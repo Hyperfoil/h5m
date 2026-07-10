@@ -7,8 +7,10 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -267,6 +269,275 @@ public class JsNodeTest {
         JqObject obj = (JqObject)node;
         assertTrue(obj.has("a"),"expected a value: "+obj.toJsonString());
         assertTrue(obj.has("b"),"expected b value: "+obj.toJsonString());
+    }
+
+    // ---- extractParameterString tests ----
+
+    @Test
+    public void extractParameterString_arrow(){
+        assertEquals("a, b, c", JsNode.extractParameterString("(a, b, c) => a + b + c"));
+    }
+
+    @Test
+    public void extractParameterString_arrow_no_parens(){
+        assertEquals("value", JsNode.extractParameterString("value => value.length"));
+    }
+
+    @Test
+    public void extractParameterString_function(){
+        assertEquals("a,b, c , d", JsNode.extractParameterString("function(a,b, c , d){return 42}"));
+    }
+
+    @Test
+    public void extractParameterString_with_comment(){
+        String result = JsNode.extractParameterString("""
+                /** JSDoc comment */
+                (arr, key = "hostname") => { return arr[0][key]; }
+                """);
+        assertNotNull(result);
+        assertTrue(result.contains("arr"));
+        assertTrue(result.contains("key"));
+    }
+
+    @Test
+    public void extractParameterString_null_input(){
+        assertNull(JsNode.extractParameterString(null));
+        assertNull(JsNode.extractParameterString(""));
+        assertNull(JsNode.extractParameterString("   "));
+    }
+
+    // ---- countNonDefaultParams tests ----
+
+    @Test
+    public void countNonDefaultParams_mixed(){
+        assertEquals(1, JsNode.countNonDefaultParams(
+                "(filteredArr, logData = \"time\", stddev = false, usePopulation = false) => { return 1; }"));
+    }
+
+    @Test
+    public void countNonDefaultParams_no_defaults(){
+        assertEquals(3, JsNode.countNonDefaultParams("(a, b, c) => a + b + c"));
+    }
+
+    @Test
+    public void countNonDefaultParams_all_defaults(){
+        assertEquals(0, JsNode.countNonDefaultParams("(x = 1, y = 2) => x + y"));
+    }
+
+    @Test
+    public void countNonDefaultParams_single_no_parens(){
+        assertEquals(1, JsNode.countNonDefaultParams("value => value.length"));
+    }
+
+    @Test
+    public void countNonDefaultParams_empty(){
+        assertEquals(0, JsNode.countNonDefaultParams("() => 42"));
+    }
+
+    @Test
+    public void countNonDefaultParams_six_params_five_defaults(){
+        assertEquals(1, JsNode.countNonDefaultParams(
+                "(nestedArr, nameRegexPattern = \"^Kernel$\", calculateCvPercent = false, index = \"time\", logData = \"time\", usePopulation = false) => { return 1; }"));
+    }
+
+    // ---- getDefaultParameterNames tests ----
+
+    @Test
+    public void getDefaultParameterNames_arrow_with_defaults(){
+        var defaults = JsNode.getDefaultParameterNames(
+                "(filteredArr, logData = \"time\", stddev = false, usePopulation = false) => { return 1; }");
+        assertEquals(3, defaults.size());
+        assertTrue(defaults.contains("logData"));
+        assertTrue(defaults.contains("stddev"));
+        assertTrue(defaults.contains("usePopulation"));
+        assertFalse(defaults.contains("filteredArr"), "non-default param should not be included");
+    }
+
+    @Test
+    public void getDefaultParameterNames_function_with_defaults(){
+        var defaults = JsNode.getDefaultParameterNames(
+                "function(arr, key=\"hostname\") { return arr[0][key]; }");
+        assertEquals(1, defaults.size());
+        assertTrue(defaults.contains("key"));
+        assertFalse(defaults.contains("arr"));
+    }
+
+    @Test
+    public void getDefaultParameterNames_no_defaults(){
+        var defaults = JsNode.getDefaultParameterNames("(a, b, c) => a + b + c");
+        assertTrue(defaults.isEmpty());
+    }
+
+    @Test
+    public void getDefaultParameterNames_all_defaults(){
+        var defaults = JsNode.getDefaultParameterNames("(x = 1, y = 2) => x + y");
+        assertEquals(2, defaults.size());
+        assertTrue(defaults.contains("x"));
+        assertTrue(defaults.contains("y"));
+    }
+
+    @Test
+    public void getDefaultParameterNames_empty_input(){
+        assertTrue(JsNode.getDefaultParameterNames(null).isEmpty());
+        assertTrue(JsNode.getDefaultParameterNames("").isEmpty());
+        assertTrue(JsNode.getDefaultParameterNames("   ").isEmpty());
+    }
+
+    @Test
+    public void getDefaultParameterNames_with_jsdoc_comment(){
+        var defaults = JsNode.getDefaultParameterNames("""
+                /**
+                 * @param {Array} filteredArr
+                 * @param {string} [logData="time"]
+                 */
+                (filteredArr, logData = "time", stddev = false) => { return 1; }
+                """);
+        assertEquals(2, defaults.size());
+        assertTrue(defaults.contains("logData"));
+        assertTrue(defaults.contains("stddev"));
+        assertFalse(defaults.contains("filteredArr"));
+    }
+
+    @Test
+    public void getDefaultParameterNames_single_no_parens(){
+        // single-param arrow without parens has no defaults possible
+        var defaults = JsNode.getDefaultParameterNames("value => value.length");
+        assertTrue(defaults.isEmpty());
+    }
+
+    @Test
+    public void getDefaultParameterNames_nested_array_with_defaults(){
+        var defaults = JsNode.getDefaultParameterNames(
+                "(nestedArr, nameRegexPattern = \"^Kernel$\", calculateCvPercent = false, index = \"time\", logData = \"time\", usePopulation = false) => { return 1; }");
+        assertEquals(5, defaults.size());
+        assertTrue(defaults.contains("nameRegexPattern"));
+        assertTrue(defaults.contains("calculateCvPercent"));
+        assertTrue(defaults.contains("index"));
+        assertTrue(defaults.contains("logData"));
+        assertTrue(defaults.contains("usePopulation"));
+        assertFalse(defaults.contains("nestedArr"));
+    }
+
+    // ---- parse() with default parameters ----
+
+    @Test
+    public void parse_skips_default_params_and_wires_data_source(){
+        // Simulates the boot-time-verbose pattern:
+        // Function has (filteredArr, logData="time", stddev=false, usePopulation=false)
+        // Source node is named "Kernel Post-Timer Duration Average ms"
+        // Only filteredArr is a data source; the rest are JS defaults
+        NodeEntity sourceNode = new JqNode("Kernel Post-Timer Duration Average ms", ".boot_time");
+        Function<String, List<NodeEntity>> lookup = name ->
+                "Kernel Post-Timer Duration Average ms".equals(name) ? List.of(sourceNode) : Collections.emptyList();
+
+        // parse() should fail because "filteredArr" doesn't match any source name
+        JsNode node = JsNode.parse("BOOT2 Avg",
+                "(filteredArr, logData = \"time\", stddev = false, usePopulation = false) => { return filteredArr; }",
+                lookup);
+        // parse returns null when filteredArr can't be resolved, because it's not a default param
+        assertNull(node, "parse should return null when non-default param doesn't match any source");
+    }
+
+    @Test
+    public void parse_skips_default_params_with_ignoreMissing(){
+        // With ignoreMissing=true, parse() creates the node even when filteredArr is missing
+        NodeEntity sourceNode = new JqNode("Kernel Post-Timer Duration Average ms", ".boot_time");
+        Function<String, List<NodeEntity>> lookup = name ->
+                "Kernel Post-Timer Duration Average ms".equals(name) ? List.of(sourceNode) : Collections.emptyList();
+
+        JsNode node = JsNode.parse("BOOT2 Avg",
+                "(filteredArr, logData = \"time\", stddev = false, usePopulation = false) => { return filteredArr; }",
+                lookup, true);
+        assertNotNull(node, "parse with ignoreMissing should succeed");
+        // Node should have 0 sources since filteredArr wasn't found
+        assertEquals(0, node.sources.size(), "no sources should be wired (filteredArr not found)");
+    }
+
+    @Test
+    public void parse_wires_matching_data_param(){
+        // When the non-default parameter name matches a source node name
+        NodeEntity sourceNode = new JqNode("filteredArr", ".boot_time");
+        Function<String, List<NodeEntity>> lookup = name ->
+                "filteredArr".equals(name) ? List.of(sourceNode) : Collections.emptyList();
+
+        JsNode node = JsNode.parse("BOOT2 Avg",
+                "(filteredArr, logData = \"time\", stddev = false) => { return filteredArr; }",
+                lookup);
+        assertNotNull(node, "parse should succeed when data param matches source name");
+        assertEquals(1, node.sources.size(), "one source should be wired");
+        assertEquals("filteredArr", node.sources.get(0).name);
+    }
+
+    // ---- createParameters() with default params ----
+
+    @Test
+    public void createParameters_default_params_single_source_fallback(){
+        // Key scenario: function has (filteredArr, logData="time", stddev=false, usePopulation=false)
+        // but sourceValues has key "Kernel Post-Timer Duration Average ms" (no param name match).
+        // With sourceCount=1, should fall back to passing the single source value as filteredArr.
+        JqValue arrayData = JqValues.parse("[{\"name\":\"Kernel\",\"time\":910670}]");
+        Map<String, ValueEntity> values = Map.of(
+                "Kernel Post-Timer Duration Average ms", new ValueEntity(null, null, arrayData)
+        );
+        List<JqValue> params = JsNode.createParameters(
+                "(filteredArr, logData = \"time\", stddev = false, usePopulation = false) => { return filteredArr; }",
+                values, 1);
+        assertNotNull(params);
+        assertEquals(1, params.size(), "should have 1 parameter (the source value)");
+        assertTrue(params.get(0).isArray(), "parameter should be the array from source");
+        assertEquals(1, params.get(0).length());
+    }
+
+    @Test
+    public void createParameters_default_params_multi_source_fallback(){
+        // When sourceCount > 1 and no param names match, builds an object from all source values
+        JqValue val1 = JqValues.parse("\"hello\"");
+        JqValue val2 = JqValues.parse("42");
+        Map<String, ValueEntity> values = new LinkedHashMap<>();
+        values.put("sourceA", new ValueEntity(null, null, val1));
+        values.put("sourceB", new ValueEntity(null, null, val2));
+
+        List<JqValue> params = JsNode.createParameters(
+                "(data, option = true) => { return data; }",
+                values, 2);
+        assertNotNull(params);
+        assertEquals(1, params.size(), "should have 1 parameter (object of all sources)");
+        assertInstanceOf(JqObject.class, params.get(0));
+        JqObject obj = (JqObject) params.get(0);
+        assertTrue(obj.has("sourceA"));
+        assertTrue(obj.has("sourceB"));
+    }
+
+    @Test
+    public void createParameters_all_params_have_defaults_no_match(){
+        // When ALL params have defaults and none match, should still fallback
+        JqValue data = JqValues.parse("99");
+        Map<String, ValueEntity> values = Map.of("x", new ValueEntity(null, null, data));
+
+        List<JqValue> params = JsNode.createParameters(
+                "(a = 1, b = 2) => a + b",
+                values, 1);
+        assertNotNull(params);
+        // No param name matches "x", but the fallback at the end handles this
+        assertEquals(1, params.size(), "fallback should provide the source value");
+    }
+
+    @Test
+    public void createParameters_matching_param_name_ignores_defaults(){
+        // When the data param name matches a source key, it's used directly;
+        // default params are correctly skipped (no value needed for them)
+        JqValue arrayData = JqValues.parse("[1, 2, 3]");
+        Map<String, ValueEntity> values = Map.of("arr", new ValueEntity(null, null, arrayData));
+
+        List<JqValue> params = JsNode.createParameters(
+                "(arr, usePopulation = false) => { return arr; }",
+                values, 1);
+        assertNotNull(params);
+        // "arr" matches the source key, "usePopulation" has a default — but getParameterNames
+        // returns both ["arr", "usePopulation"]. "arr" matches, "usePopulation" doesn't match
+        // any source key, so it prints a warning but we still get "arr" in the result.
+        assertTrue(params.size() >= 1, "should have at least the arr parameter");
+        assertTrue(params.get(0).isArray(), "first param should be the array");
     }
 
     @Test

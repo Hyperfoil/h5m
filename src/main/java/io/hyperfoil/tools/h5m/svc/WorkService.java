@@ -78,13 +78,13 @@ public class WorkService implements WorkServiceInterface {
      * This derives the association from sourceValues rather than duplicating state on Work.
      */
     private List<UploadTracker> findTrackers(Work work) {
-        if (work.sourceValues == null || trackers.isEmpty()) {
+        if (work.sourceValueIds == null || trackers.isEmpty()) {
             return List.of();
         }
         List<UploadTracker> found = new ArrayList<>();
-        for (ValueEntity sv : work.sourceValues) {
-            if (sv.id != null) {
-                UploadTracker tracker = trackers.get(sv.id);
+        for (Long valueId : work.sourceValueIds) {
+            if (valueId != null) {
+                UploadTracker tracker = trackers.get(valueId);
                 if (tracker != null) {
                     found.add(tracker);
                 }
@@ -239,20 +239,15 @@ public class WorkService implements WorkServiceInterface {
         WorkQueue workQueue = workExecutor.getWorkQueue();
         boolean decrementDeferred = false;
         try {
-            // Use source values from the Work. If data is already initialized (normal
-            // pipeline path via work queue), use it directly to avoid DB round-trip +
-            // JSON deserialization. If data is not initialized (e.g., test calling
-            // execute() directly with committed entities), reload from DB.
+            // Load source values by ID from the database (or 2LC cache).
+            // Work only carries value IDs — full entities are loaded here in
+            // the transaction that needs them.
             List<ValueEntity> sourceValues = new ArrayList<>();
-            for (ValueEntity sv : w.sourceValues) {
-                if (Hibernate.isPropertyInitialized(sv, "data")) {
-                    sourceValues.add(sv);
-                } else {
-                    ValueEntity managed = em.find(ValueEntity.class, sv.id);
-                    if (managed != null) {
-                        Hibernate.initialize(managed.data);
-                        sourceValues.add(managed);
-                    }
+            for (Long valueId : w.sourceValueIds) {
+                ValueEntity managed = em.find(ValueEntity.class, valueId);
+                if (managed != null) {
+                    Hibernate.initialize(managed.data);
+                    sourceValues.add(managed);
                 }
             }
 
@@ -339,11 +334,12 @@ public class WorkService implements WorkServiceInterface {
                                 .orElse(-1L);
                         changeDetectedEvent.fire(new ChangeDetectedEvent(folderId, node.getId(), node.name, valueIds, w.dispatch));
                     }
-                    // Cascade work inherits sourceValues and dispatch flag, so tracker
-                    // association is derived automatically via findTrackers()
+                    // Cascade work inherits source value IDs and dispatch flag, so
+                    // tracker association is derived automatically via findTrackers()
+                    List<Long> sourceValueIds = sourceValues.stream().map(ValueEntity::getId).toList();
                     List<Work> cascadeWork = nodeService.getDependentNodes(node).stream()
                             .map(n -> {
-                                Work cascaded = new Work(n, n.sources, sourceValues);
+                                Work cascaded = new Work(n, n.sources, sourceValueIds);
                                 cascaded.dispatch = w.dispatch;
                                 return cascaded;
                             })

@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqNull;
 import io.hyperfoil.tools.jjq.value.JqNumber;
@@ -28,6 +29,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.WebApplicationException;
 import org.hibernate.query.NativeQuery;
 
 import java.io.IOException;
@@ -71,6 +73,9 @@ public class FolderService implements FolderServiceInterface {
     @Override
     @Transactional
     public long create(String name){
+        if(FolderEntity.find("name",name).firstResult() !=null){
+            throw new WebApplicationException("Folder already exists:" + name, 409);
+        }
         FolderEntity entity = new FolderEntity();
         entity.name = name;
         entity.group = new NodeGroupEntity(name); //TODO do we auto-create a nodeGroup?
@@ -240,14 +245,15 @@ public class FolderService implements FolderServiceInterface {
     }
 
     /**
-     * Uploads data and returns a future that completes when all processing finishes.
+     * Uploads data and returns an UploadHandle containing the upload ID and a future
+     * that completes when all processing finishes.
      * Uses QuarkusTransaction to control the transaction boundary explicitly —
      * the transaction commits when the lambda returns, before we return the future.
      * This avoids the deadlock that occurs with @Transactional + CompletableFuture
      * return types (Quarkus defers commit waiting for the future to complete).
      */
     @Override
-    public CompletableFuture<Void> upload(String name, String path, JqValue data){
+    public Upload upload(String name, String path, JqValue data) {
         return QuarkusTransaction.requiringNew().call(() -> {
             FolderEntity folder = em.createQuery(
                     "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
@@ -263,12 +269,12 @@ public class FolderService implements FolderServiceInterface {
             //only queue the top level and let new values queue the remaining
             //that matches the re-calculation workflow
             List<Work> works = folder.group.getTopLevelNodes().stream()
-                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue)))
+                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue.id)))
                     .toList();
 
             if (works.isEmpty()) {
                 tracking.completed = true;
-                return CompletableFuture.<Void>completedFuture(null);
+                return new Upload(newValue.id, CompletableFuture.completedFuture(null));
             }
 
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(newValue.id));
@@ -278,7 +284,11 @@ public class FolderService implements FolderServiceInterface {
                     ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
                             "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, newValue.id).firstResult();
                     if (entity != null) {
-                        entity.completed = true;
+                        if (t != null) {
+                            Log.errorf(t, "Upload %d failed during processing", newValue.id);
+                        } else {
+                            entity.completed = true;
+                        }
                     }
                     // Null out data for ephemeral nodes to reclaim storage
                     int nullified = valueService.nullifyEphemeralData(newValue.id);
@@ -289,7 +299,7 @@ public class FolderService implements FolderServiceInterface {
                     }
                 });
             });
-            return future;
+            return new Upload(newValue.id, future);
         });
     }
 
@@ -393,8 +403,9 @@ public class FolderService implements FolderServiceInterface {
             NodeEntity node = switch (type) {
                 case "jq" -> new JqNode(name, operation, sources);
                 case "ecma" -> new JsNode(name, operation, sources);
-                case "sql" -> new SqlJsonpathNode(name, operation, sources);
-                case "sqlall" -> new SqlJsonpathAllNode(name, operation, sources);
+                // Convert legacy sql/sqlall jsonpath to jq equivalents
+                case "sql" -> new JqNode(name, NodeService.jsonpathToJq(operation), sources);
+                case "sqlall" -> new JqNode(name, NodeService.jsonpathToJqArray(operation), sources);
                 case "split" -> new SplitNode(name, operation, sources);
                 case "fp" -> {
                     FingerprintNode fp = new FingerprintNode(name, operation);

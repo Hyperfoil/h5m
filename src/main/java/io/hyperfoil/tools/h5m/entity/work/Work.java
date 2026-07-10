@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.h5m.entity.work;
 
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.EDivisive;
 import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
 import io.hyperfoil.tools.h5m.entity.node.StdDevAnomaly;
@@ -16,7 +15,7 @@ import java.util.stream.Collectors;
 //custom post nodegroup actions could have sourceNodes without activeNode
 public class Work implements Runnable, Comparable<Work>{
 
-    public List<ValueEntity> sourceValues;//multiple values could happen for cross test comparisons and
+    public List<Long> sourceValueIds;//IDs of source values — full entities are loaded in WorkService.execute()
 
     public List<NodeEntity> sourceNodes; //what is going to use a list of sources that are not already listed for the activeNode?
 
@@ -33,18 +32,18 @@ public class Work implements Runnable, Comparable<Work>{
     public Work(){
         retryCount = 0;
     }
-    public Work(NodeEntity activeNode,List<NodeEntity> sourceNodes,List<ValueEntity> sourceValues){
-        this(Set.of(activeNode),sourceNodes,sourceValues);
+    public Work(NodeEntity activeNode,List<NodeEntity> sourceNodes,List<Long> sourceValueIds){
+        this(Set.of(activeNode),sourceNodes,sourceValueIds);
     }
-    public Work(Set<NodeEntity> activeNodes,List<NodeEntity> sourceNodes,List<ValueEntity> sourceValues){
+    public Work(Set<NodeEntity> activeNodes,List<NodeEntity> sourceNodes,List<Long> sourceValueIds){
         this();
         this.activeNodes = new HashSet<>(activeNodes); //so that it will be mutable
         if(activeNodes.stream().anyMatch(node -> node instanceof RelativeDifference
                 || node instanceof StdDevAnomaly || node instanceof EDivisive)){
             this.cumulative = true;
         }
-        this.sourceValues = sourceValues == null ? Collections.emptyList() : new ArrayList(sourceValues);
-        this.sourceNodes = sourceNodes == null ? Collections.emptyList() : new ArrayList(sourceNodes);
+        this.sourceValueIds = sourceValueIds == null ? Collections.emptyList() : new ArrayList<>(sourceValueIds);
+        this.sourceNodes = sourceNodes == null ? Collections.emptyList() : new ArrayList<>(sourceNodes);
     }
 
     public Set<NodeEntity> getActiveNodes() {
@@ -61,31 +60,35 @@ public class Work implements Runnable, Comparable<Work>{
         }
     }
 
-    //work A depends on work B if A.activeNode depends on B.activeNode or
-    //needs reviewing for the value dependency
+    //work A depends on work B if A.activeNode depends on B.activeNode
     public boolean dependsOn(Work work){
 
         if(work == null || work.activeNodes == null || work.activeNodes.isEmpty()){
             return false;
         }
-        for (int i = 0, size = sourceValues.size(); i < size; i++) {
-            ValueEntity sourceValue = sourceValues.get(i);
-            if (work.activeNodes.stream().anyMatch(sourceValue.node::dependsOn)) {
-                for (int j = 0, wSize = work.sourceValues.size(); j < wSize; j++) {
-                    if (sourceValue.dependsOn(work.sourceValues.get(j))) {
-                        return true;
-                    }
-                }
-            }
-        }
-        if (this.activeNodes == null || this.activeNodes.isEmpty() || !this.activeNodes.stream().anyMatch(t->work.activeNodes.stream().anyMatch(t::dependsOn))) {
+        if (this.activeNodes == null || this.activeNodes.isEmpty()) {
             return false;
         }
-        if (cumulative || sourceValues.isEmpty()) {
+        // Check node-level dependency: does any of this Work's active nodes
+        // depend on any of the other Work's active nodes?
+        boolean hasNodeDependency = false;
+        for (NodeEntity thisNode : this.activeNodes) {
+            for (NodeEntity otherNode : work.activeNodes) {
+                if (thisNode.dependsOn(otherNode)) {
+                    hasNodeDependency = true;
+                    break;
+                }
+            }
+            if (hasNodeDependency) break;
+        }
+        if (!hasNodeDependency) {
+            return false;
+        }
+        if (cumulative || sourceValueIds.isEmpty()) {
             return true;
         }
-        for (int i = 0, size = sourceValues.size(); i < size; i++) {
-            if (work.sourceValues.contains(sourceValues.get(i))) {
+        for (int i = 0, size = sourceValueIds.size(); i < size; i++) {
+            if (work.sourceValueIds.contains(sourceValueIds.get(i))) {
                 return true;
             }
         }
@@ -127,11 +130,11 @@ public class Work implements Runnable, Comparable<Work>{
             if(cumulative){
                 return true;
             }
-            if (this.sourceValues.size() != work.sourceValues.size()) {
+            if (this.sourceValueIds.size() != work.sourceValueIds.size()) {
                 return false;
             }
-            for (int i = 0; i < sourceValues.size(); i++) {
-                if (!sourceValues.get(i).equals(work.sourceValues.get(i))) {
+            for (int i = 0; i < sourceValueIds.size(); i++) {
+                if (!sourceValueIds.get(i).equals(work.sourceValueIds.get(i))) {
                     return false;
                 }
             }
@@ -145,7 +148,7 @@ public class Work implements Runnable, Comparable<Work>{
         param.addAll(activeNodes);
         param.addAll(sourceNodes);
         if(!cumulative) {
-            param.addAll(sourceValues);
+            param.addAll(sourceValueIds);
         }
         return Objects.hash(param);
     }
@@ -179,7 +182,7 @@ public class Work implements Runnable, Comparable<Work>{
     public String toString() {
         return "Work<activeNodes="+activeNodes+
                 " sourceNodes="+sourceNodes.stream().map(n->""+n.getId()).collect(Collectors.joining(","))+
-                " sourceValues="+sourceValues.stream().map(v->""+v.getId()).collect(Collectors.joining(","))+
+                " sourceValueIds="+sourceValueIds.stream().map(String::valueOf).collect(Collectors.joining(","))+
                 " retry="+retryCount+
                 " hashCode="+hashCode()+" >";
     }

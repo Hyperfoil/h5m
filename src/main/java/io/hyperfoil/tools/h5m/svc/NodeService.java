@@ -104,8 +104,7 @@ public class NodeService implements NodeServiceInterface {
             case JQ -> JqNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
             case JS -> JsNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
             case JSONATA -> JsonataNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
-            case SQL_JSONPATH_NODE -> SqlJsonpathNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
-            case SQL_JSONPATH_ALL_NODE -> SqlJsonpathAllNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
+
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -302,18 +301,24 @@ public class NodeService implements NodeServiceInterface {
      * @return
      */
     @Transactional
-    public List<Map<String, ValueEntity>> calculateSourceValuePermutations(NodeEntity node, ValueEntity root) {
-        List<Map<String, ValueEntity>> rtrn = new ArrayList<>();
+    /**
+     * Builds source value permutations for a node, keyed by source node ID.
+     * Using node ID (not name) as the map key avoids collisions when multiple
+     * source nodes share the same name (e.g., extractors from different schema
+     * versions). Each consumer resolves the source node by ID to access its data.
+     */
+    public List<Map<Long, ValueEntity>> calculateSourceValuePermutations(NodeEntity node, ValueEntity root) {
+        List<Map<Long, ValueEntity>> rtrn = new ArrayList<>();
         // Batch-fetch descendant values for all source nodes in a single query instead of N separate queries
         Map<Long, List<ValueEntity>> descendantsByNode = valueService.getDescendantValuesByNodes(root, node.sources);
-        Map<String,List<ValueEntity>> nodeValues = new HashMap<>();
+        Map<Long,List<ValueEntity>> nodeValues = new LinkedHashMap<>();
         for (int i = 0, size = node.sources.size(); i < size; i++) {
             NodeEntity source = node.sources.get(i);
             List<ValueEntity> found = descendantsByNode.getOrDefault(source.getId(), List.of());
             if (found.isEmpty() && source.sources.isEmpty()) {
                 found = List.of(root);
             }
-            nodeValues.put(source.name, found);
+            nodeValues.put(source.getId(), found);
         }
 
         int maxNodeValuesLength = nodeValues.values().stream().map(Collection::size).max(Integer::compareTo).orElse(0);
@@ -323,29 +328,28 @@ public class NodeService implements NodeServiceInterface {
             //to ensure sequence
             for(int i=0; i< maxNodeValuesLength; i++) {
                 int idx = i;
-                Map<String, ValueEntity> sourceValuesAtIndex = node.sources.stream()
-                                                                           .filter(n->nodeValues.get(n.name).size()>idx)
-                                                                           .collect(Collectors.toMap(n->n.name,n->nodeValues.get(n.name).get(idx)));
+                Map<Long, ValueEntity> sourceValuesAtIndex = node.sources.stream()
+                                                                           .filter(n->nodeValues.get(n.getId()).size()>idx)
+                                                                           .collect(Collectors.toMap(NodeEntity::getId,n->nodeValues.get(n.getId()).get(idx)));
                 //TODO splitting?
                 rtrn.add(sourceValuesAtIndex);
             }
         } else { //NxN or byLength time
             switch (node.multiType){
                 case Length -> {
-                    //I think this is functionally equivalent
                     for(int i=0; i< maxNodeValuesLength; i++){
-                        Map<String, ValueEntity> sourceValuesAtIndex = new HashMap<>();
+                        Map<Long, ValueEntity> sourceValuesAtIndex = new HashMap<>();
                         int idx = i;//thanks java
                         for(NodeEntity n : node.sources){
-                            List<ValueEntity> nValues = nodeValues.get(n.name);
+                            List<ValueEntity> nValues = nodeValues.get(n.getId());
                             if(nValues.size()==1){
                                 if(idx == 0){
-                                    sourceValuesAtIndex.put(n.name,nValues.get(idx));
+                                    sourceValuesAtIndex.put(n.getId(),nValues.get(idx));
                                 }else if (n.scalarMethod.equals(NodeEntity.ScalarVariableMethod.All)){
-                                    sourceValuesAtIndex.put(n.name,nValues.getFirst());
+                                    sourceValuesAtIndex.put(n.getId(),nValues.getFirst());
                                 }
                             }else if(nValues.size()>idx){
-                                sourceValuesAtIndex.put(n.name,nValues.get(idx));
+                                sourceValuesAtIndex.put(n.getId(),nValues.get(idx));
                             }else{
                                 //do nothing with a missing value
                             }
@@ -354,22 +358,20 @@ public class NodeService implements NodeServiceInterface {
                     }
                 }
                 case NxN -> {
-                    List<Map<String, ValueEntity>> valuePermutations = new ArrayList<>();
-                    List<String> multiNodes = nodeValues.entrySet().stream().filter(e->e.getValue().size()>1).map(Map.Entry::getKey).toList();
-                    List<String> scalarNodes = nodeValues.entrySet().stream().filter(e->e.getValue().size()==1).map(Map.Entry::getKey).toList();
+                    List<Map<Long, ValueEntity>> valuePermutations = new ArrayList<>();
                     int permutations = nodeValues.values().stream().map(List::size).reduce(1,(a,b)-> b > 0 ? a*b : a );
                     for( int i=0; i<permutations; i++ ) {
                         valuePermutations.add(new HashMap<>());
                     }
                     int loopCount = 1;
                     for( NodeEntity sourceNode : node.sources ){
-                        List<ValueEntity> valueList = nodeValues.get(sourceNode.name);
+                        List<ValueEntity> valueList = nodeValues.get(sourceNode.getId());
                         if( !valueList.isEmpty() ){
                             if ( valueList.size() == 1 ) {
                                 if ( sourceNode.scalarMethod.equals(NodeEntity.ScalarVariableMethod.First) ){
-                                    valuePermutations.getFirst().put(sourceNode.name, valueList.getFirst());
+                                    valuePermutations.getFirst().put(sourceNode.getId(), valueList.getFirst());
                                 }else{
-                                    valuePermutations.forEach(m->m.put(sourceNode.name, valueList.getFirst()));
+                                    valuePermutations.forEach(m->m.put(sourceNode.getId(), valueList.getFirst()));
                                 }
                             } else {//just the multivalue entries
                                 int valueCount = valueList.size();
@@ -380,7 +382,7 @@ public class NodeService implements NodeServiceInterface {
                                     for (int valueIndex = 0; valueIndex < valueList.size(); valueIndex++) {
                                         for (int i = 0; i < perValue; i++) {
                                             int permutationIndex = loopIndex * perLoop + valueIndex * perValue + i;
-                                            valuePermutations.get(permutationIndex).put(sourceNode.name, valueList.get(valueIndex));
+                                            valuePermutations.get(permutationIndex).put(sourceNode.getId(), valueList.get(valueIndex));
                                         }
                                     }
                                 }
@@ -412,16 +414,14 @@ public class NodeService implements NodeServiceInterface {
             case JS:
             case JQ:
             case JSONATA:
-            case SQL_JSONPATH_ALL_NODE:
-            case SQL_JSONPATH_NODE:
             case SPLIT:
             case FINGERPRINT:
                 for(int vIdx=0; vIdx<roots.size(); vIdx++){
                     ValueEntity root =  roots.get(vIdx);
                     try {
-                        List<Map<String, ValueEntity>> combinations = calculateSourceValuePermutations(node,root);
+                        List<Map<Long, ValueEntity>> combinations = calculateSourceValuePermutations(node,root);
                         for(int i=0;i<combinations.size();i++){
-                            Map<String, ValueEntity> combination =  combinations.get(i);
+                            Map<Long, ValueEntity> combination =  combinations.get(i);
                             List<ValueEntity> createdValues = calculateNodeValues(node,combination,rtrn.size());
                             rtrn.addAll(createdValues);
                         }
@@ -467,13 +467,12 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateNodeValues(NodeEntity node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateNodeValues(NodeEntity node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         return switch(node.type()){
             case JQ -> calculateJqValues((JqNode)node,sourceValues,startingOrdinal+1);
             case JS -> calculateJsValues((JsNode)node,sourceValues,startingOrdinal+1);
             case JSONATA -> calculateJsonataValues((JsonataNode)node,sourceValues,startingOrdinal+1);
-            case SQL_JSONPATH_NODE -> calculateSqlJsonpathValues((SqlJsonpathNode)node,sourceValues,startingOrdinal+1);
-            case SQL_JSONPATH_ALL_NODE -> calculateSqlAllJsonpathValues((SqlJsonpathAllNode)node, sourceValues, startingOrdinal+1);
+
             case SPLIT -> calculateSplitValues((SplitNode)node,sourceValues,startingOrdinal+1);
             case FINGERPRINT -> calculateFpValues((FingerprintNode)node,sourceValues,startingOrdinal+1);
             default -> {
@@ -1012,54 +1011,9 @@ public class NodeService implements NodeServiceInterface {
 
 
 
+
     @Transactional
-    public List<ValueEntity> calculateSqlJsonpathValues(SqlJsonpathNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
-        return calculateSqlJsonpathValuesFirstOrAll(node,sourceValues,startingOrdinal,"jsonb_path_query_first");
-    }
-    @Transactional
-    public List<ValueEntity> calculateSqlAllJsonpathValues(SqlJsonpathAllNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
-        return calculateSqlJsonpathValuesFirstOrAll(node,sourceValues,startingOrdinal,"jsonb_path_query_array");
-    }
-    private List<ValueEntity> calculateSqlJsonpathValuesFirstOrAll(NodeEntity node, Map<String, ValueEntity> sourceValues, int startingOrdinal,String psqlFunction) throws IOException {
-        List<ValueEntity> rtrn = new ArrayList<>();
-        if(sourceValues.isEmpty()){
-            return rtrn;
-        }
-
-        if(sourceValues.size()>1 || node.sources.size()>1){
-            System.err.println("sql jsonpath only supports one input at a time");
-            return Collections.emptyList();
-        }
-        ValueEntity input = sourceValues.get(node.sources.getFirst().name);
-
-        String foundJson = (String) em.createNativeQuery(
-                switch(dbKind) {
-                    case "sqlite" -> "SELECT (SELECT data FROM value WHERE id = ?) -> ?";
-                    case "postgresql" -> ("SELECT PSQL_FUNCTION((SELECT data FROM value WHERE id = ?), ?::jsonpath)::text")
-                            .replaceAll("PSQL_FUNCTION", psqlFunction);
-                    default -> "";
-                }, String.class)
-                .setParameter(1, input.id)
-                .setParameter(2, node.operation)
-                .getSingleResultOrNull();
-
-        if (foundJson == null || foundJson.isBlank() || foundJson.equals("null")) {
-            return rtrn;
-        }
-        JqValue found = JqValues.parse(foundJson);
-        if (found.isNull()) {
-            return rtrn;
-        }
-
-        ValueEntity newValue = new ValueEntity(null, node, null);
-        newValue.data = found;
-        newValue.sources = List.of(input);
-        newValue.idx = startingOrdinal;
-        rtrn.add(newValue);
-        return rtrn;
-    }
-    @Transactional
-    public List<ValueEntity> calculateSplitValues(SplitNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateSplitValues(SplitNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         if(sourceValues.isEmpty()){
             return rtrn;
@@ -1069,7 +1023,7 @@ public class NodeService implements NodeServiceInterface {
         }
         //this will naively do the split with entities but using json_each would be good
         //TODO should this be done in db with json_each?
-        ValueEntity v = sourceValues.get(node.sources.getFirst().name);
+        ValueEntity v = sourceValues.get(node.sources.getFirst().getId());
         if(v!=null){
             if(v.data instanceof JqArray jqArr){
                 for(int i=0;i<jqArr.length();i++){
@@ -1091,7 +1045,7 @@ public class NodeService implements NodeServiceInterface {
 
 
     //jsonata cannot operate on multiple inputs at once so source
-    public List<ValueEntity> calculateJsonataValues(JsonataNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJsonataValues(JsonataNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         if(sourceValues.size()>1 || node.sources.size()>1){
             System.err.println("jsonata only supports one input at a time");
             return Collections.emptyList();
@@ -1114,7 +1068,7 @@ public class NodeService implements NodeServiceInterface {
             newValue.idx = startingOrdinal+1;
             newValue.node = node;
             newValue.data = result;
-            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
             return List.of(newValue);
 
         } catch (JsonataException e) {
@@ -1136,21 +1090,72 @@ public class NodeService implements NodeServiceInterface {
         }
         return idx;
     }
+    /**
+     * Converts a jsonpath expression to a jq expression that collects all
+     * matches into an array — equivalent to PostgreSQL's jsonb_path_query_array().
+     * For expressions with wildcards ([*] or .*), the jq iterator naturally
+     * produces multiple outputs which [...] collects.  For simple scalar paths,
+     * uses {@code // empty} to filter null values, producing an empty array
+     * when the path doesn't exist — matching jsonb_path_query_array's behavior
+     * of returning {@code []} for missing paths.
+     */
+    public static String jsonpathToJqArray(String jsonpath) {
+        String jq = jsonpathToJq(jsonpath);
+        if (jq.contains("[]?")) {
+            // Has iterators — [...] naturally produces [] when no matches
+            return "[" + jq + "]";
+        } else {
+            // Scalar path — filter null to produce [] for missing paths,
+            // matching jsonb_path_query_array behavior
+            return "[" + jq + " // empty]";
+        }
+    }
+
     public static String jsonpathToJq(String jsonpath) {
         if (jsonpath == null || jsonpath.isEmpty()) return ".";
         String jq = jsonpath;
-        if (jq.startsWith("$.")) jq = jq.substring(1);
-        else if (jq.equals("$")) return ".";
+        if(jq.equals("$")){
+            return ".";
+        }
+        jq = jq.replace("$.",".");
+        jq = jq.replace("[*].*", "[]?");
         jq = jq.replace("[*]", "[]?");
-        jq = jq.replace(".*", "[]?");
+        // Replace **{N} recursive descent BEFORE .* — otherwise .* corrupts the **{N} pattern.
+        // jq has no direct equivalent of PostgreSQL jsonpath **{N}; use recurse to approximate.
+        jq = jq.replaceAll("\\.\\*\\*\\{\\d+\\}", " | recurse");
+        // Replace .* (wildcard object values) with []? but only OUTSIDE quoted strings
+        // to avoid corrupting quoted keys like ."mw********.lab"
+        jq = replaceOutsideQuotes(jq, ".*", "[]?");
+        // Replace PostgreSQL jsonpath methods with jq equivalents
+        jq = jq.replace(".size()", " | length");
+        jq = jq.replace(".keyvalue()", " | to_entries[] | ");
         // Convert PostgreSQL jsonpath filter expressions to JQ select()
-        // ? (@.field == "value") → [] | select(.field == "value")
-        // ? (@.field != "value") → [] | select(.field != "value")
-        // ? (@.field like_regex "pattern") → [] | select(.field | test("pattern"))
         if (jq.contains("?")) {
             jq = convertJsonpathFilters(jq);
         }
         return jq;
+    }
+
+    /**
+     * Replaces occurrences of {@code target} with {@code replacement} only when
+     * outside double-quoted strings. This prevents corrupting quoted keys that
+     * happen to contain the target pattern (e.g., {@code ."mw********.lab"}).
+     */
+    private static String replaceOutsideQuotes(String input, String target, String replacement) {
+        StringBuilder result = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < input.length(); i++) {
+            if (input.charAt(i) == '"' && (i == 0 || input.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                result.append(input.charAt(i));
+            } else if (!inQuotes && input.startsWith(target, i)) {
+                result.append(replacement);
+                i += target.length() - 1;
+            } else {
+                result.append(input.charAt(i));
+            }
+        }
+        return result.toString();
     }
 
     static String convertJsonpathFilters(String jq) {
@@ -1193,13 +1198,28 @@ public class NodeService implements NodeServiceInterface {
                 parenEnd++;
             }
             String filterBody = jq.substring(parenStart + 1, parenEnd - 1).trim();
-            // Convert @.field references to .field and handle quoted field names
-            // @."special" → .["special"], @.normal → .normal
+            // Convert @."special" → .["special"] (quoted field access on current item)
             filterBody = filterBody.replaceAll("@\\.\"([^\"]+)\"", ".[\"$1\"]");
+            // Convert @.field → .field (field access on current item)
             filterBody = filterBody.replace("@.", ".");
-            // Handle like_regex → test()
+            // Convert bare @ → . (current item reference without field access)
+            // Only replace @ when followed by a space, ), or operator — not inside
+            // quoted key names like ["@name"]
+            filterBody = filterBody.replaceAll("@(?=[\\s)&|,]|$)", ".");
+            // Convert && → and (jsonpath logical AND → jq logical AND)
+            filterBody = filterBody.replace("&&", "and");
+            // Convert || → or (jsonpath logical OR → jq logical OR)
+            filterBody = filterBody.replace("||", "or");
+            // Handle like_regex with optional flags → test()
+            // like_regex "pattern" flag "i" → test("pattern"; "i")
+            // like_regex "pattern" → test("pattern")
             if (filterBody.contains("like_regex")) {
-                filterBody = filterBody.replaceAll("(\\S+)\\s+like_regex\\s+\"([^\"]+)\"", "($1 | test(\"$2\"))");
+                filterBody = filterBody.replaceAll(
+                        "(\\S+)\\s+like_regex\\s+\"([^\"]+)\"\\s+flag\\s+\"([^\"]+)\"",
+                        "($1 | test(\"$2\"; \"$3\"))");
+                filterBody = filterBody.replaceAll(
+                        "(\\S+)\\s+like_regex\\s+\"([^\"]+)\"",
+                        "($1 | test(\"$2\"))");
             }
             result.append(" | select(").append(filterBody).append(")");
             i = parenEnd;
@@ -1240,18 +1260,48 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateJsValues(JsNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJsValues(JsNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         List<String> params = JsNode.getParameterNames(node.operation);
         if(params == null){
             System.err.println("Error occurred reading parameters from js function\n"+node.operation);
             return Collections.emptyList();
         }
-        List<JqValue> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
+        // Build name-keyed map for createParameters — use source node names as keys
+        // so JS function parameter matching works (e.g., value["rhivos_target"]).
+        // When multiple sources share the same name (multi-schema variants), append
+        // the source node ID to create unique keys. The multi-schema combiner function
+        // uses Object.values() which doesn't depend on key names.
+        // When sources are empty (source-less nodes), use the value's node name as key.
+        Map<String, ValueEntity> namedSourceValues = new LinkedHashMap<>();
+        if (!node.sources.isEmpty()) {
+            Set<String> seenNames = new HashSet<>();
+            for (NodeEntity source : node.sources) {
+                ValueEntity v = sourceValues.get(source.getId());
+                if (v != null) {
+                    String key = source.name;
+                    if (!seenNames.add(key)) {
+                        // Name collision — append node ID to make unique
+                        key = key + "_" + source.getId();
+                    }
+                    namedSourceValues.put(key, v);
+                }
+            }
+        } else {
+            for (ValueEntity v : sourceValues.values()) {
+                namedSourceValues.put(v.node != null ? v.node.name : String.valueOf(v.id), v);
+            }
+        }
+        List<JqValue> input = JsNode.createParameters(node.operation, namedSourceValues,
+                node.sources.isEmpty() ? sourceValues.size() : node.sources.size());
+                List<JqValue> input = JsNode.createParameters(node.operation, sourceValues, node.sources.size());
         try(Context context = Context.newBuilder("js").engine(JS_ENGINE)
                 .allowExperimentalOptions(true)
                 .option("js.foreign-object-prototype", "true")
                 .option("js.global-property", "true")
+                .timeZone(java.time.ZoneId.of("UTC"))
+//                .out(out)
+//                .err(out)
                 .build()){
             context.enter();
             context.getBindings("js").putMember("isInstanceLike", new ProxyJqObject.InstanceCheck());
@@ -1288,7 +1338,7 @@ public class NodeService implements NodeServiceInterface {
                             newValue.idx = startingOrdinal+rtrn.size()+1;
                             newValue.node = node;
                             newValue.data = data;
-                            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+                            newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
                             rtrn.add(newValue);
                         }else{
                             System.err.println("null data from value "+resolvedValue);
@@ -1348,12 +1398,12 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<String, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateFpValues(FingerprintNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         JqObject.Builder fpBuilder = JqObject.builder();
         TreeMap<String, JqValue> sorted = new TreeMap<>();
         for (NodeEntity source : node.sources) {
-            if (sourceValues.containsKey(source.name)) {
-                sorted.put(source.name, sourceValues.get(source.name).data);
+            if (sourceValues.containsKey(source.getId())) {
+                sorted.put(source.name, sourceValues.get(source.getId()).data);
             }
         }
         sorted.forEach(fpBuilder::put);
@@ -1361,7 +1411,7 @@ public class NodeService implements NodeServiceInterface {
         newValue.idx = startingOrdinal+1;
         newValue.node = node;
         newValue.data = fpBuilder.build();
-        newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.name)).map(n -> sourceValues.get(n.name)).collect(Collectors.toList());
+        newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
         return List.of(newValue);
     }
     public boolean evaluateFingerprintFilter(String filter, JqValue fingerprint) {
@@ -1391,7 +1441,7 @@ public class NodeService implements NodeServiceInterface {
     }
 
     @Transactional
-    public List<ValueEntity> calculateJqValues(JqNode node,Map<String, ValueEntity> sourceValues,int startingOrdinal) throws IOException {
+    public List<ValueEntity> calculateJqValues(JqNode node, Map<Long, ValueEntity> sourceValues, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
 
         boolean isNullInput = JqNode.isNullInput(node.operation);
@@ -1409,8 +1459,8 @@ public class NodeService implements NodeServiceInterface {
         List<JqValue> sourceData = new ArrayList<>();
         if (!node.sources.isEmpty()) {
             List.copyOf(node.sources).forEach(sourceNode -> {
-                if (sourceValues.containsKey(sourceNode.name)) {
-                    sourceData.add(sourceValues.get(sourceNode.name).data);
+                if (sourceValues.containsKey(sourceNode.getId())) {
+                    sourceData.add(sourceValues.get(sourceNode.getId()).data);
                 }
             });
         } else {
@@ -1442,8 +1492,8 @@ public class NodeService implements NodeServiceInterface {
                     newValue.node = node;
                     newValue.data = jqResult;
                     newValue.sources = node.sources.stream()
-                            .filter(n -> sourceValues.containsKey(n.name))
-                            .map(n -> sourceValues.get(n.name))
+                            .filter(n -> sourceValues.containsKey(n.getId()))
+                            .map(n -> sourceValues.get(n.getId()))
                             .collect(Collectors.toList());
                     rtrn.add(newValue);
                 }

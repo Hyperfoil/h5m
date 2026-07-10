@@ -10,7 +10,9 @@ import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -44,12 +46,20 @@ public class JsNode extends NodeEntity {
             System.err.println("unable to recognize javascript function from:\n"+input);
             return null;
         }
+        // Identify which parameters have default values in the function signature.
+        // Parameters with defaults (e.g., usePopulation = false) are JS-level config,
+        // not data sources from the pipeline — missing lookups for these should not
+        // cause the parse to fail.
+        Set<String> defaultParams = getDefaultParameterNames(input);
         boolean ok = true;
         List<NodeEntity> sourceNodes = new ArrayList<>();
         for (String param : parameters) {
             List<NodeEntity> foundNodes = nodeFn.apply(param);
             if (foundNodes.isEmpty()) {
-                System.err.println("Could not find node for " + param);
+                if (defaultParams.contains(param)) {
+                    // Parameter has a default value — not a data source, skip silently
+                    continue;
+                }
                 ok = false;
             } else if (foundNodes.size() > 1) {
                 System.err.println("Found more than one node matching " + param);
@@ -65,6 +75,19 @@ public class JsNode extends NodeEntity {
             rtrn = new JsNode(name, input, sourceNodes);
         }
         return rtrn;
+    }
+
+    /**
+     * Returns the number of parameters that do NOT have default values.
+     * For example, {@code (filteredArr, logData = "time", stddev = false)} returns 1.
+     * These are the actual data source parameters — parameters with defaults are
+     * JS-level config.
+     */
+    public static int countNonDefaultParams(String input) {
+        List<String> params = getParameterNames(input);
+        if (params == null || params.isEmpty()) return 0;
+        Set<String> defaults = getDefaultParameterNames(input);
+        return (int) params.stream().filter(p -> !defaults.contains(p)).count();
     }
 
     public static List<JqValue> createParameters(String function, Map<String, ValueEntity> sourceValues,int sourceCount){
@@ -164,6 +187,71 @@ public class JsNode extends NodeEntity {
     }
 
     /**
+     * Strips leading comments and extracts the raw parameter string from a JS function.
+     * Returns the comma-separated parameter list (without surrounding parens), or null
+     * if the input is not a recognizable function.
+     *
+     * <p>Shared by {@link #getParameterNames} and {@link #getDefaultParameterNames}
+     * to avoid duplicating comment-stripping and parameter-extraction logic.</p>
+     */
+    static String extractParameterString(String input) {
+        if (input == null || input.isBlank()) return null;
+        // Strip leading comments
+        int length;
+        do {
+            length = input.length();
+            if (input.trim().startsWith("//")) {
+                if (input.contains(System.lineSeparator())) {
+                    input = input.substring(input.indexOf(System.lineSeparator()) + 1);
+                }
+            }
+            if (input.trim().startsWith("/*")) {
+                input = input.substring(input.indexOf("*/") + 2);
+            }
+        } while (input.length() < length);
+        input = input.trim();
+        // Extract parameter list based on function syntax
+        String parameters = null;
+        if (input.startsWith("function(")) {
+            parameters = input.substring("function(".length(), input.indexOf(")")).trim();
+        } else if (input.startsWith("function*")) {
+            parameters = input.substring("function*".length()).trim();
+            if (parameters.matches("(?s)^(?:[a-zA-Z_$][a-zA-Z0-9_$]*)?\\([^)]*\\)\\s*\\{.*")) {
+                parameters = parameters.substring(parameters.indexOf("(") + 1, parameters.indexOf(")"));
+            }
+        } else if (input.contains("=>")) {
+            parameters = input.substring(0, input.indexOf("=>")).trim();
+            if (parameters.startsWith("(") && parameters.endsWith(")")) {
+                parameters = parameters.substring(1, parameters.length() - 1);
+            }
+        }
+        return parameters;
+    }
+
+    /**
+     * Returns the set of parameter names that have default values in the function
+     * signature. For example, {@code (arr, usePopulation = false)} returns
+     * {@code {"usePopulation"}}. These parameters are JS-level config, not data
+     * sources from the pipeline.
+     */
+    public static Set<String> getDefaultParameterNames(String input) {
+        String parameters = extractParameterString(input);
+        if (parameters == null) return Set.of();
+        Set<String> defaults = new HashSet<>();
+        for (String p : parameters.split(",")) {
+            p = p.trim();
+            if (p.contains("=")) {
+                String name = p.substring(0, p.indexOf("=")).trim()
+                        .replaceAll("\\.\\.\\.|\\{|}", "").trim();
+                if (!name.isEmpty()) {
+                    defaults.add(name);
+                }
+            }
+        }
+        return defaults;
+    }
+
+    /**
      * Returns the list of identified parameters
      * @param input
      * @return the list of parameters or null iff the input fails to parse
@@ -172,43 +260,10 @@ public class JsNode extends NodeEntity {
         return getParameterNames(input,true);
     }
     public static List<String> getParameterNames(String input, boolean removeSpread){
-        if(input==null || input.isBlank()){
-            return null;
-        }
-        List<String> rtrn = null;
-        String parameters = null;
-        //remove leading comments
-        int length = input.length();
-        do {
-            length = input.length();
-            if(input.trim().startsWith("//")){
-                if(input.contains(System.lineSeparator())){
-                    input = input.substring(input.indexOf(System.lineSeparator())+1);
-                }else{
-
-                }
-
-            }
-            if(input.trim().startsWith("/*")){
-                input = input.substring(input.indexOf("*/")+2);
-            }
-        }while(input.length() < length);
-        if(input.startsWith("function(")) {
-            parameters = input.substring("function(".length(), input.indexOf(")")).trim();
-        }else if (input.startsWith("function*")) {
-            parameters = input.substring("function*".length()).trim();
-            if(parameters.matches("(?s)^(?:[a-zA-Z_$][a-zA-Z0-9_$]*)?\\([^)]*\\)\\s*\\{.*")){
-                parameters = parameters.substring(parameters.indexOf("(")+1, parameters.indexOf(")"));
-            }
-        }else if (input.contains("=>")) {
-            parameters = input.substring(0, input.indexOf("=>")).trim();
-            if (parameters.startsWith("(") && parameters.endsWith(")")) {
-                parameters = parameters.substring(1, parameters.length() - 1);
-            }
-        }
+        String parameters = extractParameterString(input);
+        if (parameters == null) return null;
         String filter = removeSpread ? "\\.\\.\\.|\\{|}" : "\"\\\\.\\\\.\\\\.";
-        if(parameters != null){
-            rtrn = Stream.of(parameters.split(","))
+        return Stream.of(parameters.split(","))
                 .map(s -> {
                             s = s.trim()
                             .replaceAll(filter, "")
@@ -221,8 +276,6 @@ public class JsNode extends NodeEntity {
                 )
                 .filter(s -> !s.isBlank())
                 .toList();
-        }
-        return rtrn;
     }
 
     public JsNode(){

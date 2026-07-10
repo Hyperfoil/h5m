@@ -11,6 +11,7 @@ import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.quarkus.logging.Log;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
+import io.quarkus.runtime.configuration.ConfigUtils;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -59,17 +60,32 @@ public class ProcessingService {
      */
     @Transactional
     public void recoverIncompleteProcessing(@Observes @Priority(2) StartupEvent ev) {
-        List<ProcessingTrackerEntity> incomplete = ProcessingTrackerEntity.find("completed", false).list();
-        if (!incomplete.isEmpty()) {
-            Log.infof("Found %d incomplete processing operations to recover", incomplete.size());
-            for (ProcessingTrackerEntity tracking : incomplete) {
-                switch (tracking.type) {
-                    case UPLOAD -> recoverUpload(tracking);
-                    case RECALCULATE -> recoverRecalculate(tracking);
-                    case RECALCULATE_NODE -> recoverRecalculateNode(tracking);
+        //ev == null when forced to recover
+        if(!ConfigUtils.getProfiles().contains("cli") || ev == null) {
+            List<ProcessingTrackerEntity> incomplete = ProcessingTrackerEntity.find("completed", false).list();
+            if (!incomplete.isEmpty()) {
+                Log.infof("Found %d incomplete processing operations to recover", incomplete.size());
+                for (ProcessingTrackerEntity tracking : incomplete) {
+                    switch (tracking.type) {
+                        case UPLOAD -> recoverUpload(tracking);
+                        case RECALCULATE -> recoverRecalculate(tracking);
+                        case RECALCULATE_NODE -> recoverRecalculateNode(tracking);
+                    }
                 }
             }
         }
+    }
+
+    @Transactional
+    public List<ProcessingTrackerEntity> getIncompleteProcessing() {
+        return ProcessingTrackerEntity.find("completed", false).list();
+    }
+
+    @Transactional
+    public int removeIncompleteProcessing(){
+        List<ProcessingTrackerEntity> incomplete = getIncompleteProcessing();
+        incomplete.forEach(ProcessingTrackerEntity::delete);
+        return incomplete.size();
     }
 
     private void recoverUpload(ProcessingTrackerEntity tracking) {
@@ -88,7 +104,7 @@ public class ProcessingService {
         Log.infof("Re-triggering processing for upload %d in folder %d", tracking.referenceId, tracking.folderId);
         // Use all source nodes (not just top-level) to handle mid-cascade crashes
         List<Work> works = List.copyOf(folder.group.sources).stream()
-                .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue)))
+                .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id)))
                 .toList();
         if (!works.isEmpty()) {
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(rootValue.id));
@@ -167,7 +183,7 @@ public class ProcessingService {
         for (ValueEntity rootValue : rootValues) {
             rootValueIds.add(rootValue.id);
             for (NodeEntity sourceNode : List.copyOf(folder.group.sources)) {
-                Work w = new Work(sourceNode, new ArrayList<>(sourceNode.sources), List.of(rootValue));
+                Work w = new Work(sourceNode, new ArrayList<>(sourceNode.sources), List.of(rootValue.id));
                 w.dispatch = false;
                 works.add(w);
             }
@@ -297,7 +313,7 @@ public class ProcessingService {
         for (ValueEntity rootValue : rootValues) {
             rootValueIds.add(rootValue.id);
             for (NodeEntity node : nodesToQueue) {
-                Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue));
+                Work w = new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id));
                 w.dispatch = false; // suppress external notifications during recalculation
                 works.add(w);
             }

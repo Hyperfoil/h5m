@@ -4,12 +4,16 @@ import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;
+import io.hyperfoil.tools.h5m.api.View;
+import io.hyperfoil.tools.h5m.api.ViewComponent;
+import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.yaup.HashedLists;
@@ -101,6 +105,10 @@ public class LoadLegacyTests implements Callable<Integer> {
         public void tagNodeAsLabel(Label label,NodeEntity node){
             labelToNodes.put(label,node);
             nodeToLabel.put(node,label);
+            // Label-equivalent nodes should retain their data after processing.
+            // Without KEEP, the ephemeral system nullifies them as "intermediate"
+            // nodes, but in Horreum these are the final label values.
+            node.ephemeral = EphemeralMode.KEEP;
         }
         public void renameNode(NodeEntity node,String oldName){
             nodesByName.remove(oldName,node);
@@ -147,6 +155,12 @@ public class LoadLegacyTests implements Callable<Integer> {
 
     @Inject
     NodeService nodeService;
+
+    @Inject
+    ViewServiceInterface viewService;
+
+    /** Result of creating a folder with its label-to-node tracking data */
+    record FolderImportResult(FolderEntity folder, NodeTracking nodeTracking) {}
 
     public static String pad(int pad,String message){
         if(pad==0){
@@ -230,19 +244,23 @@ public class LoadLegacyTests implements Callable<Integer> {
     //id,name,labels,calculation
     public record Variable(long id,String name,List<String> labels,String calculation){};
 
-    public NodeEntity createNodesFromLabel(Label label, NodeEntity source, NodeGroupEntity group, NodeTracking nodeTracking, Set<String> usedNames){
+    public NodeEntity createNodesFromLabel(Label label, NodeEntity source, NodeGroupEntity group, NodeTracking nodeTracking, Set<String> usedNames, boolean multiSchema){
+        // Fix A: Skip labels with no extractors — these are placeholder/stub labels
+        // from schemas like rhivos-perf-comprehensive:02 that contribute no data
+        if (label.extractors.isEmpty()) {
+            return null;
+        }
         NodeEntity rtrn = null;
         HashedLists<String,NodeEntity> labelNodesByName = new HashedLists<>();
         boolean reusedNode = false;
         for(Extractor extractor : label.extractors) {
             String extractorName = extractor.name;
-            if(extractorName.equals(label.name) || usedNames.contains(extractorName)){
-                extractorName = extractor.name;
-            }
 
-            NodeEntity node = extractor.isArray ?
-                    SqlJsonpathAllNode.parse(extractorName, extractor.jsonpath(), nodeTracking::getNodes) :
-                    SqlJsonpathNode.parse(extractorName, extractor.jsonpath(), nodeTracking::getNodes);
+            // Convert jsonpath to jq — sqlall (isArray) wraps in [...] to collect all matches
+            String jqOperation = extractor.isArray
+                    ? NodeService.jsonpathToJqArray(extractor.jsonpath())
+                    : NodeService.jsonpathToJq(extractor.jsonpath());
+            NodeEntity node = JqNode.parse(extractorName, jqOperation, nodeTracking::getNodes);
             if (node == null) {
                 System.err.println("failed to create node for extractor " + extractor);
                 return null;
@@ -260,15 +278,20 @@ public class LoadLegacyTests implements Callable<Integer> {
         }
         //this could rename a node that is referenced by name by another node! Don't do that!
         if(label.function==null || label.function.trim().isEmpty() || JsNode.isNullEmptyOrIdentityFunction(label.function)){
-            if(label.extractors.size() == 1 && !reusedNode && label.name!=null && !label.name.trim().isEmpty()){
+            if(label.extractors.size() == 1 && label.name!=null && !label.name.trim().isEmpty()){
                 String extractorName = label.extractors.get(0).name;
                 List<NodeEntity> extractorNodes = labelNodesByName.get(extractorName);
                 if(extractorNodes.size()==1){
                     NodeEntity extractorNode = extractorNodes.get(0);
-                    if(!label.name.equals(extractorNode.name)){
+                    if (!reusedNode && !multiSchema && !label.name.equals(extractorNode.name)){
+                        // Only rename if the node isn't shared with another label
+                        // and this label is NOT part of a multi-schema group (where
+                        // renaming would create name collisions between variants)
                         extractorNode.name = label.name;
                         nodeTracking.renameNode(extractorNode,label.extractors.get(0).name);
                     }
+                    // Fix B: return the extractor node directly for identity labels,
+                    // even when reused — don't create a solo=>solo wrapper
                     rtrn = extractorNode;
                 }else{
                     System.out.println("FAILED TO FIND SINGLE EXTRACTOR "+label.extractors.get(0).name+" for label "+label.name+
@@ -282,51 +305,17 @@ public class LoadLegacyTests implements Callable<Integer> {
                 group.addNode(rtrn);
             }
         }else {
-            String function = label.function;
-            rtrn = JsNode.parse(label.name, function, labelNodesByName::get);
-            if (rtrn == null) {
-                List<String> params = JsNode.getParameterNames(label.function);
-                if(params.size()==1 && label.extractors.size() > 1) {
-                    // Multi-extractor single-param: build a JQ node that combines all extractions
-                    // into a single object per dataset item, mirroring Horreum's per-dataset extraction
-                    StringBuilder jqExpr = new StringBuilder("{");
-                    for (int i = 0; i < label.extractors.size(); i++) {
-                        Extractor ext = label.extractors.get(i);
-                        if (i > 0) jqExpr.append(", ");
-                        String jqPath = jsonpathToJq(ext.jsonpath());
-                        String quotedName = "\"" + ext.name().replace("\"", "\\\"") + "\"";
-                        if (ext.isArray()) {
-                            jqExpr.append(quotedName).append(": (try [").append(jqPath).append("] catch null)");
-                        } else if (jqPath.contains("select(")) {
-                            jqExpr.append(quotedName).append(": (first(").append(jqPath).append(") // null)");
-                        } else {
-                            jqExpr.append(quotedName).append(": (").append(jqPath).append(" // null)");
-                        }
-                    }
-                    jqExpr.append("}");
-                    String combinerName = label.name() + "_extract";
-                    NodeEntity combiner;
-                    List<NodeEntity> existing = nodeTracking.getNodes(combinerName);
-                    if (!existing.isEmpty()) {
-                        combiner = existing.get(0);
-                    } else {
-                        combiner = new JqNode(combinerName, jqExpr.toString(), List.of(source));
-                        group.addNode(combiner);
-                        nodeTracking.addNode(combiner);
-                    }
-                    rtrn = new JsNode(label.name, function, List.of(combiner));
-                } else if(params.size()==1) {
-                    rtrn = new JsNode(label.name,function,labelNodesByName.values().stream().flatMap(List::stream).collect(Collectors.toList()));
-                } else {
-                    rtrn = JsNode.parse(label.name, function, labelNodesByName::get,true);
-                    if(rtrn==null){
-                        System.err.println("Failed to make node for Label:" + label.name + "\n" + label.function + "\n  " + label.extractors.stream().map(Extractor::toString).collect(Collectors.joining("\n  ")));
-                        return null;
-                    }
-                }
-            }
+            // For import, we know the sources — they are the extractor nodes we just
+            // created. No need to call JsNode.parse() (which tries to match JS parameter
+            // names to node names — designed for user-created nodes, not import).
+            // createParameters() handles building the correct JS input object at runtime,
+            // whether the function uses named property access (value["key"]) or positional.
+            List<NodeEntity> sources = labelNodesByName.values().stream()
+                    .flatMap(List::stream).collect(Collectors.toList());
+            rtrn = new JsNode(label.name, label.function, sources);
             if(rtrn!=null){
                 nodeTracking.addNode(rtrn);
+                group.addNode(rtrn);
             }
         }
         return rtrn;
@@ -336,7 +325,7 @@ public class LoadLegacyTests implements Callable<Integer> {
         return input.replaceAll("[^a-zA-Z0-9_$]","_");
     }
 
-    public FolderEntity createFolder(Test test){
+    public FolderImportResult createFolder(Test test){
         FolderEntity folder = new FolderEntity();
         folder.name = test.name;
         folder.group = new NodeGroupEntity(test.name);
@@ -352,7 +341,7 @@ public class LoadLegacyTests implements Callable<Integer> {
                 String transformerSuffix = test.transformers().size() > 1 ? "_" + transformer.id() : "";
                 String name = "transformer_"+sanitizeName(transformer.name)+transformerSuffix;
                 Label l  = new Label(-1,name,transformer.function,transformer.extractors);
-                NodeEntity transform = createNodesFromLabel(l,folder.group.root,folder.group,nodeTracking,new HashSet<>());
+                NodeEntity transform = createNodesFromLabel(l,folder.group.root,folder.group,nodeTracking,new HashSet<>(), false);
                 folder.group.addNode(transform);
                 nodeTracking.addNode(transform);
                 transformerNodes.add(transform);
@@ -410,12 +399,14 @@ public class LoadLegacyTests implements Callable<Integer> {
                 for(Label label : labelsForJsonpath){
                     log(6,"label="+label.name);
                     Collection<Label> labels = labelsByName.get(label.name);
+                    boolean multiSchema = labels.size() > 1;
 
-                    NodeEntity labelNode = createNodesFromLabel(label,sourceNode,folder.group,nodeTracking,labelsByName.keys());
+                    NodeEntity labelNode = createNodesFromLabel(label,sourceNode,folder.group,nodeTracking,labelsByName.keys(), multiSchema);
                     if(labelNode!=null){
-                        //if this label needs to be renamed and part of a merge group
-                        if(labels.size()>1) {
-                            labelNode.name = labelNode.name + nodesByOriginalName.get(label.name).size();
+                        if(multiSchema) {
+                            // No suffix — the pipeline uses node IDs, not names.
+                            // Extractors keep their original names; the combining step
+                            // creates a combiner with the label name.
                             nodesByOriginalName.put(label.name,labelNode);
                             folder.group.addNode(labelNode);
                         } else {
@@ -429,25 +420,40 @@ public class LoadLegacyTests implements Callable<Integer> {
             //create all the merge nodes to resolve label name conflicts
             for(String labelName : nodesByOriginalName.keys()){
                 List<NodeEntity> sourceNodes = nodesByOriginalName.get(labelName);
-                // Deduplicate: variants sourcing from the same extractor produce the same
-                // value at runtime, causing value_edge duplicate constraint violations.
-                // Also skip variants with no sources (can't produce values).
-                Set<Long> seenSourceIds = new HashSet<>();
+                // Deduplicate: variants that are functionally equivalent (same operation
+                // and sources) produce the same value at runtime. Only keep unique variants.
+                // Skip variants with no sources (can't produce values).
                 List<NodeEntity> uniqueSourceNodes = new ArrayList<>();
                 for (NodeEntity sn : sourceNodes) {
                     if (sn.sources.isEmpty()) continue;
-                    Long sourceId = sn.sources.get(0).id;
-                    if (sourceId == null || seenSourceIds.add(sourceId)) {
+                    boolean duplicate = uniqueSourceNodes.stream()
+                            .anyMatch(existing -> nodeService.functionalyEquivalent(existing, sn));
+                    if (!duplicate) {
                         uniqueSourceNodes.add(sn);
-                    }else{
-                        System.out.println("REJECTING duplicate SourceNode "+sn);
+                    } else {
+                        System.out.println("REJECTING duplicate SourceNode " + sn);
                     }
                 }
                 if (uniqueSourceNodes.size() == 1) {
+                    // Only one unique variant — set its name to the label name
+                    uniqueSourceNodes.get(0).name = labelName;
                     nodeTracking.tagNodeAsLabel(new Label(-1,labelName,null,Collections.emptyList()), uniqueSourceNodes.get(0));
                 } else if (uniqueSourceNodes.size() > 1) {
                     System.out.println("combining " + labelName + " (" + uniqueSourceNodes.size() + " unique sources from " + sourceNodes.size() + " variants)");
-                    NodeEntity newNode = new JsNode(labelName, "obj=>Object.values(obj).find(v => v != null)", uniqueSourceNodes);
+                    // NaN check required: old-schema JS functions return NaN for missing data
+                    // (e.g., empty array → reduce → 0/0 → NaN). NaN is not null in JS,
+                    // so find(v => v != null) picks NaN over the correct value from the
+                    // other schema variant. Key order in Object.values() determines which
+                    // variant is checked first, making some labels work and others fail.
+                    // Must also skip string "NaN" (from NaN.toFixed(3) in old Confidence functions).
+                    // Reverse source order so the newest schema variant is tried first.
+                    // Object.values() iterates in insertion order — the newest variant
+                    // (last added during import) should be checked before older ones,
+                    // since older schema extractors may produce partially-valid values
+                    // from data that doesn't match their schema.
+                    List<NodeEntity> reversedSources = new ArrayList<>(uniqueSourceNodes);
+                    Collections.reverse(reversedSources);
+                    NodeEntity newNode = new JsNode(labelName, "obj=>Object.values(obj).find(v => v != null && v !== 'NaN' && (typeof v !== 'number' || !isNaN(v)))", reversedSources);
                     folder.group.addNode(newNode);
                     nodeTracking.addNode(newNode);
                     nodeTracking.tagNodeAsLabel(new Label(-1, labelName, newNode.operation, Collections.emptyList()), newNode);
@@ -588,7 +594,7 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //this should not happen and is an error
             }
         }
-        return folder;
+        return new FolderImportResult(folder, nodeTracking);
     }
 
     @Override
@@ -878,13 +884,95 @@ public class LoadLegacyTests implements Callable<Integer> {
                 }
                 //TODO create a folderService method that persists an entity
                 //FolderEntity.persist(folder);
-                FolderEntity folder = createFolder(test);
-                folderService.create(folder);
+                FolderImportResult result = createFolder(test);
+                long folderId = folderService.create(result.folder());
+                importViews(connection, test, folderId, result.folder().name, result.nodeTracking());
             }
         }
         finally {
             ds.close();
         }
         return 0;
+    }
+
+    /**
+     * Import Horreum views for a test into h5m.
+     * Queries the view and viewcomponent tables, resolves label names to h5m node IDs
+     * using the NodeTracking from folder creation (avoids an extra DB round-trip).
+     */
+    private void importViews(Connection connection, Test test, long folderId, String folderName,
+                              NodeTracking nodeTracking) throws SQLException {
+        try (PreparedStatement viewStmt = connection.prepareStatement(
+                "SELECT id, name FROM view WHERE test_id = ? ORDER BY name")) {
+            viewStmt.setLong(1, test.id());
+            try (ResultSet viewRs = viewStmt.executeQuery()) {
+                while (viewRs.next()) {
+                    long viewId = viewRs.getLong("id");
+                    String viewName = viewRs.getString("name");
+
+                    List<ViewComponent> components = new ArrayList<>();
+                    try (PreparedStatement compStmt = connection.prepareStatement(
+                            "SELECT headername, headerorder, labels FROM viewcomponent WHERE view_id = ? ORDER BY headerorder")) {
+                        compStmt.setLong(1, viewId);
+                        try (ResultSet compRs = compStmt.executeQuery()) {
+                            while (compRs.next()) {
+                                String headerName = compRs.getString("headername");
+                                int headerOrder = compRs.getInt("headerorder");
+                                String labelsJson = compRs.getString("labels");
+
+                                JqValue labelsArray = JqValues.parse(labelsJson);
+                                if (labelsArray == null || !labelsArray.isArray() || labelsArray.length() == 0) {
+                                    continue;
+                                }
+
+                                if (labelsArray.length() > 1) {
+                                    System.out.println("  Warning: view '" + viewName + "' component '" + headerName
+                                            + "' references " + labelsArray.length() + " labels, using only the first");
+                                }
+
+                                String labelName = labelsArray.getElement(0).asText();
+
+                                // Resolve label name to h5m node using NodeTracking
+                                // from folder creation (nodes already persisted with IDs)
+                                List<NodeEntity> labelNodes = nodeTracking.getLabelNodes(labelName);
+                                NodeEntity node = labelNodes.isEmpty() ? null : labelNodes.getFirst();
+
+                                if (node != null) {
+                                    components.add(new ViewComponent(
+                                            null, node.id, node.name,
+                                            node.type().display(), headerName, headerOrder));
+                                } else {
+                                    System.out.println("  Warning: label '" + labelName + "' not found for view '" + viewName + "'");
+                                }
+                            }
+                        }
+                    }
+
+                    if (components.isEmpty()) {
+                        System.out.println("  Skipping view '" + viewName + "' (no components resolved)");
+                        continue;
+                    }
+
+                    if ("Default".equals(viewName)) {
+                        // Check if Default view already exists (created by folderService.create)
+                        List<View> existing = viewService.getViews(folderName);
+                        View defaultView = existing.stream()
+                                .filter(v -> "Default".equals(v.name()))
+                                .findFirst().orElse(null);
+                        if (defaultView != null) {
+                            viewService.updateView(defaultView.id(),
+                                    new View(defaultView.id(), "Default", folderId, components));
+                        } else {
+                            viewService.createView(folderName,
+                                    new View(null, "Default", null, components));
+                        }
+                    } else {
+                        viewService.createView(folderName,
+                                new View(null, viewName, null, components));
+                    }
+                    System.out.println("  Imported view '" + viewName + "' with " + components.size() + " columns");
+                }
+            }
+        }
     }
 }
