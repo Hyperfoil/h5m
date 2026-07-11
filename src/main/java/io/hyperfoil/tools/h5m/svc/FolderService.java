@@ -482,7 +482,7 @@ public class FolderService implements FolderServiceInterface {
         return builder.build();
     }
 
-    /** Returns the JPA discriminator value for a node (e.g. "jq", "ecma", "sqlall"). */
+    /** Returns the JPA discriminator value for a node (e.g. "jq", "ecma", "root"). */
     private String discriminatorValue(NodeEntity node) {
         var ann = node.getClass().getAnnotation(jakarta.persistence.DiscriminatorValue.class);
         return ann != null ? ann.value() : node.type().display();
