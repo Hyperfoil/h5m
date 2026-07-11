@@ -263,11 +263,12 @@ public class NodeServiceTest extends FreshDb {
 
 
     @Test
-    public void calculateSqlJsonpathValues() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void calculateJqValues_legacy_sql_single_field() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies JQ handles the single-field extraction that SQL jsonpath nodes originally provided
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        JqNode node = new JqNode("sql",".buz",List.of(rootNode));
+        JqNode node = new JqNode("field",".buz",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
         v1.data = JqValues.parse("""
@@ -292,11 +293,12 @@ public class NodeServiceTest extends FreshDb {
 
     }
     @Test
-    public void calculateSqlJsonpathValues_null() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void calculateJqValues_legacy_sql_missing_field() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies JQ returns nothing for missing fields, matching SQL jsonpath null behavior
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        JqNode node = new JqNode("sql",".miss",List.of(rootNode));
+        JqNode node = new JqNode("field",".miss",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
         v1.data = JqValues.parse("""
@@ -381,11 +383,12 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
-    public void calculateSqlAllJsonpathValues_null() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void calculateJqValues_legacy_sqlall_missing_array() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies JQ array collection for missing paths, matching SQLAll null behavior
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        JqNode node = new JqNode("sqlall","[.miss]",List.of(rootNode));
+        JqNode node = new JqNode("array","[.miss]",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
         v1.data = JqValues.parse("""
@@ -409,11 +412,12 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
-    public void calculateSqlAllJsonpathValues_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void calculateJqValues_legacy_sqlall_array_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies JQ array collection for matching paths, matching SQLAll behavior
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        JqNode node = new JqNode("sqlall","[.foo[]?]",List.of(rootNode));
+        JqNode node = new JqNode("array","[.foo[]?]",List.of(rootNode));
         node.persist();
         ValueEntity v1 = new ValueEntity();
         v1.data = JqValues.parse("""
@@ -439,7 +443,8 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
-    public void calculateSqlJsonpathValues_partial_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void calculateJqValues_legacy_sql_partial_match() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies JQ handles partial matches (hit + miss), matching SQL jsonpath behavior
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
