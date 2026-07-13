@@ -14,7 +14,9 @@ import jakarta.inject.Inject;
 import jakarta.transaction.*;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +28,76 @@ public class WorkQueueTest extends FreshDb {
 
     @Inject
     WorkService workService;
+
+    @Test
+    public void isRoot_true() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity jqNode = new JqNode();
+        jqNode.persist();
+        ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        rootValue1.persist();
+        Work work1 = new Work(rootNode, Collections.emptyList(),List.of(rootValue1.id));
+        Work work2 = new Work(Set.of(jqNode,rootNode), Collections.emptyList(),List.of(rootValue1.id));
+        tm.commit();
+        assertTrue(WorkQueue.isRoot(work1),"single active node");
+        assertTrue(WorkQueue.isRoot(work2),"multiple active nodes");
+
+    }
+    @Test
+    public void isRoot_false() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity jqNode = new JqNode();
+        jqNode.persist();
+        ValueEntity rootValue1 = new ValueEntity(null,jqNode,JqValues.parse("\"text1\""));
+        rootValue1.persist();
+        Work work1 = new Work(jqNode, Collections.emptyList(),List.of(rootValue1.id));
+        Work work2 = new Work(Collections.emptySet(), Collections.emptyList(),List.of(rootValue1.id));
+        tm.commit();
+        assertFalse(WorkQueue.isRoot(work1),"single active node");
+        assertFalse(WorkQueue.isRoot(work2),"no active nodes");
+    }
+
+
+    @Test
+    public void add_reject_root() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        rootValue1.persist();
+        Work work1 = new Work(rootNode, Collections.emptyList(),List.of(rootValue1.id));
+        tm.commit();
+
+        WorkQueue q = new WorkQueue();
+
+        boolean added = q.add(work1);
+        assertFalse(added,"root work should be rejected");
+
+    }
+
+    @Test
+    public void addAll_reject_root() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        JqNode jqNode = new JqNode();
+        jqNode.persist();
+        rootNode.persist();
+        ValueEntity rootValue1 = new ValueEntity(null,rootNode,JqValues.parse("\"text1\""));
+        rootValue1.persist();
+        Work work1 = new Work(rootNode, Collections.emptyList(),List.of(rootValue1.id));
+        Work work2 = new Work(jqNode, Collections.emptyList(),List.of(rootValue1.id));
+        tm.commit();
+
+        WorkQueue q = new WorkQueue();
+
+        boolean added = q.addAll(List.of(work1,work2));
+        assertTrue(added,"at least one was added");
+        assertFalse(q.isPending(work1),"root should not be pending");
+        assertFalse(q.hasWork(work1),"root should not be queued");
+
+    }
 
 
     @Test

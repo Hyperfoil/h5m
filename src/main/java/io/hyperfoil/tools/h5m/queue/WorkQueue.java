@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.queue;
 
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.vertx.core.impl.ConcurrentHashSet;
 import org.slf4j.Logger;
@@ -230,6 +231,9 @@ public class WorkQueue implements BlockingQueue<Runnable> {
     @Override
     public boolean add(Runnable runnable) {
         if(runnable instanceof Work work){
+            if(isRoot(work)){
+                return false;
+            }
             //reject new work that is already pending
             //do NOT reject new work if it matches an active work because it could be a retry re-queue
             if(isPending(work)){
@@ -439,15 +443,15 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         boolean wasEmpty = runnables.isEmpty();
         try {
             for (Runnable r : c) {
-                if (r instanceof Work work && isPending(work)) {
-                    //do not add something already in queue
-                } else {
-                    if (r instanceof Work work) {
+                if(r instanceof Work work){
+                    if(isPending(work) || isRoot(work)){
+                        continue;
+                    }else{
                         pendingWork.add(work);
                     }
-                    runnables.add(r);
-                    added = true;
                 }
+                runnables.add(r);
+                added = true;
             }
             if (added) {
                 sort();
@@ -459,6 +463,10 @@ public class WorkQueue implements BlockingQueue<Runnable> {
             fullyUnlock();
         }
         return added;
+    }
+
+    public static boolean isRoot(Work w){
+        return w.getActiveNodes()!=null && w.getActiveNodes().stream().anyMatch(n->n.type().equals(NodeType.ROOT));
     }
 
     @Override
