@@ -94,6 +94,8 @@ public class WorkQueueTest extends FreshDb {
 
         boolean added = q.addAll(List.of(work1,work2));
         assertTrue(added,"at least one was added");
+        assertTrue(q.hasWork(work2),"work2 should be added to the queue");
+        assertTrue(q.isPending(work2),"work2 should be pending");
         assertFalse(q.isPending(work1),"root should not be pending");
         assertFalse(q.hasWork(work1),"root should not be queued");
 
