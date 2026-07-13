@@ -1,6 +1,8 @@
 package io.hyperfoil.tools.h5m.entity;
 
+import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
+import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -15,6 +17,29 @@ public class NodeTest {
 
     @Inject
     EntityManager em;
+
+
+    @Test
+    public void setEphemeral(){
+        NodeEntity node = new JqNode();
+        assertNotEquals(EphemeralMode.DISCARD,node.ephemeral,"node should not be ephemeral");
+
+        node.ephemeral = EphemeralMode.DISCARD;
+
+        assertEquals(EphemeralMode.DISCARD,node.ephemeral,"node should set to ephemeral");    }
+
+    @Test
+    public void root_setEphemeral(){
+        NodeEntity node = new RootNode();
+
+        assertNotEquals(EphemeralMode.DISCARD,node.ephemeral,"root node should not be ephemeral");
+        assertEquals(EphemeralMode.KEEP,node.ephemeral,"root node should set to KEEP");
+        node.ephemeral = EphemeralMode.DISCARD;
+
+        assertNotEquals(EphemeralMode.DISCARD,node.ephemeral,"root node should not set to ephemeral");
+
+
+    }
 
     @Test
     public void compareTo(){
