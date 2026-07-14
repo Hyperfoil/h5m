@@ -34,6 +34,9 @@ public class CliProfile implements QuarkusTestProfile {
 
     @Override
     public Map<String, String> getConfigOverrides() {
-        return Map.of("quarkus.datasource.jdbc.url", "jdbc:sqlite:" + TEST_DB_PATH);
+        return Map.of(
+                "quarkus.datasource.db-kind", "sqlite",
+                "quarkus.datasource.jdbc.url", "jdbc:sqlite:" + TEST_DB_PATH
+        );
     }
 }

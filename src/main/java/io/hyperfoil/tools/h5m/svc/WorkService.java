@@ -24,6 +24,8 @@ import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
 import jakarta.transaction.Transactional;
 import jakarta.transaction.TransactionManager;
+import io.hyperfoil.tools.h5m.provided.DatabaseEngine;
+import static io.hyperfoil.tools.h5m.provided.DatabaseEngine.Kind.*;
 import io.quarkus.logging.Log;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.Hibernate;
@@ -55,7 +57,7 @@ public class WorkService implements WorkServiceInterface {
      * up to {@link #RETRY_LIMIT} times to handle single-writer contention.
      */
     <T> T callInNewTransaction(Callable<T> action) {
-        if (!"sqlite".equals(dbKind)) {
+        if (!db.isSQLite()) {
             return QuarkusTransaction.requiringNew().call(action);
         }
         for (int attempt = 1; ; attempt++) {
@@ -92,8 +94,8 @@ public class WorkService implements WorkServiceInterface {
     @Inject
     Event<ChangeDetectedEvent> changeDetectedEvent;
 
-    @ConfigProperty(name="quarkus.datasource.db-kind")
-    String dbKind;
+    @Inject
+    DatabaseEngine db;
 
     @ConfigProperty(name = "h5m.worker.core", defaultValue = "1")
     int corePoolSize;
@@ -334,10 +336,9 @@ public class WorkService implements WorkServiceInterface {
                             }else{
                                 //update the existing value's data via native SQL
                                 //(@Immutable entities can't be updated through Hibernate)
-                                String updateSql = switch (dbKind) {
-                                    case "postgresql" -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
-                                    case "sqlite"     -> "UPDATE value SET data = json(:data) WHERE id = :id";
-                                    default           -> "UPDATE value SET data = :data WHERE id = :id";
+                                String updateSql = switch (db.kind()) {
+                                    case POSTGRESQL -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
+                                    case SQLITE     -> "UPDATE value SET data = json(:data) WHERE id = :id";
                                 };
                                 em.createNativeQuery(updateSql)
                                     .setParameter("data", newValue.data.toJsonString())
@@ -409,7 +410,7 @@ public class WorkService implements WorkServiceInterface {
             }
         }catch( Exception e){
             Log.debugf(e, "WorkRunner caught: %s\n work=%s", e.getMessage(), w);
-            if("sqlite".equals(dbKind) && w.retryCount++ < RETRY_LIMIT){
+            if(db.isSQLite() && w.retryCount++ < RETRY_LIMIT){
                 Log.infof("Retry work %s due to: %s", w, e.getMessage());
                 workQueue.add(w);
                 decrementDeferred = true;
