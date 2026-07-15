@@ -380,7 +380,7 @@ public class ValueService implements ValueServiceInterface {
                            select v.id as vid
                                  from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                         )
-                        select * from value v join descendant d on v.id=d.vid
+                        select v.id from value v join descendant d on v.id=d.vid
                             where v.node_id=:sourceId order by created_at ORDER_DIRECTION
                         """;
             };

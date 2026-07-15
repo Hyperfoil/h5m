@@ -285,13 +285,13 @@ public class ValueServiceTest extends FreshDb {
 
         rootValue01 = null;
 
+        tm.begin();
         List<ValueEntity> found = valueService.getValues(rootNode);
         assertEquals(1, found.size());
-        // Data is available because findMultiple() serves from the 2LC
-        // (the entity was cached when persisted above)
         for(ValueEntity v : found){
             assertNotNull(v.data, "data should be available from 2LC");
         }
+        tm.commit();
 
 
     }

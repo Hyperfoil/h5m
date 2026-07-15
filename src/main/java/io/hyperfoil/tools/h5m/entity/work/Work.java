@@ -113,9 +113,12 @@ public class Work implements Runnable, Comparable<Work>{
 
     @Override
     public boolean equals(Object o){
-        if(o instanceof Work){
-            Work work = (Work)o;
-            boolean sameNodes =  this.activeNodes.containsAll(work.activeNodes) && work.activeNodes.containsAll(this.activeNodes);  //Objects.equals(this.activeNode, work.activeNode);
+        if(o instanceof Work work){
+            if (this.activeNodes == null || work.activeNodes == null
+                    || this.sourceNodes == null || work.sourceNodes == null) {
+                return false;
+            }
+            boolean sameNodes =  this.activeNodes.containsAll(work.activeNodes) && work.activeNodes.containsAll(this.activeNodes);
             if(!sameNodes){
                 return false;
             }
@@ -129,6 +132,9 @@ public class Work implements Runnable, Comparable<Work>{
             }
             if(cumulative){
                 return true;
+            }
+            if (this.sourceValueIds == null || work.sourceValueIds == null) {
+                return false;
             }
             if (this.sourceValueIds.size() != work.sourceValueIds.size()) {
                 return false;
@@ -144,10 +150,15 @@ public class Work implements Runnable, Comparable<Work>{
     }
     @Override
     public int hashCode(){
+        if (activeNodes == null) {
+            return 0;
+        }
         List<Object> param = new ArrayList<>();
         param.addAll(activeNodes);
-        param.addAll(sourceNodes);
-        if(!cumulative) {
+        if (sourceNodes != null) {
+            param.addAll(sourceNodes);
+        }
+        if(!cumulative && sourceValueIds != null) {
             param.addAll(sourceValueIds);
         }
         return Objects.hash(param);
@@ -181,8 +192,8 @@ public class Work implements Runnable, Comparable<Work>{
     @Override
     public String toString() {
         return "Work<activeNodes="+activeNodes+
-                " sourceNodes="+sourceNodes.stream().map(n->""+n.getId()).collect(Collectors.joining(","))+
-                " sourceValueIds="+sourceValueIds.stream().map(String::valueOf).collect(Collectors.joining(","))+
+                " sourceNodes="+(sourceNodes == null ? "null" : sourceNodes.stream().map(n->""+n.getId()).collect(Collectors.joining(",")))+
+                " sourceValueIds="+(sourceValueIds == null ? "null" : sourceValueIds.stream().map(String::valueOf).collect(Collectors.joining(",")))+
                 " retry="+retryCount+
                 " hashCode="+hashCode()+" >";
     }

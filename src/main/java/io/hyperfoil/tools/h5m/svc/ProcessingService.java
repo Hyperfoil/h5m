@@ -19,6 +19,8 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
+import org.hibernate.Hibernate;
+
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -118,6 +120,7 @@ public class ProcessingService {
         }
         Log.infof("Re-triggering processing for upload %d in folder %d", tracking.referenceId, tracking.folderId);
         // Use all source nodes (not just top-level) to handle mid-cascade crashes
+        initializeSourcesGraph(folder.group.sources);
         List<Work> works = List.copyOf(folder.group.sources).stream()
                 .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(rootValue.id)))
                 .toList();
@@ -193,6 +196,7 @@ public class ProcessingService {
 
         List<ValueEntity> rootValues = valueService.getValues(folder.group.root);
         rootValues.forEach(ValueEntity::getPath);
+        initializeSourcesGraph(folder.group.sources);
         List<Work> works = new ArrayList<>();
         Set<Long> rootValueIds = new HashSet<>();
         for (ValueEntity rootValue : rootValues) {
@@ -224,7 +228,21 @@ public class ProcessingService {
         }
     }
 
-    // --- Folder lookup helpers ---
+    // --- Helpers ---
+
+    private static void initializeSourcesGraph(Collection<NodeEntity> nodes) {
+        Set<Long> visited = new HashSet<>();
+        Queue<NodeEntity> queue = new ArrayDeque<>(nodes);
+        while (!queue.isEmpty()) {
+            NodeEntity node = queue.poll();
+            if (node.id != null && visited.add(node.id)) {
+                Hibernate.initialize(node.sources);
+                if (node.sources != null) {
+                    queue.addAll(node.sources);
+                }
+            }
+        }
+    }
 
     private FolderEntity findFolderById(long folderId) {
         return em.createQuery(FOLDER_FETCH + " WHERE f.id = :id", FolderEntity.class)
@@ -318,6 +336,7 @@ public class ProcessingService {
 
         List<ValueEntity> rootValues = valueService.getValues(folder.group.root);
         rootValues.forEach(ValueEntity::getPath); // initialize lazy proxies
+        initializeSourcesGraph(nodesToQueue);
 
         if (rootValues.isEmpty()) {
             return new RecalculateResult(folder.name, nodeId, -1, List.of(), Set.of(), null);

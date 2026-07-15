@@ -3,6 +3,7 @@ package io.hyperfoil.tools.h5m.cli;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
@@ -111,7 +112,8 @@ public class H5m implements QuarkusApplication {
                 JqValue read = JqValues.parse(Files.readString(f.toPath()));
                 if(read!=null){
                     try {
-                        folderService.upload(folderName, f.getPath(), read);
+                        Upload upload = folderService.upload(folderName, f.getPath(), read);
+                        upload.future.orTimeout(5, TimeUnit.MINUTES).join();
                     } catch (NoResultException e) {
                         System.err.println("could not find folder " + folderName);
                         return 1;
