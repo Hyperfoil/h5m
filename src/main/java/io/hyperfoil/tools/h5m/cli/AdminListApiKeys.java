@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
-import io.hyperfoil.tools.h5m.entity.ApiKey;
+import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -19,7 +19,7 @@ public class AdminListApiKeys implements Runnable {
 
     @Override
     public void run() {
-        List<ApiKey> keys = apiKeyService.listByUser(username);
+        List<ApiKeyEntity> keys = apiKeyService.listByUser(username);
         Instant now = Instant.now();
         System.out.println(ListCmd.table(100, keys,
                 List.of("id", "description", "created", "last_used", "revoked", "expired"),

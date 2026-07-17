@@ -10,7 +10,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Entity(name = "api_key")
-public class ApiKey extends PanacheEntity {
+public class ApiKeyEntity extends PanacheEntity {
 
     @Column(name = "key_hash")
     public String keyHash; // SHA-256 hex
@@ -28,7 +28,7 @@ public class ApiKey extends PanacheEntity {
 
     public boolean revoked;
 
-    public ApiKey() {}
+    public ApiKeyEntity() {}
 
     public boolean isExpired(Instant now) {
         Instant reference = lastUsedAt != null ? lastUsedAt : createdAt;
@@ -41,7 +41,7 @@ public class ApiKey extends PanacheEntity {
 
     @Override
     public String toString() {
-        return "ApiKey<" + id + ">[ user=" + (user != null ? user.username : "null") +
+        return "ApiKeyEntity<" + id + ">[ user=" + (user != null ? user.username : "null") +
                 " description=" + description + " ]";
     }
 }

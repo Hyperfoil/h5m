@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.ApiKey;
+import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import io.hyperfoil.tools.h5m.entity.Role;
 import io.hyperfoil.tools.h5m.entity.User;
 import io.quarkus.test.junit.QuarkusTest;
@@ -35,7 +35,7 @@ public class ApiKeyServiceTest extends FreshDb {
     void create_key_stores_hash_not_raw() {
         userService.create("bob", Role.USER);
         String rawKey = apiKeyService.create("bob", "my key");
-        List<ApiKey> keys = apiKeyService.listByUser("bob");
+        List<ApiKeyEntity> keys = apiKeyService.listByUser("bob");
         assertEquals(1, keys.size());
         assertNotEquals(rawKey, keys.get(0).keyHash);
     }
@@ -63,7 +63,7 @@ public class ApiKeyServiceTest extends FreshDb {
     void validate_key_returns_null_for_revoked() {
         userService.create("dave", Role.USER);
         String rawKey = apiKeyService.create("dave", "revoke me");
-        List<ApiKey> keys = apiKeyService.listByUser("dave");
+        List<ApiKeyEntity> keys = apiKeyService.listByUser("dave");
         apiKeyService.revoke(keys.get(0).id);
         assertNull(apiKeyService.validateKey(rawKey));
     }
@@ -72,12 +72,12 @@ public class ApiKeyServiceTest extends FreshDb {
     void validate_key_updates_lastUsedAt() {
         userService.create("eve", Role.USER);
         String rawKey = apiKeyService.create("eve", "track access");
-        List<ApiKey> before = apiKeyService.listByUser("eve");
+        List<ApiKeyEntity> before = apiKeyService.listByUser("eve");
         assertNull(before.get(0).lastUsedAt);
 
         apiKeyService.validateKey(rawKey);
 
-        List<ApiKey> after = apiKeyService.listByUser("eve");
+        List<ApiKeyEntity> after = apiKeyService.listByUser("eve");
         assertNotNull(after.get(0).lastUsedAt);
     }
 
@@ -86,7 +86,7 @@ public class ApiKeyServiceTest extends FreshDb {
         userService.create("frank", Role.USER);
         apiKeyService.create("frank", "key one");
         apiKeyService.create("frank", "key two");
-        List<ApiKey> keys = apiKeyService.listByUser("frank");
+        List<ApiKeyEntity> keys = apiKeyService.listByUser("frank");
         assertEquals(2, keys.size());
     }
 
@@ -94,7 +94,7 @@ public class ApiKeyServiceTest extends FreshDb {
     void revoke_key() {
         userService.create("grace", Role.USER);
         apiKeyService.create("grace", "to revoke");
-        List<ApiKey> keys = apiKeyService.listByUser("grace");
+        List<ApiKeyEntity> keys = apiKeyService.listByUser("grace");
         assertFalse(keys.get(0).revoked);
 
         apiKeyService.revoke(keys.get(0).id);

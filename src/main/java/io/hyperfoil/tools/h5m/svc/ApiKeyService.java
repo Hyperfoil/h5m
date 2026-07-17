@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
-import io.hyperfoil.tools.h5m.entity.ApiKey;
+import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import io.hyperfoil.tools.h5m.entity.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -33,7 +33,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
             throw new IllegalArgumentException("User not found: " + username);
         }
         String rawKey = "H5M_" + UUID.randomUUID().toString().replace("-", "_").toUpperCase();
-        ApiKey apiKey = new ApiKey();
+        ApiKeyEntity apiKey = new ApiKeyEntity();
         apiKey.keyHash = hashKey(rawKey);
         apiKey.user = user;
         apiKey.description = description;
@@ -44,16 +44,36 @@ public class ApiKeyService implements ApiKeyServiceInterface {
         return rawKey;
     }
 
+    /**
+     * Creates an API key with a specific raw key value (instead of generating one).
+     * Used for bootstrap where the key is provided via environment variable.
+     */
+    @Transactional
+    public void createWithKey(String username, String description, String rawKey) {
+        User user = userService.byUsername(username);
+        if (user == null) {
+            throw new IllegalArgumentException("User not found: " + username);
+        }
+        ApiKeyEntity apiKey = new ApiKeyEntity();
+        apiKey.keyHash = hashKey(rawKey);
+        apiKey.user = user;
+        apiKey.description = description;
+        apiKey.createdAt = Instant.now();
+        apiKey.activeDays = expirationDays;
+        apiKey.revoked = false;
+        apiKey.persist();
+    }
+
     @Override
     @Transactional
-    public List<ApiKey> listByUser(String username) {
-        return ApiKey.find("user.username", username).list();
+    public List<ApiKeyEntity> listByUser(String username) {
+        return ApiKeyEntity.find("user.username", username).list();
     }
 
     @Override
     @Transactional
     public void revoke(long keyId) {
-        ApiKey key = ApiKey.findById(keyId);
+        ApiKeyEntity key = ApiKeyEntity.findById(keyId);
         if (key != null) {
             key.revoked = true;
         }
@@ -65,7 +85,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
             return null;
         }
         String hash = hashKey(rawKey);
-        ApiKey apiKey = ApiKey.find("keyHash", hash).firstResult();
+        ApiKeyEntity apiKey = ApiKeyEntity.find("keyHash", hash).firstResult();
         if (apiKey == null || apiKey.revoked || apiKey.isExpired(Instant.now())) {
             return null;
         }
@@ -73,7 +93,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
         return apiKey.user;
     }
 
-    static String hashKey(String rawKey) {
+    public static String hashKey(String rawKey) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(rawKey.getBytes(StandardCharsets.UTF_8));
