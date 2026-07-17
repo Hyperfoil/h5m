@@ -41,4 +41,16 @@ public enum NodeType {
             || this == STDDEV_ANOMALY || this == EDIVISIVE;
     }
 
+    /**
+     * Finds the NodeType with the given display name (e.g., "ft", "rd", "jq").
+     *
+     * @return the matching NodeType, or null if no match
+     */
+    public static NodeType fromDisplay(String display) {
+        for (NodeType t : values()) {
+            if (t.display.equals(display)) return t;
+        }
+        return null;
+    }
+
 }

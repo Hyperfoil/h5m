@@ -1060,8 +1060,228 @@ public class RestEndpointTest extends FreshDb {
                 .extract().as(Long.class);
 
         assertNotEquals(uploadId1, uploadId2, "Each upload should return a unique ID");
+    }
 
+    // ---- Upload status tracking ----
 
+    @Test
+    public void upload_status_empty_folder() {
+        createFolder("upload-status-empty");
+
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 42}")
+                .when().post("/api/folder/upload-status-empty/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // The upload should complete quickly (no nodes to process)
+        // Poll the processing status endpoint
+        given()
+                .when().get("/api/processing/" + uploadId)
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("COMPLETED"));
+    }
+
+    @Test
+    public void upload_status_not_found() {
+        given()
+                .when().get("/api/processing/999999")
+                .then()
+                .statusCode(404);
+    }
+
+    @Test
+    public void upload_status() {
+        createFolder("upload-status");
+        Long groupId = getGroupId("upload-status");
+        createNode(groupId, "extract", ".value");
+
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 42}")
+                .when().post("/api/folder/upload-status/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // Status should eventually be COMPLETED (processing is fast for simple nodes)
+        // Allow a brief wait for async processing
+        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+
+        given()
+                .when().get("/api/processing/" + uploadId)
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("COMPLETED"));
+    }
+
+    @Test
+    public void upload_status_with_change_detection() throws Exception {
+        // Set up a folder with extractor nodes and a FixedThreshold detection node.
+        // Upload data that violates the threshold via REST and verify the upload
+        // status endpoint reports the change detection result.
+        createFolder("ft-detect");
+        Long groupId = getGroupId("ft-detect");
+
+        // Create JQ extractor nodes — these source from the root node automatically
+        Long rangeNodeId = createNode(groupId, "range", ".value");
+        Long fpExtractorId = createNode(groupId, "fp-extractor", ".env");
+
+        // Get the root node ID to use as groupBy for the FixedThreshold
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "ft-detect").firstResult();
+        Long rootNodeId = folder.group.root.id;
+        tm.commit();
+
+        // Create FixedThreshold: min=10, max=100 (inclusive)
+        // Sources order: [fingerprint(0), groupBy(1), range(2)]
+        Long ftNodeId = createConfiguredNode(groupId, "cpu-threshold",
+                NodeType.FIXED_THRESHOLD.name(),
+                List.of(fpExtractorId, rootNodeId, rangeNodeId),
+                """
+                {"min": 10.0, "max": 100.0, "minInclusive": true, "maxInclusive": true}
+                """);
+        assertTrue(ftNodeId > 0, "FixedThreshold node should be created");
+
+        // Upload data via REST with value=5 — below min=10, should trigger a threshold violation
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 5, \"env\": {\"type\": \"perf-test\"}}")
+                .when().post("/api/folder/ft-detect/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // Poll processing status until COMPLETED (async processing)
+        awaitUploadCompleted(uploadId);
+
+        // Verify detection values via the descendants endpoint
+        given()
+                .when().get("/api/value/" + uploadId + "/descendants?detection=true")
+                .then()
+                .statusCode(200)
+                .body("size()", greaterThan(0))
+                .body("[0].node.type", equalTo("FIXED_THRESHOLD"))
+                .body("[0].node.name", equalTo("cpu-threshold"));
+    }
+
+    @Test
+    public void upload_status_no_change_when_within_threshold() throws Exception {
+        // Same setup as upload_status_with_change_detection, but upload data
+        // that is within the threshold range — no change detection should fire.
+        createFolder("ft-no-change");
+        Long groupId = getGroupId("ft-no-change");
+
+        Long rangeNodeId = createNode(groupId, "range", ".value");
+        Long fpExtractorId = createNode(groupId, "fp-extractor", ".env");
+
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "ft-no-change").firstResult();
+        Long rootNodeId = folder.group.root.id;
+        tm.commit();
+
+        // Create FixedThreshold: min=10, max=100 (inclusive)
+        createConfiguredNode(groupId, "cpu-threshold",
+                NodeType.FIXED_THRESHOLD.name(),
+                List.of(fpExtractorId, rootNodeId, rangeNodeId),
+                """
+                {"min": 10.0, "max": 100.0, "minInclusive": true, "maxInclusive": true}
+                """);
+
+        // Upload data via REST with value=50 — within [10, 100], no violation expected
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 50, \"env\": {\"type\": \"perf-test\"}}")
+                .when().post("/api/folder/ft-no-change/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // Poll processing status until COMPLETED
+        awaitUploadCompleted(uploadId);
+
+        // Verify no detection values — value is within threshold
+        given()
+                .when().get("/api/value/" + uploadId + "/descendants?detection=true")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(0));
+    }
+
+    /**
+     * After the upload tracker is cleaned up, the processing endpoint infers
+     * COMPLETED from the root value existing in DB, and the descendants endpoint
+     * always queries DB (with cache as fast path).
+     */
+    @Test
+    public void upload_status_db_fallback_after_cache_eviction() throws Exception {
+        // Same setup as upload_status_with_change_detection — create a folder
+        // with a FixedThreshold that will fire, then evict the in-memory cache
+        // to force the DB fallback path.
+        createFolder("ft-detect-fallback");
+        Long groupId = getGroupId("ft-detect-fallback");
+
+        Long rangeNodeId = createNode(groupId, "range", ".value");
+        Long fpExtractorId = createNode(groupId, "fp-extractor", ".env");
+
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "ft-detect-fallback").firstResult();
+        Long rootNodeId = folder.group.root.id;
+        tm.commit();
+
+        Long ftNodeId = createConfiguredNode(groupId, "cpu-threshold",
+                NodeType.FIXED_THRESHOLD.name(),
+                List.of(fpExtractorId, rootNodeId, rangeNodeId),
+                """
+                {"min": 10.0, "max": 100.0, "minInclusive": true, "maxInclusive": true}
+                """);
+
+        // Upload data with value=5 — below min=10, triggers a violation
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 5, \"env\": {\"type\": \"perf-test\"}}")
+                .when().post("/api/folder/ft-detect-fallback/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        awaitUploadCompleted(uploadId);
+
+        // Verify processing status is COMPLETED
+        given()
+                .when().get("/api/processing/" + uploadId)
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("COMPLETED"));
+
+        // Query detection descendants — DB is the source of truth
+        given()
+                .when().get("/api/value/" + uploadId + "/descendants?detection=true")
+                .then()
+                .statusCode(200)
+                .body("size()", greaterThan(0))
+                .body("[0].node.name", equalTo("cpu-threshold"))
+                .body("[0].node.type", equalTo("FIXED_THRESHOLD"))
+                .body("[0].data", notNullValue());
+    }
+
+    private void awaitUploadCompleted(Long uploadId) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            String state = given()
+                    .when().get("/api/processing/" + uploadId)
+                    .then()
+                    .statusCode(200)
+                    .extract().path("state");
+            if (!"PROCESSING".equals(state)) {
+                return;
+            }
+            Thread.sleep(100);
+        }
+        fail("Upload " + uploadId + " did not complete within 30 seconds");
     }
 
 }

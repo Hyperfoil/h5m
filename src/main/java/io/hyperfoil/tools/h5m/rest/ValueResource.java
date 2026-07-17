@@ -47,6 +47,20 @@ public class ValueResource {
     }
 
     @GET
+    @Path("{id}/descendants")
+    @PermitAll
+    @Operation(description = "Get descendant values of a value. Use ?detection=true to filter to detection node values only.")
+    public List<Value> getDescendants(
+            @PathParam("id") Long id,
+            @QueryParam("detection") @DefaultValue("false") boolean detectionOnly) {
+        if (detectionOnly) {
+            return valueServiceImpl.getDetectionDescendants(id);
+        }
+        // General descendants — delegate to ValueService
+        return valueServiceImpl.getAllDescendants(id);
+    }
+
+    @GET
     @Path("node/{nodeId}/descendants")
     @PermitAll
     @Operation(description = "Get descendant values of a specific node")

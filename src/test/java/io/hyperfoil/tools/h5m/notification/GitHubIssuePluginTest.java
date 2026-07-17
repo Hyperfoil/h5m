@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.h5m.api.Change;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import org.junit.jupiter.api.Test;
@@ -82,11 +83,11 @@ public class GitHubIssuePluginTest {
                 .put("testName", "perf-test")
                 .build();
 
-        ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
+        Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
         return new ChangeNotification(
-            "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), parseObj(configData), parseObj(secrets), template
+            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
+            List.of(change), parseObj(configData), parseObj(secrets), template
         );
     }
 

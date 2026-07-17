@@ -12,6 +12,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
+import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Priority;
@@ -392,13 +393,29 @@ public class WorkService implements WorkServiceInterface {
                 Set<NodeEntity> createdValues = newOrUpdated.stream().map(v->v.node).collect(Collectors.toSet());
                 for(NodeEntity node : createdValues){
                     if(node.isDetection()){
-                        List<Long> valueIds = newOrUpdated.stream().map(ValueEntity::getId).toList();
+                        // Build enriched Change records from the detection values
+                        // already in memory — no additional DB lookups needed
+                        List<Change> changes = newOrUpdated.stream()
+                                .filter(v -> v.node.equals(node))
+                                .map(v -> new Change(
+                                        v.getId(),
+                                        node.getId(),
+                                        node.name,
+                                        node.type(),
+                                        v.data,
+                                        v.data != null ? v.data.getField("fingerprint") : null
+                                ))
+                                .toList();
                         long folderId = sourceValues.stream()
                                 .filter(v -> v.folder != null)
                                 .map(v -> v.folder.id)
                                 .findFirst()
                                 .orElse(-1L);
-                        changeDetectedEvent.fire(new ChangeDetectedEvent(folderId, node.getId(), node.name, valueIds, w.isDispatch()));
+                        // Derive rootValueId from sourceValueIds — for upload work,
+                        // the first ID is the root value (upload ID)
+                        long rootValueId = w.getSourceValueIds().isEmpty() ? -1L : w.getSourceValueIds().getFirst();
+                        changeDetectedEvent.fire(new ChangeDetectedEvent(folderId,
+                                changes, w.isDispatch(), rootValueId));
                     }
                     // Cascade work inherits source value IDs and dispatch flag, so
                     // tracker association is derived automatically via findTrackers()

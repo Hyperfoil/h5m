@@ -5,7 +5,8 @@ import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqString;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.h5m.api.Change;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
 import io.quarkus.qute.Qute;
@@ -126,7 +127,7 @@ public class SlackPlugin implements NotificationPlugin {
 
         // Change details sections
         for (int i = 0; i < notification.changes().size(); i++) {
-            ChangeDetail change = notification.changes().get(i);
+            Change change = notification.changes().get(i);
             blockList.add(JqObject.of("type", JqString.of("section"),
                 "text", JqObject.of("type", JqString.of("mrkdwn"),
                     "text", JqString.of(formatChangeDetail(i + 1, change, notification.nodeType())))));
@@ -167,7 +168,7 @@ public class SlackPlugin implements NotificationPlugin {
             .render();
     }
 
-    private String formatChangeDetail(int index, ChangeDetail change, String nodeType) {
+    private String formatChangeDetail(int index, Change change, NodeType nodeType) {
         StringBuilder sb = new StringBuilder();
         sb.append("*Change ").append(index).append("*");
         if (change.fingerprint() != null) {
@@ -176,12 +177,12 @@ public class SlackPlugin implements NotificationPlugin {
         sb.append("\n");
         if (change.data() instanceof JqObject obj) {
             switch (nodeType) {
-                case "ft" -> {
+                case FIXED_THRESHOLD -> {
                     if (obj.has("value")) sb.append("• Value: `").append(obj.get("value").toJsonString()).append("`\n");
                     if (obj.has("bound")) sb.append("• Bound: `").append(obj.get("bound").toJsonString()).append("`\n");
                     if (obj.has("direction")) sb.append("• Direction: ").append(obj.get("direction").asText()).append("\n");
                 }
-                case "rd" -> {
+                case RELATIVE_DIFFERENCE -> {
                     if (obj.has("ratio")) sb.append("• Ratio: `").append(String.format("%.1f%%", obj.get("ratio").asDouble(0.0))).append("`\n");
                     if (obj.has("value")) sb.append("• Value: `").append(obj.get("value").toJsonString()).append("`\n");
                     if (obj.has("previous")) sb.append("• Previous: `").append(obj.get("previous").toJsonString()).append("`\n");

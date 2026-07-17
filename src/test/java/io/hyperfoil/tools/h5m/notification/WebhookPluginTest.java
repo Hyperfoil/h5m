@@ -1,7 +1,8 @@
 package io.hyperfoil.tools.h5m.notification;
 
 import com.sun.net.httpserver.HttpServer;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.h5m.api.Change;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.test.junit.QuarkusTest;
@@ -85,7 +86,7 @@ public class WebhookPluginTest {
             JqValue payload = JqValues.parse(receivedBody.get());
             assertEquals("test-folder", payload.getField("folder").asString(""));
             assertEquals("threshold-node", payload.getField("nodeName").asString(""));
-            assertEquals("ft", payload.getField("nodeType").asString(""));
+            assertEquals("FIXED_THRESHOLD", payload.getField("nodeType").asString(""));
             assertEquals(1, (int) payload.getField("changeCount").asLong(0));
             assertTrue(payload.has("text"), "Payload should contain a text field");
             assertTrue(payload.has("changes"), "Payload should contain changes array");
@@ -233,11 +234,11 @@ public class WebhookPluginTest {
                 .put("testName", "perf-test")
                 .build();
 
-        ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
+        Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
         return new ChangeNotification(
-            "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), parseObj(configData), parseObj(secrets), template
+            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
+            List.of(change), parseObj(configData), parseObj(secrets), template
         );
     }
 

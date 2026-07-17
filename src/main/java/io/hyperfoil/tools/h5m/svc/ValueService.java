@@ -13,6 +13,9 @@ import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.enterprise.context.ApplicationScoped;
+import io.hyperfoil.tools.h5m.api.Change;
+import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
+import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
@@ -27,6 +30,7 @@ import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -43,6 +47,59 @@ public class ValueService implements ValueServiceInterface {
     DatabaseEngine db;
     @Inject
     NodeService nodeService;
+
+    // ---- Detection value cache ----
+    // In-memory cache of detection values keyed by root value ID (upload ID).
+    // Populated by the ChangeDetectedEvent observer as detection nodes produce values.
+    // Used by getDetectionDescendants() as a fast path before falling back to DB query.
+    private static final long DETECTION_CACHE_RETENTION_MS = 10 * 60 * 1000; // 10 minutes
+    private static final int DETECTION_CACHE_MAX_ENTRIES = 1000;
+
+    private record DetectionCacheEntry(List<Value> values, long createdAt) {}
+    private final ConcurrentHashMap<Long, DetectionCacheEntry> detectionCache = new ConcurrentHashMap<>();
+
+    /**
+     * Observes change detection events and caches the detection values
+     * by root value ID for fast retrieval via the REST API.
+     */
+    void onChangeDetected(@Observes ChangeDetectedEvent event) {
+        if (event.rootValueId() < 0) return;
+        long rootId = event.rootValueId();
+        CycleAvoidingContext ctx = new CycleAvoidingContext();
+        List<Value> values = event.changes().stream()
+                .map(c -> {
+                    ValueEntity ve = em.find(ValueEntity.class, c.valueId());
+                    return ve != null ? apiMapper.toValue(ve, ctx) : null;
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        // Merge with existing cache entry (multiple detection nodes may fire for one upload)
+        detectionCache.merge(rootId,
+                new DetectionCacheEntry(values, System.currentTimeMillis()),
+                (existing, incoming) -> {
+                    List<Value> merged = new ArrayList<>(existing.values());
+                    merged.addAll(incoming.values());
+                    return new DetectionCacheEntry(merged, System.currentTimeMillis());
+                });
+        evictStaleDetectionCache();
+    }
+
+    /**
+     * Clears the in-memory detection value cache. Called by test infrastructure
+     * after database truncation to prevent stale cache entries from being served
+     * when value IDs are reused.
+     */
+    public void clearDetectionCache() {
+        detectionCache.clear();
+    }
+
+    private void evictStaleDetectionCache() {
+        if (detectionCache.size() > DETECTION_CACHE_MAX_ENTRIES) {
+            long now = System.currentTimeMillis();
+            detectionCache.entrySet().removeIf(e ->
+                    now - e.getValue().createdAt() > DETECTION_CACHE_RETENTION_MS);
+        }
+    }
 
     @Override
     @Transactional
@@ -629,6 +686,63 @@ public class ValueService implements ValueServiceInterface {
         ).setParameter("rootId", root.id).setParameter("nodeId",node.id).getResultList();
         List<Long> longIds = ids.stream().map(Number::longValue).toList();
         return em.unwrap(Session.class).findMultiple(ValueEntity.class, longIds);
+    }
+
+    /**
+     * Returns detection node values that are descendants of the given root value.
+     * Checks the in-memory detection cache first (populated by the
+     * ChangeDetectedEvent observer), then falls back to a DB query.
+     *
+     * @param rootValueId the root value ID (upload ID)
+     * @return detection values as DTOs, or empty list if none found
+     */
+    @Transactional
+    public List<Value> getDetectionDescendants(long rootValueId) {
+        // Fast path: check in-memory cache
+        DetectionCacheEntry cached = detectionCache.get(rootValueId);
+        if (cached != null) {
+            long age = System.currentTimeMillis() - cached.createdAt();
+            if (age <= DETECTION_CACHE_RETENTION_MS) {
+                return cached.values();
+            }
+            detectionCache.remove(rootValueId);
+        }
+        // Slow path: query DB
+        return loadDetectionDescendantsFromDb(rootValueId);
+    }
+
+    /**
+     * Returns all descendant values of the given root value as DTOs.
+     */
+    @Transactional
+    public List<Value> getAllDescendants(long rootValueId) {
+        ValueEntity root = em.find(ValueEntity.class, rootValueId);
+        if (root == null) return List.of();
+        CycleAvoidingContext ctx = new CycleAvoidingContext();
+        return getDescendantValues(root).stream()
+                .map(e -> apiMapper.toValue(e, ctx))
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Value> loadDetectionDescendantsFromDb(long rootValueId) {
+        List<Number> ids = em.createNativeQuery("""
+                WITH RECURSIVE descendants(vid) AS (
+                    SELECT ve.child_id FROM value_edge ve WHERE ve.parent_id = :rootId
+                    UNION ALL
+                    SELECT ve.child_id FROM value_edge ve JOIN descendants d ON ve.parent_id = d.vid
+                )
+                SELECT distinct v.id
+                FROM value v
+                JOIN node n ON v.node_id = n.id
+                JOIN descendants d ON v.id = d.vid
+                WHERE n.type IN """ + NodeService.DETECTION_NODES)
+                .setParameter("rootId", rootValueId)
+                .getResultList();
+        List<Long> longIds = ids.stream().map(Number::longValue).toList();
+        List<ValueEntity> entities = em.unwrap(Session.class).findMultiple(ValueEntity.class, longIds);
+        CycleAvoidingContext ctx = new CycleAvoidingContext();
+        return entities.stream().map(e -> apiMapper.toValue(e, ctx)).toList();
     }
 
     //get the values from node that descend from root with the associated value source path (nodeId and index for each source value)

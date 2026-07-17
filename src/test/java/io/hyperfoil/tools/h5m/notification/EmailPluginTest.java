@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.notification;
 
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.h5m.api.Change;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.mailer.MockMailbox;
@@ -164,11 +165,11 @@ public class EmailPluginTest {
                 .put("previous", 1000.0)
                 .put("last", 750.0)
                 .build();
-        ChangeDetail detail = new ChangeDetail(42L, data, null);
+        Change change = new Change(42L, 1L, "regression-node", NodeType.FIXED_THRESHOLD, data, null);
 
         ChangeNotification notification = new ChangeNotification(
-            "test-folder", 1L, "regression-node", "rd",
-            List.of(detail),
+            "test-folder", 5L, 42L, 1L, "regression-node", NodeType.RELATIVE_DIFFERENCE,
+            List.of(change),
             parseObj("{\"to\": \"team@example.com\"}"),
             JqObject.EMPTY, null
         );
@@ -200,11 +201,11 @@ public class EmailPluginTest {
                 .put("testName", "perf-test")
                 .build();
 
-        ChangeDetail detail = new ChangeDetail(42L, detectionData, fingerprint);
+        Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
         return new ChangeNotification(
-            "test-folder", 1L, "threshold-node", "ft",
-            List.of(detail), parseObj(configData), JqObject.EMPTY, template
+            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
+            List.of(change), parseObj(configData), JqObject.EMPTY, template
         );
     }
 

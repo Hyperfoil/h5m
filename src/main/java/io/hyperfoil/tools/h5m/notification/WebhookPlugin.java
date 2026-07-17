@@ -4,7 +4,7 @@ import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
+import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.quarkus.logging.Log;
 import io.quarkus.qute.Location;
@@ -125,9 +125,11 @@ public class WebhookPlugin implements NotificationPlugin {
     private JqObject buildPayload(ChangeNotification notification) {
         JqObject.Builder payloadBuilder = JqObject.builder();
         payloadBuilder.put("folder", notification.folderName());
+        payloadBuilder.put("folderId", notification.folderId());
+        payloadBuilder.put("valueId", notification.valueId());
         payloadBuilder.put("nodeId", notification.nodeId());
         payloadBuilder.put("nodeName", notification.nodeName());
-        payloadBuilder.put("nodeType", notification.nodeType());
+        payloadBuilder.put("nodeType", notification.nodeType().name());
         payloadBuilder.put("changeCount", (long) notification.changes().size());
 
         // Include formatted text — compatible with Slack incoming webhooks
@@ -136,9 +138,14 @@ public class WebhookPlugin implements NotificationPlugin {
 
         JqValue[] changeElements = new JqValue[notification.changes().size()];
         for (int i = 0; i < notification.changes().size(); i++) {
-            ChangeDetail change = notification.changes().get(i);
+            Change change = notification.changes().get(i);
             JqObject.Builder changeBuilder = JqObject.builder();
             changeBuilder.put("valueId", change.valueId());
+            changeBuilder.put("nodeId", change.nodeId());
+            changeBuilder.put("nodeName", change.nodeName());
+            if (change.nodeType() != null) {
+                changeBuilder.put("nodeType", change.nodeType().name());
+            }
             if (change.data() != null) {
                 changeBuilder.put("data", change.data());
             }
@@ -148,6 +155,12 @@ public class WebhookPlugin implements NotificationPlugin {
             changeElements[i] = changeBuilder.build();
         }
         payloadBuilder.put("changes", JqArray.of(changeElements));
+
+        // API links for follow-up queries
+        JqObject.Builder linksBuilder = JqObject.builder();
+        linksBuilder.put("processing", "/api/processing/" + notification.valueId());
+        linksBuilder.put("labelValues", "/api/folder/" + notification.folderId() + "/labelValues");
+        payloadBuilder.put("links", linksBuilder.build());
 
         return payloadBuilder.build();
     }

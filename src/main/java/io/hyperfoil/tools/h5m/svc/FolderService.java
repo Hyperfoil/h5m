@@ -23,6 +23,7 @@ import io.hyperfoil.tools.h5m.entity.ViewEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.entity.work.Work;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -277,7 +278,29 @@ public class FolderService implements FolderServiceInterface {
                 return new Upload(newValue.id, CompletableFuture.completedFuture(null));
             }
 
-            return new Upload(newValue.id, workService.createTracked(works, Set.of(newValue.id)));
+            CompletableFuture<Void> future = workService.createTracked(works, Set.of(newValue.id));
+            // Mark completed and null out ephemeral data when all work finishes
+            future.whenComplete((v, t) -> {
+                QuarkusTransaction.requiringNew().run(() -> {
+                    ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
+                            "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, newValue.id).firstResult();
+                    if (entity != null) {
+                        if (t != null) {
+                            Log.errorf(t, "Upload %d failed during processing", newValue.id);
+                        } else {
+                            entity.completed = true;
+                        }
+                    }
+                    // Null out data for ephemeral nodes to reclaim storage
+                    int nullified = valueService.nullifyEphemeralData(newValue.id);
+                    if (nullified > 0) {
+                        Log.debugf("Nullified data for %d ephemeral values (upload %d)", nullified, newValue.id);
+                        // Evict cached ValueEntity instances since data was nullified via native SQL
+                        em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
+                    }
+                });
+            });
+            return new Upload(newValue.id, future);
         });
 
         if (upload.future.isDone()) {

@@ -92,9 +92,9 @@ public class ChangeDetectionTest extends FreshDb {
 
         assertEquals(1, eventObserver.getEvents().size(), "should fire exactly one ChangeDetectedEvent");
         ChangeDetectedEvent event = eventObserver.getEvents().getFirst();
-        assertEquals(fixture.ft().getId(), event.nodeId());
-        assertEquals("ftNode", event.nodeName());
-        assertFalse(event.valueIds().isEmpty(), "event should contain value IDs");
+        assertFalse(event.changes().isEmpty(), "event should contain change results");
+        assertEquals(fixture.ft().getId(), event.changes().getFirst().nodeId());
+        assertEquals("ftNode", event.changes().getFirst().nodeName());
     }
 
     @Test

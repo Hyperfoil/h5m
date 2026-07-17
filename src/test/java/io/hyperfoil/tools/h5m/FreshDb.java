@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m;
 
 import io.agroal.api.AgroalDataSource;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.transaction.Status;
@@ -25,11 +26,16 @@ public class FreshDb {
     @Inject
     TransactionManager tm;
 
+    @Inject
+    ValueService valueService;
+
     @BeforeEach
     @AfterEach
     public void dropRows() throws Exception {
-        // Evict 2LC before truncating tables — prevents stale cached entities
+        // Evict 2LC and in-memory caches before truncating tables —
+        // prevents stale cached entities when IDs are reused
         emf.getCache().evictAll();
+        valueService.clearDetectionCache();
 
         if (tm.getStatus() != Status.STATUS_NO_TRANSACTION) {
             tm.rollback();

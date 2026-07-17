@@ -3,11 +3,10 @@ package io.hyperfoil.tools.h5m.svc;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
+import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.entity.NotificationLog;
-import io.hyperfoil.tools.h5m.entity.ValueEntity;
-import io.hyperfoil.tools.h5m.event.ChangeDetail;
 import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
 import io.hyperfoil.tools.h5m.event.ChangeNotification;
 import io.hyperfoil.tools.h5m.notification.NotificationMethod;
@@ -20,13 +19,15 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * Observes {@link ChangeDetectedEvent} and dispatches notifications to
  * configured channels via {@link NotificationPlugin} implementations.
+ * <p>
+ * Change events arrive pre-enriched with data and fingerprint fields —
+ * no additional DB lookups are needed.
  */
 @ApplicationScoped
 public class NotificationService {
@@ -39,11 +40,19 @@ public class NotificationService {
     /**
      * Observes change detected events and dispatches notifications
      * to all enabled notification configs for the folder.
+     * <p>
+     * The event carries pre-enriched {@link Change} records — no need
+     * to load values from the DB.
      */
     @Transactional
     public void onChangeDetected(@Observes ChangeDetectedEvent event) {
+        List<Change> changes = event.changes();
+        if (changes.isEmpty()) return;
+
+        Change first = changes.getFirst();
+
         if (!event.dispatch()) {
-            Log.debugf("Suppressing notification for node %s (notify=false)", event.nodeName());
+            Log.debugf("Suppressing notification for node %s (notify=false)", first.nodeName());
             return;
         }
 
@@ -59,29 +68,24 @@ public class NotificationService {
         FolderEntity folder = FolderEntity.findById(event.folderId());
         String folderName = folder != null ? folder.name : "unknown";
 
-        // Resolve node type from one of the values
-        String nodeType = resolveNodeType(event.valueIds());
-
-        // Enrich with value data
-        List<ChangeDetail> details = loadChangeDetails(event.valueIds());
-
         // Dispatch to each configured plugin
         for (NotificationConfig config : configs) {
             findPlugin(config.method).ifPresentOrElse(
                 plugin -> {
                     ChangeNotification notification = new ChangeNotification(
-                        folderName, event.nodeId(), event.nodeName(),
-                        nodeType, details, parseConfigJson(config.data), parseConfigJson(config.secrets), config.template
+                        folderName, event.folderId(), event.rootValueId(),
+                        first.nodeId(), first.nodeName(),
+                        first.nodeType(), changes, parseConfigJson(config.data), parseConfigJson(config.secrets), config.template
                     );
                     try {
                         plugin.send(notification);
-                        logNotification(folder, config, event, details.size(), "sent", null);
+                        logNotification(folder, config, first, changes.size(), "sent", null);
                         Log.infof("Notification sent via %s for %s/%s (%d changes)",
-                            config.method, folderName, event.nodeName(), details.size());
+                            config.method, folderName, first.nodeName(), changes.size());
                     } catch (Exception e) {
-                        logNotification(folder, config, event, details.size(), "failed", e.getMessage());
+                        logNotification(folder, config, first, changes.size(), "failed", e.getMessage());
                         Log.errorf(e, "Failed to send %s notification for %s/%s",
-                            config.method, folderName, event.nodeName());
+                            config.method, folderName, first.nodeName());
                     }
                 },
                 () -> Log.warnf("No plugin found for notification method '%s'", config.method)
@@ -117,30 +121,8 @@ public class NotificationService {
         }
     }
 
-    private List<ChangeDetail> loadChangeDetails(List<Long> valueIds) {
-        List<ChangeDetail> details = new ArrayList<>();
-        for (Long valueId : valueIds) {
-            ValueEntity value = ValueEntity.findById(valueId);
-            if (value != null) {
-                JqValue fingerprint = value.data != null && value.data.has("fingerprint")
-                        ? value.data.getField("fingerprint") : null;
-                details.add(new ChangeDetail(valueId, value.data, fingerprint));
-            }
-        }
-        return details;
-    }
-
-    private String resolveNodeType(List<Long> valueIds) {
-        if (valueIds == null || valueIds.isEmpty()) return "unknown";
-        ValueEntity value = ValueEntity.findById(valueIds.getFirst());
-        if (value != null && value.node != null) {
-            return value.node.type().display();
-        }
-        return "unknown";
-    }
-
     private void logNotification(FolderEntity folder, NotificationConfig config,
-                                  ChangeDetectedEvent event, int changeCount,
+                                  Change change, int changeCount,
                                   String status, String errorMessage) {
         NotificationLog log = new NotificationLog();
         log.folder = folder;
@@ -148,8 +130,8 @@ public class NotificationService {
         log.destination = config.data;
         log.status = status;
         log.errorMessage = errorMessage;
-        log.nodeId = event.nodeId();
-        log.nodeName = event.nodeName();
+        log.nodeId = change.nodeId();
+        log.nodeName = change.nodeName();
         log.changeCount = changeCount;
         log.persist();
     }
