@@ -1,12 +1,15 @@
 package io.hyperfoil.tools.h5m.entity.mapper;
 
 import io.hyperfoil.tools.h5m.api.*;
+import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.ViewEntity;
 import io.hyperfoil.tools.h5m.entity.ViewComponentEntity;
+
+import java.time.Instant;
 import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -34,4 +37,22 @@ public interface ApiMapper {
     @Mapping(target = "nodeType", expression = "java(component.node != null ? component.node.type().name() : null)")
     ViewComponent toViewComponent(ViewComponentEntity component);
 
+    default ApiKey toApiKey(ApiKeyEntity entity) {
+        return toApiKey(entity, null);
+    }
+
+    default ApiKey toApiKey(ApiKeyEntity entity, String rawKey) {
+        if (entity == null) return null;
+        Instant now = Instant.now();
+        return new ApiKey(
+                entity.id,
+                entity.user != null ? entity.user.username : null,
+                entity.description,
+                entity.createdAt,
+                entity.lastUsedAt,
+                entity.revoked,
+                entity.isExpired(now),
+                rawKey
+        );
+    }
 }

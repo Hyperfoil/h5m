@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.ApiKey;
+import io.hyperfoil.tools.h5m.api.ApiKey;
 import io.hyperfoil.tools.h5m.entity.Role;
 import io.hyperfoil.tools.h5m.entity.User;
 import io.quarkus.test.junit.QuarkusTest;
@@ -32,12 +32,13 @@ public class ApiKeyServiceTest extends FreshDb {
     }
 
     @Test
-    void create_key_stores_hash_not_raw() {
+    void create_key_listed_without_raw_key() {
         userService.create("bob", Role.USER);
-        String rawKey = apiKeyService.create("bob", "my key");
+        apiKeyService.create("bob", "my key");
         List<ApiKey> keys = apiKeyService.listByUser("bob");
         assertEquals(1, keys.size());
-        assertNotEquals(rawKey, keys.get(0).keyHash);
+        assertNull(keys.get(0).rawKey(), "list should not expose raw key");
+        assertNotNull(keys.get(0).createdAt());
     }
 
     @Test
@@ -64,7 +65,7 @@ public class ApiKeyServiceTest extends FreshDb {
         userService.create("dave", Role.USER);
         String rawKey = apiKeyService.create("dave", "revoke me");
         List<ApiKey> keys = apiKeyService.listByUser("dave");
-        apiKeyService.revoke(keys.get(0).id);
+        apiKeyService.revoke(keys.get(0).id());
         assertNull(apiKeyService.validateKey(rawKey));
     }
 
@@ -73,12 +74,12 @@ public class ApiKeyServiceTest extends FreshDb {
         userService.create("eve", Role.USER);
         String rawKey = apiKeyService.create("eve", "track access");
         List<ApiKey> before = apiKeyService.listByUser("eve");
-        assertNull(before.get(0).lastUsedAt);
+        assertNull(before.get(0).lastUsedAt());
 
         apiKeyService.validateKey(rawKey);
 
         List<ApiKey> after = apiKeyService.listByUser("eve");
-        assertNotNull(after.get(0).lastUsedAt);
+        assertNotNull(after.get(0).lastUsedAt());
     }
 
     @Test
@@ -95,12 +96,12 @@ public class ApiKeyServiceTest extends FreshDb {
         userService.create("grace", Role.USER);
         apiKeyService.create("grace", "to revoke");
         List<ApiKey> keys = apiKeyService.listByUser("grace");
-        assertFalse(keys.get(0).revoked);
+        assertFalse(keys.get(0).revoked());
 
-        apiKeyService.revoke(keys.get(0).id);
+        apiKeyService.revoke(keys.get(0).id());
 
         keys = apiKeyService.listByUser("grace");
-        assertTrue(keys.get(0).revoked);
+        assertTrue(keys.get(0).revoked());
     }
 
     @Test

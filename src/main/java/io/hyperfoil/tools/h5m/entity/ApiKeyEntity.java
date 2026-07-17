@@ -13,13 +13,13 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Entity(name = "api_key")
-public class ApiKey extends PanacheEntityBase {
+public class ApiKeyEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
 
-    @Column(name = "key_hash")
+    @Column(name = "key_hash", unique = true)
     public String keyHash; // SHA-256 hex
 
     @ManyToOne(fetch = FetchType.EAGER)
@@ -35,11 +35,16 @@ public class ApiKey extends PanacheEntityBase {
 
     public boolean revoked;
 
-    public ApiKey() {}
+    public ApiKeyEntity() {}
 
+    /**
+     * Checks if this key has expired based on idle time.
+     * Expiration is independent of revocation — a key can be revoked but not
+     * expired, or expired but not revoked.
+     */
     public boolean isExpired(Instant now) {
         Instant reference = lastUsedAt != null ? lastUsedAt : createdAt;
-        return revoked || (reference != null && now.isAfter(reference.plus(activeDays, ChronoUnit.DAYS)));
+        return reference != null && now.isAfter(reference.plus(activeDays, ChronoUnit.DAYS));
     }
 
     public void recordAccess() {
@@ -48,7 +53,7 @@ public class ApiKey extends PanacheEntityBase {
 
     @Override
     public String toString() {
-        return "ApiKey<" + id + ">[ user=" + (user != null ? user.username : "null") +
+        return "ApiKeyEntity<" + id + ">[ user=" + (user != null ? user.username : "null") +
                 " description=" + description + " ]";
     }
 }

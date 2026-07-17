@@ -36,8 +36,11 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
         if (user == null) {
             return null;
         }
-        return QuarkusSecurityIdentity.builder()
-                .setPrincipal(new QuarkusPrincipal(user.username))
-                .build();
+        QuarkusSecurityIdentity.Builder builder = QuarkusSecurityIdentity.builder()
+                .setPrincipal(new QuarkusPrincipal(user.username));
+        if (user.role != null) {
+            builder.addRole(user.role.name().toLowerCase());
+        }
+        return builder.build();
     }
 }
