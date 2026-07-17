@@ -1092,8 +1092,66 @@ public class RestEndpointTest extends FreshDb {
                 .extract().as(Long.class);
 
         assertNotEquals(uploadId1, uploadId2, "Each upload should return a unique ID");
+    }
 
+    // ---- Upload status tracking ----
 
+    @Test
+    public void upload_status_empty_folder() {
+        createFolder("upload-status-empty");
+
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 42}")
+                .when().post("/api/folder/upload-status-empty/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // The upload should complete quickly (no nodes to process)
+        // Poll the status endpoint
+        given()
+                .when().get("/api/folder/upload/" + uploadId + "/status")
+                .then()
+                .statusCode(200)
+                .body("uploadId", equalTo(uploadId.intValue()))
+                .body("state", equalTo("COMPLETED"))
+                .body("durationMs", greaterThanOrEqualTo(0));
+    }
+
+    @Test
+    public void upload_status_not_found() {
+        given()
+                .when().get("/api/folder/upload/999999/status")
+                .then()
+                .statusCode(404);
+    }
+
+    @Test
+    public void upload_status() {
+        createFolder("upload-status");
+        Long groupId = getGroupId("upload-status");
+        createNode(groupId, "extract", ".value");
+
+        Long uploadId = given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"value\": 42}")
+                .when().post("/api/folder/upload-status/upload")
+                .then()
+                .statusCode(200)
+                .extract().as(Long.class);
+
+        // Status should eventually be COMPLETED (processing is fast for simple nodes)
+        // Allow a brief wait for async processing
+        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+
+        given()
+                .when().get("/api/folder/upload/" + uploadId + "/status")
+                .then()
+                .statusCode(200)
+                .body("uploadId", equalTo(uploadId.intValue()))
+                .body("state", equalTo("COMPLETED"))
+                .body("changes", notNullValue());
     }
 
 }

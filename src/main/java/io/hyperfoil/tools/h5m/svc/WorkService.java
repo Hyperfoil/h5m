@@ -326,13 +326,19 @@ public class WorkService implements WorkServiceInterface {
                 Set<NodeEntity> createdValues = newOrUpdated.stream().map(v->v.node).collect(Collectors.toSet());
                 for(NodeEntity node : createdValues){
                     if(node.isDetection()){
-                        List<Long> valueIds = newOrUpdated.stream().map(ValueEntity::getId).toList();
+                        List<Long> valueIds = newOrUpdated.stream()
+                                .filter(v -> v.node.equals(node))
+                                .map(ValueEntity::getId).toList();
                         long folderId = sourceValues.stream()
                                 .filter(v -> v.folder != null)
                                 .map(v -> v.folder.id)
                                 .findFirst()
                                 .orElse(-1L);
-                        changeDetectedEvent.fire(new ChangeDetectedEvent(folderId, node.getId(), node.name, valueIds, w.dispatch));
+                        // Derive rootValueId from sourceValueIds — for upload work,
+                        // the first ID is the root value (upload ID)
+                        long rootValueId = w.sourceValueIds.isEmpty() ? -1L : w.sourceValueIds.getFirst();
+                        changeDetectedEvent.fire(new ChangeDetectedEvent(folderId, node.getId(), node.name,
+                                node.type(), valueIds, w.dispatch, rootValueId));
                     }
                     // Cascade work inherits source value IDs and dispatch flag, so
                     // tracker association is derived automatically via findTrackers()
