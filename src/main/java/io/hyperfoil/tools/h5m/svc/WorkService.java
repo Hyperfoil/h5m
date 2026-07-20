@@ -72,6 +72,15 @@ public class WorkService implements WorkServiceInterface {
 
     private final ConcurrentHashMap<Long, UploadTracker> trackers = new ConcurrentHashMap<>();
 
+    // Recalculation tracker IDs that have been cancelled. Checked by execute()
+    // to skip processing for in-flight work items belonging to a cancelled recalculation.
+    private final Set<Long> cancelledRecalcIds = ConcurrentHashMap.newKeySet();
+
+    // Tracks which folders have active recalculations. Uploads for a folder
+    // are re-queued (held) while any recalculation is active for that folder,
+    // ensuring the node graph is in a consistent state before processing new data.
+    private final Map<Long, Set<Long>> activeRecalcsByFolder = new ConcurrentHashMap<>();
+
     /**
      * Finds trackers associated with the work's source values.
      * A tracker exists for each root value ID that was registered via createTracked().
@@ -234,6 +243,69 @@ public class WorkService implements WorkServiceInterface {
         return workExecutor.awaitTermination(timeout, unit);
     }
 
+    /**
+     * Cancels a specific recalculation by its tracker ID.
+     * Removes matching Work items from the queue and fails their trackers.
+     * In-flight items will check cancelledRecalcIds and skip cascade creation.
+     */
+    public void cancelRecalculation(long recalcTrackerId) {
+        cancelledRecalcIds.add(recalcTrackerId);
+        WorkQueue workQueue = workExecutor.getWorkQueue();
+        List<Work> removed = workQueue.removeByRecalcId(recalcTrackerId);
+        for (Work w : removed) {
+            decrementTrackers(w);
+        }
+        // Force-fail any remaining UploadTrackers for this recalculation's values
+        // so their CompletableFutures complete and the RecalculationTracker
+        // can transition to CANCELLED state
+        for (Work w : removed) {
+            failTrackers(w, new java.util.concurrent.CancellationException("Recalculation cancelled"));
+        }
+        workQueue.decrementDeferred(removed.size());
+    }
+
+    /**
+     * Clears the cancellation flag for a recalculation tracker ID,
+     * allowing new work with a different tracker ID to proceed.
+     */
+    public void clearCancellation(long recalcTrackerId) {
+        cancelledRecalcIds.remove(recalcTrackerId);
+    }
+
+    /**
+     * Registers a recalculation as active for the given folder.
+     * While active, uploads for this folder are held (re-queued) to ensure
+     * data consistency — the node graph must reach a consistent state before
+     * processing new uploads.
+     */
+    public void registerRecalculation(long folderId, long recalcTrackerId) {
+        activeRecalcsByFolder.computeIfAbsent(folderId, k -> ConcurrentHashMap.newKeySet())
+                .add(recalcTrackerId);
+    }
+
+    /**
+     * Marks a recalculation as completed for the given folder.
+     * If no more recalculations are active, uploads for this folder will resume.
+     */
+    public void completeRecalculation(long folderId, long recalcTrackerId) {
+        Set<Long> active = activeRecalcsByFolder.get(folderId);
+        if (active != null) {
+            active.remove(recalcTrackerId);
+            if (active.isEmpty()) {
+                activeRecalcsByFolder.remove(folderId);
+            }
+        }
+    }
+
+    /**
+     * Returns true if the given folder has any active recalculations.
+     * Used by execute() to gate uploads.
+     */
+    public boolean isFolderRecalculating(long folderId) {
+        Set<Long> active = activeRecalcsByFolder.get(folderId);
+        return active != null && !active.isEmpty();
+    }
+
     @Transactional
     public void execute(Work w){
         WorkQueue workQueue = workExecutor.getWorkQueue();
@@ -263,6 +335,18 @@ public class WorkService implements WorkServiceInterface {
             if(activeNodes.isEmpty() || sourceValues.isEmpty()){
                 // Nothing to process — still need to decrement trackers
                 decrementTrackers(w);
+                return;
+            }
+
+            // Check if this recalculation was cancelled
+            if (w.recalcTrackerId != null && cancelledRecalcIds.contains(w.recalcTrackerId)) {
+                decrementTrackers(w);
+                return;
+            }
+            // Gate uploads while a recalculation is active for this folder —
+            // the node graph must be consistent before processing new data
+            if (w.recalcTrackerId == null && w.folderId >= 0 && isFolderRecalculating(w.folderId)) {
+                workQueue.add(w);
                 return;
             }
 
@@ -322,6 +406,11 @@ public class WorkService implements WorkServiceInterface {
                 }
             }
             newOrUpdated.addAll(calculated);
+            // Check cancellation again before cascade — don't spawn new work for
+            // a cancelled recalculation even if the current item completed
+            if (w.recalcTrackerId != null && cancelledRecalcIds.contains(w.recalcTrackerId)) {
+                return;
+            }
             if(!newOrUpdated.isEmpty()){
                 Set<NodeEntity> createdValues = newOrUpdated.stream().map(v->v.node).collect(Collectors.toSet());
                 for(NodeEntity node : createdValues){
@@ -341,6 +430,8 @@ public class WorkService implements WorkServiceInterface {
                             .map(n -> {
                                 Work cascaded = new Work(n, n.sources, sourceValueIds);
                                 cascaded.dispatch = w.dispatch;
+                                cascaded.folderId = w.folderId;
+                                cascaded.recalcTrackerId = w.recalcTrackerId;
                                 return cascaded;
                             })
                             .toList();

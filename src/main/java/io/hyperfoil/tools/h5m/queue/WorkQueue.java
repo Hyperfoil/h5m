@@ -69,6 +69,34 @@ public class WorkQueue implements BlockingQueue<Runnable> {
         }
     }
 
+    /**
+     * Removes all pending Work items that belong to the given recalculation tracker ID.
+     * Used for cancelling a specific recalculation when a node is updated or a new
+     * recalculation is triggered for the same node. Only affects queued items —
+     * already-executing items check {@code cancelledRecalcIds} in WorkService.execute().
+     *
+     * @param recalcTrackerId the ProcessingTrackerEntity ID identifying the recalculation
+     * @return the removed Work items (callers should decrement their trackers)
+     */
+    public List<Work> removeByRecalcId(long recalcTrackerId) {
+        fullyLock();
+        try {
+            List<Work> removed = new ArrayList<>();
+            Iterator<Runnable> iter = runnables.iterator();
+            while (iter.hasNext()) {
+                Runnable r = iter.next();
+                if (r instanceof Work w && w.recalcTrackerId != null && w.recalcTrackerId == recalcTrackerId) {
+                    iter.remove();
+                    pendingWork.remove(w);
+                    removed.add(w);
+                }
+            }
+            return removed;
+        } finally {
+            fullyUnlock();
+        }
+    }
+
     private void fullyLock(){
 //        putLock.lock();
         takeLock.lock();

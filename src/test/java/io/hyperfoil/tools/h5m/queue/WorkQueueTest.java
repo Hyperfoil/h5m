@@ -251,7 +251,6 @@ public class WorkQueueTest extends FreshDb {
         assertEquals(sizeBefore + 1, q.size(), "exactly one item (bWork) should have been added");
     }
 
-
     @Test
     public void addAll_wakes_sleeping_thread() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, InterruptedException {
         WorkQueue q = new WorkQueue();
@@ -279,6 +278,69 @@ public class WorkQueueTest extends FreshDb {
 
         t2.join(500);
         assertNotNull(result[0], "thread should have woken up and taken the work");
+    }
+
+    // ---- Recalculation-scoped cancellation tests ----
+
+    @Test
+    public void removeByRecalcId_only_removes_matching_tracker() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b");
+        bNode.persist();
+        NodeEntity cNode = new JqNode("c");
+        cNode.persist();
+        tm.commit();
+
+        // Create work for two different recalculations + one upload
+        Work recalc1Work = new Work(aNode, null, null);
+        recalc1Work.recalcTrackerId = 100L;
+        recalc1Work.folderId = 1;
+
+        Work recalc2Work = new Work(bNode, null, null);
+        recalc2Work.recalcTrackerId = 200L;
+        recalc2Work.folderId = 1; // same folder, different recalc
+
+        Work uploadWork = new Work(cNode, null, null);
+        uploadWork.folderId = 1; // upload for same folder (recalcTrackerId = null)
+
+        q.addWorks(List.of(recalc1Work, recalc2Work, uploadWork));
+        assertEquals(3, q.size(), "all three should be queued");
+
+        // Remove only recalc1's work
+        List<Work> removed = q.removeByRecalcId(100L);
+        assertEquals(1, removed.size(), "should remove exactly 1 item");
+        assertEquals(recalc1Work, removed.get(0));
+        assertEquals(2, q.size(), "recalc2 and upload should remain");
+
+        // Verify recalc2 and upload are still there
+        assertTrue(q.isPending(recalc2Work), "recalc2 should still be pending");
+        assertTrue(q.isPending(uploadWork), "upload should still be pending");
+    }
+
+    @Test
+    public void removeByRecalcId_does_not_remove_upload_work() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        tm.commit();
+
+        // Upload work has recalcTrackerId = null
+        Work uploadWork = new Work(aNode, null, null);
+        uploadWork.folderId = 1;
+
+        q.addWorks(List.of(uploadWork));
+        assertEquals(1, q.size());
+
+        // Trying to remove by any recalc ID should not affect upload work
+        List<Work> removed = q.removeByRecalcId(100L);
+        assertTrue(removed.isEmpty(), "should not remove upload work");
+        assertEquals(1, q.size(), "upload should remain");
     }
 
     @Test
@@ -348,4 +410,105 @@ public class WorkQueueTest extends FreshDb {
 
 
 
+    // ---- Upload gating tests ----
+
+    @Test
+    public void upload_gated_during_recalculation_same_folder() {
+        // Register a recalculation for folder 1
+        workService.registerRecalculation(1L, 100L);
+        assertTrue(workService.isFolderRecalculating(1L), "folder 1 should be recalculating");
+
+        // Complete the recalculation
+        workService.completeRecalculation(1L, 100L);
+        assertFalse(workService.isFolderRecalculating(1L), "folder 1 should no longer be recalculating");
+    }
+
+    @Test
+    public void upload_not_gated_for_different_folder() {
+        // Register a recalculation for folder 1
+        workService.registerRecalculation(1L, 100L);
+
+        // Folder 2 should NOT be gated
+        assertFalse(workService.isFolderRecalculating(2L), "folder 2 should not be affected by folder 1's recalculation");
+
+        // Cleanup
+        workService.completeRecalculation(1L, 100L);
+    }
+
+    @Test
+    public void multiple_recalculations_same_folder_gate_until_all_complete() {
+        // Two independent recalculations for the same folder (different nodes)
+        workService.registerRecalculation(1L, 100L);
+        workService.registerRecalculation(1L, 200L);
+        assertTrue(workService.isFolderRecalculating(1L), "folder should be recalculating");
+
+        // Complete one — folder still gated
+        workService.completeRecalculation(1L, 100L);
+        assertTrue(workService.isFolderRecalculating(1L), "folder should still be recalculating (one remains)");
+
+        // Complete the other — folder ungated
+        workService.completeRecalculation(1L, 200L);
+        assertFalse(workService.isFolderRecalculating(1L), "folder should no longer be recalculating");
+    }
+
+    @Test
+    public void cancel_recalculation_does_not_affect_upload_work() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        WorkQueue q = new WorkQueue();
+
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b");
+        bNode.persist();
+        tm.commit();
+
+        // Create upload work and recalculation work for the same folder
+        Work uploadWork = new Work(aNode, null, null);
+        uploadWork.folderId = 1;
+        // recalcTrackerId is null (upload)
+
+        Work recalcWork = new Work(bNode, null, null);
+        recalcWork.folderId = 1;
+        recalcWork.recalcTrackerId = 100L;
+
+        q.addWorks(List.of(uploadWork, recalcWork));
+        assertEquals(2, q.size());
+
+        // Cancel the recalculation
+        List<Work> removed = q.removeByRecalcId(100L);
+        assertEquals(1, removed.size(), "should remove recalc work");
+        assertEquals(recalcWork, removed.get(0));
+        assertEquals(1, q.size(), "upload should remain");
+        assertTrue(q.isPending(uploadWork), "upload work should not be affected by recalc cancellation");
+    }
+
+    @Test
+    public void cascade_work_inherits_recalcTrackerId() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity aNode = new JqNode("a");
+        aNode.persist();
+        tm.commit();
+
+        // Create parent recalculation work
+        Work parentWork = new Work(aNode, null, null);
+        parentWork.folderId = 1;
+        parentWork.recalcTrackerId = 100L;
+
+        // Simulate cascade: child work should inherit recalcTrackerId
+        Work cascadedWork = new Work(aNode, null, null);
+        cascadedWork.folderId = parentWork.folderId;
+        cascadedWork.recalcTrackerId = parentWork.recalcTrackerId;
+
+        assertEquals(100L, cascadedWork.recalcTrackerId, "cascaded work should inherit recalcTrackerId");
+        assertEquals(1L, cascadedWork.folderId, "cascaded work should inherit folderId");
+    }
+
+    @Test
+    public void upload_work_recalcTrackerId_is_null_by_default() {
+        Work uploadWork = new Work();
+        assertNull(uploadWork.recalcTrackerId, "new Work should have null recalcTrackerId (upload)");
+        assertEquals(-1, uploadWork.folderId, "new Work should have default folderId");
+    }
+
 }
+

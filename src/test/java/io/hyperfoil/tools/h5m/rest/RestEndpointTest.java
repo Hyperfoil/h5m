@@ -289,6 +289,41 @@ public class RestEndpointTest extends FreshDb {
                 .body("nodeId", equalTo(nodeId.intValue()));
     }
 
+    @Test
+    public void node_update_cancels_recalculation_during_active_recalc() throws Exception {
+        createFolder("node-update-cancel-test");
+        Long groupId = getGroupId("node-update-cancel-test");
+        Long nodeId = createNode(groupId, "guarded-node", ".foo");
+
+        // Get the folder ID
+        Long folderId = given()
+                .when().get("/api/folder")
+                .then()
+                .extract().jsonPath().getLong("find { it.name == 'node-update-cancel-test' }.id");
+
+        // Create an active recalculation tracker (simulates in-flight recalculation)
+        tm.begin();
+        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
+                ProcessingType.RECALCULATE, folderId, -1L);
+        tracker.persist();
+        tm.commit();
+
+        // Node update should succeed (cancels the in-flight recalculation, not reject)
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"operation\": \".bar\", \"name\": \"guarded-node\"}")
+                .when().put("/api/node/" + nodeId)
+                .then()
+                .statusCode(200)
+                .body("nodeId", equalTo(nodeId.intValue()));
+
+        // The old tracker should be marked as completed (cancelled)
+        tm.begin();
+        ProcessingTrackerEntity oldTracker = ProcessingTrackerEntity.findById(tracker.id);
+        assertTrue(oldTracker.completed, "Old recalculation tracker should be marked completed after cancellation");
+        tm.commit();
+    }
+
     // -- NodeGroup endpoints --
 
     @Test
