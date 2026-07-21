@@ -103,6 +103,16 @@ public class ValueService implements ValueServiceInterface {
     }
 
     @Transactional
+    public void deleteForFolder(long folderId) {
+        // Bulk delete - no parent count checks needed since entire folder is going away
+        em.createNativeQuery("DELETE FROM value_edge WHERE child_id IN (SELECT id FROM value WHERE folder_id = :fid)")
+                .setParameter("fid", folderId).executeUpdate();
+        em.createNativeQuery("DELETE FROM value WHERE folder_id = :fid")
+                .setParameter("fid", folderId).executeUpdate();
+    }
+
+
+    @Transactional
     public ValueEntity byId(Long id){
         return ValueEntity.findById(id);
     }

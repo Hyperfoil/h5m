@@ -458,4 +458,9 @@ public class ProcessingService {
         }
         return hasNonDetectionChild && !isDetectionSource;
     }
+
+    public void deleteForFolder(long folderId) {
+        em.createNativeQuery("DELETE FROM processing_tracker WHERE folder_id = :fid")
+                .setParameter("fid", folderId).executeUpdate();
+    }
 }
