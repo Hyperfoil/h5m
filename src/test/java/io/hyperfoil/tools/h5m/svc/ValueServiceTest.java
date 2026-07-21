@@ -63,6 +63,29 @@ public class ValueServiceTest extends FreshDb {
         assertNotNull(found);
     }
 
+    @Test
+    public void deleteForFolder_removes_all_folder_values() throws Exception {
+        tm.begin();
+        NodeGroupEntity group = new NodeGroupEntity("deleteForFolder-test");
+        group.persist();
+        FolderEntity folder = new FolderEntity();
+        folder.name = "deleteForFolder-test";
+        folder.group = group;
+        folder.persist();
+        ValueEntity v1 = new ValueEntity(folder, group.root, JqString.of("a"));
+        v1.persist();
+        ValueEntity v2 = new ValueEntity(folder, group.root, JqString.of("b"));
+        v2.persist();
+        long v1Id = v1.id;
+        long v2Id = v2.id;
+        tm.commit();
+
+        valueService.deleteForFolder(folder.id);
+
+        assertNull(ValueEntity.findById(v1Id), "v1 should be deleted");
+        assertNull(ValueEntity.findById(v2Id), "v2 should be deleted");
+    }
+
 
     @Test
     public void delete_does_not_cascade_to_shared_child() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {

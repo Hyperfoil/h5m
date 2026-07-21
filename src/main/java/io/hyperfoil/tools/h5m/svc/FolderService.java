@@ -29,6 +29,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import org.hibernate.query.NativeQuery;
 
@@ -67,6 +68,9 @@ public class FolderService implements FolderServiceInterface {
 
     @Inject
     ApiMapper apiMapper;
+
+    @Inject
+    NotificationService notificationService;
 
 
 
@@ -205,11 +209,19 @@ public class FolderService implements FolderServiceInterface {
     @Override
     @Transactional
     public long delete(String name){
-        // Delete views and components before folder (bulk delete doesn't cascade)
-        em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id IN (SELECT id FROM folder WHERE name = :name))")
-            .setParameter("name", name).executeUpdate();
-        em.createNativeQuery("DELETE FROM folder_view WHERE folder_id IN (SELECT id FROM folder WHERE name = :name)")
-            .setParameter("name", name).executeUpdate();
+        FolderEntity folder = FolderEntity.find("name", name).firstResult();
+        if (folder == null) {
+            throw new NotFoundException("Folder not found: " + name);
+        }
+
+        valueService.deleteForFolder(folder.id);
+        notificationService.deleteForFolder(folder.id);
+        processingService.deleteForFolder(folder.id);
+
+        em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id = :fid)")
+                .setParameter("fid", folder.id).executeUpdate();
+        em.createNativeQuery("DELETE FROM folder_view WHERE folder_id = :fid")
+                .setParameter("fid", folder.id).executeUpdate();
         return FolderEntity.delete("name", name);
     }
 

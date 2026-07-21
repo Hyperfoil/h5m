@@ -5,10 +5,14 @@ import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
+import io.hyperfoil.tools.h5m.entity.NotificationConfig;
+import io.hyperfoil.tools.h5m.entity.NotificationLog;
 import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
 import io.hyperfoil.tools.h5m.api.ProcessingType;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
+import io.hyperfoil.tools.h5m.notification.NotificationMethod;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -443,5 +447,53 @@ public class FolderServiceTest extends FreshDb {
                 JqValues.parse("{\"cpu\": 99}")).uploadId;
 
         assertNotEquals(id1, id2, "Each upload should return a unique ID");
+    }
+    @Test
+    public void delete_folder_with_uploads() throws Exception {
+        tm.begin();
+        folderService.create("delete-upload-test");
+        tm.commit();
+
+
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "delete-upload-test").firstResult();
+        long groupId = folder.group.id;
+
+        NodeEntity nodeA = new JqNode("Node A", ".a");
+        nodeA.group = folder.group;
+        nodeA.persist();
+        long nodeId = nodeA.id;
+
+
+        NotificationConfig config = new NotificationConfig(folder, NotificationMethod.WEBHOOK, "{\"url\": \"http://example.com\"}");
+        config.persist();
+        long configId = config.id;
+
+        NotificationLog log = new NotificationLog();
+        log.folder = folder;
+        log.method = "webhook";
+        log.destination = "http://example.com";
+        log.status = "sent";
+        log.nodeId = 1L;
+        log.nodeName = "test-node";
+        log.changeCount = 1;
+        log.persist();
+        long logId = log.id;
+        tm.commit();
+
+        folderService.upload("delete-upload-test", null,
+                JqValues.parse("{\"cpu\": 95}"))
+                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+
+        long deleted = folderService.delete("delete-upload-test");
+
+        tm.begin();
+        assertNull(FolderEntity.find("name", "delete-upload-test").firstResult(), "Folder should not exist after deletion");
+        assertEquals(1, deleted, "One folder should have been deleted");
+        assertNotNull(NodeGroupEntity.findById(groupId), "Node group should still exist after folder deletion");
+        assertNull(NotificationConfig.findById(configId), "Notification config should be deleted ");
+        assertNull(NotificationLog.findById(logId), "Notification log should be deleted");
+        assertNotNull(NodeEntity.findById(nodeId), "Node should not be deleted");
+        tm.commit();
     }
 }

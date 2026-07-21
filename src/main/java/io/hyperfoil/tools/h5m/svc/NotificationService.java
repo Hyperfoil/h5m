@@ -17,6 +17,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
 import java.util.ArrayList;
@@ -29,6 +30,8 @@ import java.util.Optional;
  */
 @ApplicationScoped
 public class NotificationService {
+    @Inject
+    EntityManager em;
 
     @Inject
     Instance<NotificationPlugin> plugins;
@@ -150,4 +153,13 @@ public class NotificationService {
         log.changeCount = changeCount;
         log.persist();
     }
+
+    @Transactional
+    public void deleteForFolder(long folderId) {
+        em.createNativeQuery("DELETE FROM notification_config WHERE folder_id = :fid")
+                .setParameter("fid", folderId).executeUpdate();
+        em.createNativeQuery("DELETE FROM notification_log WHERE folder_id = :fid")
+                .setParameter("fid", folderId).executeUpdate();
+    }
+
 }
