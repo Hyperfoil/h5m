@@ -64,6 +64,9 @@ public class FolderService implements FolderServiceInterface {
     ProcessingService processingService;
 
     @Inject
+    UploadService uploadService;
+
+    @Inject
     AuthorizationService authService;
 
     @Inject
@@ -286,10 +289,14 @@ public class FolderService implements FolderServiceInterface {
 
             if (works.isEmpty()) {
                 tracking.completed = true;
-                return new Upload(newValue.id, CompletableFuture.completedFuture(null));
+                CompletableFuture<Void> completed = CompletableFuture.completedFuture(null);
+                uploadService.register(newValue.id, completed);
+                return new Upload(newValue.id, completed);
             }
 
             CompletableFuture<Void> future = workService.createTracked(works, Set.of(newValue.id));
+            // Register for upload status tracking (polling via REST)
+            uploadService.register(newValue.id, future);
             // Mark completed and null out ephemeral data when all work finishes
             future.whenComplete((v, t) -> {
                 QuarkusTransaction.requiringNew().run(() -> {

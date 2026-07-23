@@ -4,10 +4,12 @@ import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.RecalculationStatus;
+import io.hyperfoil.tools.h5m.api.UploadStatus;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.svc.RecalculationService;
 import io.hyperfoil.tools.h5m.svc.RecalculationTracker;
+import io.hyperfoil.tools.h5m.svc.UploadService;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
@@ -35,6 +37,9 @@ public class FolderResource {
 
     @Inject
     RecalculationService recalculationService;
+
+    @Inject
+    UploadService uploadService;
 
     @GET
     @PermitAll
@@ -115,6 +120,18 @@ public class FolderResource {
             throw new NotFoundException("Recalculation not found: " + id);
         }
         return tracker.toStatus();
+    }
+
+    @GET
+    @Path("/upload/{uploadId}/status")
+    @PermitAll
+    @Operation(description = "Get the processing status of an upload. Returns state, duration, and any change detection results triggered by the upload.")
+    public UploadStatus getUploadStatus(@PathParam("uploadId") long uploadId) {
+        UploadStatus status = uploadService.get(uploadId);
+        if (status == null) {
+            throw new NotFoundException("Upload not found or expired: " + uploadId);
+        }
+        return status;
     }
 
     @GET

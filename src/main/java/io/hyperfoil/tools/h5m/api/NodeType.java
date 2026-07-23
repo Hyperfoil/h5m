@@ -36,4 +36,20 @@ public enum NodeType {
             || this == STDDEV_ANOMALY || this == EDIVISIVE;
     }
 
+    /**
+     * Converts this detection node type to the corresponding {@link Change.ChangeType}.
+     * Only valid for detection node types ({@link #isDetection()} returns true).
+     *
+     * @throws IllegalStateException if this is not a detection type
+     */
+    public Change.ChangeType toChangeType() {
+        return switch (this) {
+            case FIXED_THRESHOLD -> Change.ChangeType.FIXED_THRESHOLD;
+            case RELATIVE_DIFFERENCE -> Change.ChangeType.RELATIVE_DIFFERENCE;
+            case STDDEV_ANOMALY -> Change.ChangeType.STDDEV_ANOMALY;
+            case EDIVISIVE -> Change.ChangeType.EDIVISIVE;
+            default -> throw new IllegalStateException("Not a detection type: " + this);
+        };
+    }
+
 }
