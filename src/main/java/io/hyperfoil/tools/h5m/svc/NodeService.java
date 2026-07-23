@@ -28,7 +28,6 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.PolyglotException;
@@ -76,8 +75,6 @@ public class NodeService implements NodeServiceInterface {
     @Inject
     ValueService valueService;
 
-    @ConfigProperty(name="quarkus.datasource.db-kind")
-    String dbKind;
     @Inject
     NodeGroupService nodeGroupService;
     @Inject

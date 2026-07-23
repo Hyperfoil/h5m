@@ -9,6 +9,7 @@ import io.hyperfoil.tools.h5m.queue.WorkQueue;
 import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
 import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
 import jakarta.annotation.PreDestroy;
@@ -18,16 +19,20 @@ import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PessimisticLockException;
 import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
 import jakarta.transaction.Transactional;
 import jakarta.transaction.TransactionManager;
+import io.hyperfoil.tools.h5m.provided.DatabaseEngine;
+import static io.hyperfoil.tools.h5m.provided.DatabaseEngine.Kind.*;
 import io.quarkus.logging.Log;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.Hibernate;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +41,40 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class WorkService implements WorkServiceInterface {
 
-    private static final int RETRY_LIMIT = 0;
+    private static final int RETRY_LIMIT = 3;
+
+    private static boolean isPessimisticLock(Throwable t) {
+        for (; t != null; t = t.getCause()) {
+            if (t instanceof PessimisticLockException) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Runs an action in a new transaction, independent of the caller's
+     * transactional context. On SQLite, transparently retries on
+     * {@link jakarta.persistence.PessimisticLockException} (SQLITE_BUSY)
+     * up to {@link #RETRY_LIMIT} times to handle single-writer contention.
+     */
+    <T> T callInNewTransaction(Callable<T> action) {
+        if (!db.isSQLite()) {
+            return QuarkusTransaction.requiringNew().call(action);
+        }
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return QuarkusTransaction.requiringNew().call(action);
+            } catch (Throwable t) {
+                if (attempt >= RETRY_LIMIT || !isPessimisticLock(t)) {
+                    throw t;
+                }
+                Log.debugf("Database busy (attempt %d/%d), retrying", attempt, RETRY_LIMIT);
+            }
+        }
+    }
+
+    void runInNewTransaction(Runnable action) {
+        callInNewTransaction(() -> { action.run(); return null; });
+    }
 
     @Inject
     EntityManager em;
@@ -56,8 +94,8 @@ public class WorkService implements WorkServiceInterface {
     @Inject
     Event<ChangeDetectedEvent> changeDetectedEvent;
 
-    @ConfigProperty(name="quarkus.datasource.db-kind")
-    String dbKind;
+    @Inject
+    DatabaseEngine db;
 
     @ConfigProperty(name = "h5m.worker.core", defaultValue = "1")
     int corePoolSize;
@@ -279,6 +317,7 @@ public class WorkService implements WorkServiceInterface {
                 return;
             }
             List<ValueEntity> newOrUpdated = new ArrayList<>();
+            List<ValueEntity> toPersist = new ArrayList<>();
             for(ValueEntity v : sourceValues) {
                 for(NodeEntity activeNode : activeNodes){
                     Map<String, ValueEntity> descendants = valueService.getDescendantValueByPath(v, activeNode);
@@ -297,10 +336,9 @@ public class WorkService implements WorkServiceInterface {
                             }else{
                                 //update the existing value's data via native SQL
                                 //(@Immutable entities can't be updated through Hibernate)
-                                String updateSql = switch (dbKind) {
-                                    case "postgresql" -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
-                                    case "sqlite"     -> "UPDATE value SET data = json(:data) WHERE id = :id";
-                                    default           -> "UPDATE value SET data = :data WHERE id = :id";
+                                String updateSql = switch (db.kind()) {
+                                    case POSTGRESQL -> "UPDATE value SET data = cast(:data as jsonb) WHERE id = :id";
+                                    case SQLITE     -> "UPDATE value SET data = json(:data) WHERE id = :id";
                                 };
                                 em.createNativeQuery(updateSql)
                                     .setParameter("data", newValue.data.toJsonString())
@@ -312,14 +350,16 @@ public class WorkService implements WorkServiceInterface {
                             }
                             descendants.remove(path);//remove it so we know what is left over
                         }else{
-                            //we need to persist the newValue
-                            valueService.create(newValue);
+                            toPersist.add(newValue);
                         }
                     }
                     if(!descendants.isEmpty()){//values that need to be deleted
                         descendants.values().forEach(valueService::delete);
                     }
                 }
+            }
+            if (!toPersist.isEmpty()) {
+                valueService.createAll(toPersist);
             }
             newOrUpdated.addAll(calculated);
             if(!newOrUpdated.isEmpty()){
@@ -369,18 +409,13 @@ public class WorkService implements WorkServiceInterface {
                 });
             }
         }catch( Exception e){
-            Log.errorf(e, "WorkRunner caught: %s\n work=%s", e.getMessage(), w);
-            w.retryCount++;
-            if(w.retryCount > RETRY_LIMIT){
-                Log.error("Work exceeded retry limit");
-                // Fail trackers so CompletableFutures complete exceptionally
-                failTrackers(w, e);
-            } else {
-                Log.info("Adding work to retry in queue");
+            Log.debugf(e, "WorkRunner caught: %s\n work=%s", e.getMessage(), w);
+            if(db.isSQLite() && w.retryCount++ < RETRY_LIMIT){
+                Log.infof("Retry work %s due to: %s", w, e.getMessage());
                 workQueue.add(w);
-                // Skip decrement in finally — work is re-queued and will be
-                // decremented when the retry completes
                 decrementDeferred = true;
+            } else {
+                failTrackers(w, e);
             }
         } finally {
             if(!decrementDeferred && w.activeNodes != null && !w.activeNodes.isEmpty()){
