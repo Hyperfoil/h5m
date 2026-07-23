@@ -175,6 +175,31 @@ public class ValueService implements ValueServiceInterface {
     public List<ValueEntity> findMatchingFingerprint_unused(NodeEntity source, ValueEntity fingerprint, NodeEntity sort){
         List<ValueEntity> rtrn = new ArrayList<>(em.createNativeQuery(
             switch(dbKind){
+                case "postgresql"->
+                    """
+                    with recursive ancestor(vid) as (
+                        select v.id as vid 
+                            from value v where v.node_id = :nodeId and v.data = :data
+                        union 
+                        select v.id as vid 
+                            from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
+                    ),
+                    sorter(vid,sortable) as (
+                        select v.id as vid,convert_from(v.data, 'UTF-8')::jsonb as sortable 
+                            from value v where v.node_id = :sortId
+                        union
+                        select v.id as vid, s.sortable as sortable
+                            from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
+                    ),
+                    descendant(vid,sortable) as (
+                       select v.id as vid, s.sortable as sortable
+                         from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root'
+                       union
+                       select v.id as vid, d.sortable as sortable
+                             from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
+                    )                        
+                    select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;                    
+                    """;
                 case "sqlite"->
                     """
                     with recursive ancestor(vid) as (
@@ -185,7 +210,7 @@ public class ValueService implements ValueServiceInterface {
                             from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                     ),
                     sorter(vid,sortable) as (
-                        select v.id as vid,v.data as sortable 
+                        select v.id as vid,CAST(v.data AS TEXT) as sortable 
                             from value v where v.node_id = :sortId
                         union
                         select v.id as vid, s.sortable as sortable
@@ -193,32 +218,7 @@ public class ValueService implements ValueServiceInterface {
                     ),
                     descendant(vid,sortable) as (
                        select v.id as vid, s.sortable as sortable
-                         from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root' --only the root values from ancestor with sorter
-                       union
-                       select v.id as vid, d.sortable as sortable
-                             from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
-                    )                        
-                    select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;
-                    """;
-                case "postgresql"->
-                    """
-                    with recursive ancestor(vid) as (
-                        select v.id as vid 
-                            from value v where v.node_id = :nodeId and v.data = cast( :data as jsonb)
-                        union 
-                        select v.id as vid 
-                            from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
-                    ),
-                    sorter(vid,sortable) as (
-                        select v.id as vid,v.data as sortable 
-                            from value v where v.node_id = :sortId
-                        union
-                        select v.id as vid, s.sortable as sortable
-                            from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
-                    ),
-                    descendant(vid,sortable) as (
-                       select v.id as vid, s.sortable as sortable
-                         from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root' --only the root values from ancestor with sorter
+                         from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid join node n on n.id = v.node_id where n.type = 'root'
                        union
                        select v.id as vid, d.sortable as sortable
                              from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
@@ -228,7 +228,7 @@ public class ValueService implements ValueServiceInterface {
                 default -> "";
             }, ValueEntity.class)
                                                    .setParameter("nodeId", fingerprint.node.id)
-                                                   .setParameter("data", fingerprint.data.toString())
+                                                   .setParameter("data", JqValues.serializeToBytes(fingerprint.data))
                                                    .setParameter("sourceId", source.id)
                                                    .setParameter("sortId",sort.id)
                                                    .getResultList());
@@ -267,62 +267,42 @@ public class ValueService implements ValueServiceInterface {
                 ),
                 """;
         }
-        sql = sql + switch (dbKind){
-            case "sqlite"->
-                    """
-                        ANCESTOR_PREFIX ancestor(vid) as (
-                            select v.id as vid
-                                from value v where v.node_id = :nodeId and v.data = :fingerprint VALUE_ANCESTOR_CRITERIA
-                            union
-                            select v.id as vid
-                                from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
-                        ),
-                    """;
-            case "postgresql"->
+        // BYTEA equality — fingerprints are built deterministically by the same
+        // code path, so byte-level equality matches semantic equality
+        sql = sql +
                     """
                     ANCESTOR_PREFIX ancestor(vid) as (
                         select v.id as vid
-                            from value v where v.node_id = :nodeId and v.data = cast( :fingerprint as jsonb) VALUE_ANCESTOR_CRITERIA
-                        union 
-                        select v.id as vid 
+                            from value v where v.node_id = :nodeId and v.data = :fingerprint VALUE_ANCESTOR_CRITERIA
+                        union
+                        select v.id as vid
                             from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                     ),
                     """;
-            default -> "";
-        };
         sql = sql
                 .replace("ANCESTOR_PREFIX",ancestorValue==null?"with recursive":"")
                 .replace("VALUE_ANCESTOR_CRITERIA",ancestorValue==null?"":" and exists ( select 1 from valueDescendants where vid = v.id)");
 
         if(domainValue!=null || domainNode!=null) { //we have a sortable domain value
+            // Domain comparison needs JSON semantics for meaningful ordering.
+            // BYTEA comparison is lexicographic, so we convert back to JSON for
+            // the comparison only. This cast is in the sorter CTE base case —
+            // a small fraction of the query cost (dominated by recursive DAG walk).
             String domainValueComp = switch (dbKind){
-                case "sqlite"-> "and v.data GTLT :domain";
-                case "postgresql"-> "and v.data GTLT cast( :domain as jsonb)";
+                case "sqlite"-> "and CAST(v.data AS TEXT) GTLT CAST(:domain AS TEXT)";
+                case "postgresql"-> "and convert_from(v.data, 'UTF-8')::jsonb GTLT convert_from(:domain, 'UTF-8')::jsonb";
                 default -> "";
             };
-            sql += switch (dbKind) {
-                case "sqlite" -> """
+            // Convert BYTEA data to a sortable type for domain ordering.
+            // BYTEA sorts lexicographically which is meaningless for JSON values.
+            String dataToSortable = switch (dbKind) {
+                case "postgresql" -> "convert_from(v.data, 'UTF-8')::jsonb";
+                case "sqlite"     -> "CAST(v.data AS TEXT)";
+                default           -> "v.data";
+            };
+            sql += ("""
                         sorter(vid,sortable) as (
-                            select v.id as vid,v.data as sortable
-                                from value v where v.node_id = :sortId DOMAIN_VALUE_COMP
-                            union
-                            select v.id as vid, s.sortable as sortable
-                                from value v join value_edge ve on v.id = ve.parent_id join sorter s on s.vid = ve.child_id
-                        ),
-                        descendant(vid,sortable) as (
-                           select v.id as vid, s.sortable as sortable
-                             from value v join sorter s on v.id = s.vid join ancestor a on v.id = a.vid
-                             where v.node_id = :groupById --limit descendants to values from the grouping node
-                           union
-                           select v.id as vid, d.sortable as sortable
-                                 from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
-                        )
-                        select v.id from value v join descendant d on v.id=d.vid 
-                            where v.node_id=:sourceId order by sortable ORDER_DIRECTION
-                        """;
-                case "postgresql" -> """
-                        sorter(vid,sortable) as (
-                            select v.id as vid,v.data as sortable
+                            select v.id as vid,DATA_TO_SORTABLE as sortable
                                 from value v where v.node_id = :sortId DOMAIN_VALUE_COMP
                             union
                             select v.id as vid, s.sortable as sortable
@@ -338,9 +318,7 @@ public class ValueService implements ValueServiceInterface {
                         )
                         select v.id from value v join descendant d on v.id=d.vid
                             where v.node_id=:sourceId order by sortable ORDER_DIRECTION
-                        """;
-                default -> "";
-            };
+                        """).replace("DATA_TO_SORTABLE", dataToSortable);
             sql = sql.replace("DOMAIN_VALUE_COMP",domainValue != null ? domainValueComp : "");
         }else{
             //sorting by created_at
@@ -374,7 +352,7 @@ public class ValueService implements ValueServiceInterface {
         var query = (NativeQuery<Number>) em.createNativeQuery(sql);
         query
                 .setParameter("nodeId", fingerprint.node.id)
-                .setParameter("fingerprint", fingerprint.data.toString())
+                .setParameter("fingerprint", JqValues.serializeToBytes(fingerprint.data))
                 .setParameter("sourceId", rangeNode.id)
                 .setParameter("groupById",groupBy.id);
         if(ancestorValue!=null){
@@ -383,7 +361,7 @@ public class ValueService implements ValueServiceInterface {
         if(domainValue!=null){
             query
                 .setParameter("sortId",domainValue.node.id)
-                .setParameter("domain",domainValue.data.toString());
+                .setParameter("domain",JqValues.serializeToBytes(domainValue.data));
         }else if (domainNode!=null){
             query.setParameter("sortId",domainNode.id);
         }
@@ -461,6 +439,8 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId) {
         String nodeFilter = filterNodeIds != null && !filterNodeIds.isEmpty() ? "node_id in (:nodeIds)" : "";
+        // Sort CTE — tree.data is already converted to JSON text (SQLite) or jsonb
+        // (PostgreSQL) by the tree CTE, so we use it directly without further conversion
         String sortCte = sortByNodeId != null ? switch (dbKind) {
             case "sqlite"     ->
                     """
@@ -508,11 +488,11 @@ public class ValueService implements ValueServiceInterface {
                     case "sqlite" ->
                             """
                             with recursive tree(id,node_id,root_id,idx,data) as (
-                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
+                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,CAST(v.data AS TEXT) as data
                                     from value_edge ve left join value v on ve.child_id = v.id
                                     where ve.parent_id in (select id from value where node_id = :nodeId)
                                 union
-                                select v.id,v.node_id,t.root_id,v.idx,v.data
+                                select v.id,v.node_id,t.root_id,v.idx,CAST(v.data AS TEXT) as data
                                     from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
                             ),
                             SORT_CTE
@@ -528,19 +508,19 @@ public class ValueService implements ValueServiceInterface {
                     case "postgresql" ->
                             """
                             with recursive tree(id,node_id,root_id,idx,data) as (
-                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
+                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
                                     from value_edge ve left join value v on ve.child_id = v.id
                                     where ve.parent_id in (select id from value where node_id = :nodeId)
                                 union
-                                select v.id,v.node_id,t.root_id,v.idx,v.data
+                                select v.id,v.node_id,t.root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
                                     from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
                             ),
                             SORT_CTE
                             bynode as (
-                                select node_id,root_id,jsonb_agg(to_jsonb(data)) as data
+                                select node_id,root_id,jsonb_agg(data) as data
                                     from tree NODE_FILTER group by node_id,root_id,idx order by idx
                             )
-                            select jsonb_object_agg(n.name,to_jsonb((case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
+                            select jsonb_object_agg(n.name,(case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end)) as data
                                 from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
                             """
                                     .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)

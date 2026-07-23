@@ -1071,8 +1071,8 @@ public class RecalculateTest extends FreshDb {
 
         // Update A's value data to "world" (simulating partial recalculation)
         ValueEntity aValue = ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0);
-        em.createNativeQuery("UPDATE value SET data = cast(:data as jsonb) WHERE id = :id")
-                .setParameter("data", "\"world\"")
+        em.createNativeQuery("UPDATE value SET data = :data WHERE id = :id")
+                .setParameter("data", "\"world\"".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setParameter("id", aValue.id)
                 .executeUpdate();
 
