@@ -65,8 +65,7 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
 
     public List<NodeEntity> getSources() {return sources;}
 
-    @Transient
-    private transient Set<Long> ancestorCache;
+
 
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -196,40 +195,29 @@ public abstract class NodeEntity extends PanacheEntity implements Comparable<Nod
         return Objects.hash(name, operation, sourcesHash);
     }
 
+    /**
+     * Checks whether this node transitively depends on the given source node.
+     * Always traverses the source graph — no caching on NodeEntity to avoid
+     * stale results when a parent node's sources are modified (issue #215).
+     * For performance-sensitive hot paths (e.g., WorkQueue sorting), use
+     * {@link io.hyperfoil.tools.h5m.entity.work.Work#precomputeAncestors()}
+     * which caches ancestor IDs on the short-lived Work object instead.
+     */
     public boolean dependsOn(NodeEntity source) {
-        if (source == null || this.sources == null) return false;
-        if (source.id != null) {
-            if (ancestorCache == null) {
-                ancestorCache = computeAncestorIds();
-            }
-            return ancestorCache.contains(source.id);
-        }
-        // fallback for unpersisted nodes (no id)
+        if (source == null || this.sources == null || this.sources.isEmpty()) return false;
         Queue<NodeEntity> queue = new ArrayDeque<>(sources);
-        Set<NodeEntity> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Long> visitedIds = new HashSet<>();
+        Set<NodeEntity> visitedRefs = Collections.newSetFromMap(new IdentityHashMap<>());
         while (!queue.isEmpty()) {
             NodeEntity node = queue.poll();
             if (node.equals(source)) return true;
-            if (visited.add(node)) {
+            // Use ID-based visited set for persisted nodes, identity-based for unpersisted
+            boolean isNew = node.id != null ? visitedIds.add(node.id) : visitedRefs.add(node);
+            if (isNew && node.sources != null) {
                 queue.addAll(node.sources);
             }
         }
         return false;
-    }
-
-    private Set<Long> computeAncestorIds() {
-        if(sources == null || sources.isEmpty()) {
-            return Collections.emptySet();
-        }
-        Set<Long> ancestors = new HashSet<>();
-        Queue<NodeEntity> queue = new ArrayDeque<>(sources);
-        while (!queue.isEmpty()) {
-            NodeEntity node = queue.poll();
-            if (node.id != null && ancestors.add(node.id)) {
-                queue.addAll(node.sources);
-            }
-        }
-        return ancestors;
     }
 
     /**

@@ -111,6 +111,32 @@ public class WorkService implements WorkServiceInterface {
         }
     }
 
+    /**
+     * Eagerly initializes the NodeEntity.sources chains for all active nodes
+     * in the given Work item. This forces Hibernate to load the lazy source
+     * collections while the session is still open, so that
+     * NodeEntity.dependsOn() can traverse them in afterCompletion (outside
+     * the session) without throwing LazyInitializationException.
+     */
+    private void initializeSources(Work work) {
+        if (work.getActiveNodes() == null) return;
+        for (NodeEntity node : work.getActiveNodes()) {
+            initializeSourceChain(node, new HashSet<>());
+        }
+    }
+
+    private void initializeSourceChain(NodeEntity node, Set<Long> visited) {
+        if (node.sources == null || node.sources.isEmpty()) return;
+        // Touch the collection to force Hibernate to initialize the lazy proxy
+        int size = node.sources.size();
+        for (int i = 0; i < size; i++) {
+            NodeEntity source = node.sources.get(i);
+            if (source.id != null && visited.add(source.id)) {
+                initializeSourceChain(source, visited);
+            }
+        }
+    }
+
     @Transactional
     void onStart(@Observes @Priority(1) StartupEvent ev) {
         workExecutor = new WorkQueueExecutor(corePoolSize, maxPoolSize, keepAlive.toSeconds(), TimeUnit.SECONDS, new WorkQueue());
@@ -146,13 +172,11 @@ public class WorkService implements WorkServiceInterface {
         if (!newWorks.isEmpty()) {
             List<Work> toQueue = List.copyOf(newWorks);
             for (Work work : toQueue) {
-                // Pre-compute ancestor caches while session is open — needed by
-                // WorkQueue.sort() → dependsOn() which runs in afterCompletion
-                // outside the session. Without this, dependsOn() would try to
-                // lazily traverse NodeEntity.sources and fail.
-                if (work.getActiveNodes() != null) {
-                    work.dependsOn(work);
-                }
+                // Eagerly initialize NodeEntity.sources chains while the session
+                // is open. WorkQueue.sort() → dependsOn() runs in afterCompletion
+                // (outside the session) and traverses sources — without eager
+                // initialization, lazy loading would throw LazyInitializationException.
+                initializeSources(work);
                 // Increment trackers for each work item (before afterCompletion decrement)
                 incrementTrackers(work, 1);
             }

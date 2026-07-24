@@ -3,9 +3,11 @@ package io.hyperfoil.tools.h5m.entity;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
+import io.hyperfoil.tools.h5m.FreshDb;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.transaction.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,10 +15,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
-public class NodeTest {
+public class NodeTest extends FreshDb {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    TransactionManager tm;
 
 
     @Test
@@ -161,5 +166,83 @@ public class NodeTest {
         }catch(StackOverflowError e){
             fail("infinite recursion in Node.equals");
         }
+    }
+
+    @Test
+    public void dependsOn_parent_changes_sources() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        NodeEntity first = new JqNode("first",".",root);
+        first.persist();
+        NodeEntity second = new JqNode("second",".",first);
+        second.persist();
+        NodeEntity third = new JqNode("third",".",root);
+        third.persist();
+
+        assertFalse(second.dependsOn(third));
+        tm.commit();
+
+        tm.begin();
+        root = NodeEntity.findById(root.getId());
+        assertNotNull(root);
+        first = NodeEntity.findById(first.getId());
+        assertNotNull(first);
+        second = NodeEntity.findById(second.getId());
+        assertNotNull(second);
+        third = NodeEntity.findById(third.getId());
+        assertNotNull(third);
+
+        assertFalse(second.dependsOn(third));
+
+        first.sources = List.of(root, third);
+        first.persist();
+
+        assertTrue(second.dependsOn(third));
+
+        tm.commit();
+    }
+
+    @Test
+    public void dependsOn_cross_transaction_source_change() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        // Verifies dependsOn correctness when sources are modified in one
+        // transaction and dependsOn is checked in a subsequent transaction.
+        // This simulates a user updating a node's dependencies via REST,
+        // then a recalculation checking dependency order.
+        long rootId, firstId, secondId, thirdId;
+
+        // Transaction 1: create the initial graph
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        NodeEntity first = new JqNode("first", ".", root);
+        first.persist();
+        NodeEntity second = new JqNode("second", ".", first);
+        second.persist();
+        NodeEntity third = new JqNode("third", ".", root);
+        third.persist();
+        rootId = root.getId();
+        firstId = first.getId();
+        secondId = second.getId();
+        thirdId = third.getId();
+        tm.commit();
+
+        // Transaction 2: modify first's sources to include third
+        tm.begin();
+        first = NodeEntity.findById(firstId);
+        root = NodeEntity.findById(rootId);
+        third = NodeEntity.findById(thirdId);
+        first.sources = List.of(root, third);
+        first.persist();
+        tm.commit();
+
+        // Transaction 3: check dependsOn with fresh entities from DB
+        tm.begin();
+        second = NodeEntity.findById(secondId);
+        third = NodeEntity.findById(thirdId);
+
+        assertTrue(second.dependsOn(third),
+                "second should depend on third after first's sources were modified in a previous transaction");
+        tm.commit();
     }
 }
