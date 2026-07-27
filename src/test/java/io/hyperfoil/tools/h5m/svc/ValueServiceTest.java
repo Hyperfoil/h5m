@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -1382,13 +1383,13 @@ public class ValueServiceTest extends FreshDb {
 
 
         //fetch only b=2
-        List<JqValue> found = valueService.getGroupedValues(group.id,null,Map.of(bravo.id,bravo1_1.data),alpha.id);
+        List<JqValue> found = valueService.getGroupedValues(group.id,null,null,Map.of(bravo.id,bravo1_1.data),alpha.id);
         assertEquals(2,found.size());
         for(int i=0; i<found.size(); i++){
             assertEquals(bravo1_1.data.toString(),found.get(i).getField(bravo.name).toString());
         }
         //b=2 a=1
-        found = valueService.getGroupedValues(group.id,null,Map.of(bravo.id,bravo1_1.data,alpha.id,alpha1_0.data),alpha.id);
+        found = valueService.getGroupedValues(group.id,null,null,Map.of(bravo.id,bravo1_1.data,alpha.id,alpha1_0.data),alpha.id);
         assertEquals(1,found.size());
         for(int i=0; i<found.size(); i++){
             assertEquals(bravo1_1.data.toString(),found.get(i).getField(bravo.name).toString());
@@ -1478,6 +1479,7 @@ public class ValueServiceTest extends FreshDb {
 
         List<JqValue> results = valueService.getGroupedValues(
                 rootNode.id,
+                null,
                 List.of(throughputNode.id, buildIdNode.id),
                 null,
                 buildIdNode.id
@@ -1545,6 +1547,96 @@ public class ValueServiceTest extends FreshDb {
         assertTrue(results.get(2).has("throughput"), "row should have throughput: " + results.get(2));
         assertTrue(results.get(2).has("build_id"), "row should have build_id: " + results.get(2));
 
+    }
+    @Test
+    public void getGroupedValues_ancestor_value_grouped_filtered() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException
+    {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity groupNode = new JqNode("group",".group",rootNode);
+        groupNode.persist();
+        NodeEntity aNode = new JqNode("a",".a",groupNode);
+        aNode.persist();
+        NodeEntity bNode = new JqNode("b",".b",groupNode);
+        bNode.persist();
+
+        ValueEntity root1 = new ValueEntity(null,rootNode,JqValues.parse(
+        """
+            {
+              "group": [
+                { "a" : 1, "b" : 10},
+                { "a" : 2, "b" : 2}
+              ]
+            }
+            """
+        ));
+        root1.persist();
+        ValueEntity group1_1 = new ValueEntity(null,groupNode,root1.data.getField("group").getElement(0),List.of(root1));
+        group1_1.persist();
+        ValueEntity a1_1 = new ValueEntity(null,aNode,group1_1.data.getField("a"),List.of(group1_1));
+        a1_1.persist();
+        ValueEntity b1_1 = new ValueEntity(null,bNode,group1_1.data.getField("b"),List.of(group1_1));
+        b1_1.persist();
+        ValueEntity group1_2 = new ValueEntity(null,groupNode,root1.data.getField("group").getElement(1),List.of(root1));
+        group1_2.persist();
+        ValueEntity a1_2 = new ValueEntity(null,aNode,group1_2.data.getField("a"),List.of(group1_2));
+        a1_2.persist();
+        ValueEntity b1_2 = new ValueEntity(null,bNode,group1_2.data.getField("b"),List.of(group1_2));
+        b1_2.persist();
+
+        ValueEntity root2 = new ValueEntity(null,rootNode,JqValues.parse(
+                """
+                    {
+                      "group": [
+                        { "a" : 1, "b" : 2},
+                        { "a" : 2, "b" : 3}
+                      ]
+                    }
+                    """
+        ));
+        root2.persist();
+        ValueEntity group2_1 = new ValueEntity(null,groupNode,root2.data.getField("group").getElement(0),List.of(root2));
+        group2_1.persist();
+        ValueEntity a2_1 = new ValueEntity(null,aNode,group2_1.data.getField("a"),List.of(group2_1));
+        a2_1.persist();
+        ValueEntity b2_1 = new ValueEntity(null,bNode,group2_1.data.getField("b"),List.of(group2_1));
+        b2_1.persist();
+        ValueEntity group2_2 = new ValueEntity(null,groupNode,root2.data.getField("group").getElement(1),List.of(root2));
+        group2_2.persist();
+        ValueEntity a2_2 = new ValueEntity(null,aNode,group2_2.data.getField("a"),List.of(group2_2));
+        a2_2.persist();
+        ValueEntity b2_2 = new ValueEntity(null,bNode,group2_2.data.getField("b"),List.of(group2_2));
+        b2_2.persist();
+        tm.commit();
+        //ancestor filter
+        List<JqValue> results = valueService.getGroupedValues(
+                groupNode.id,
+                root2.id,
+                List.of(bNode.id),
+                Map.of(aNode.id,a1_1.data),
+                bNode.id
+        );
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        JqValue result = results.getFirst();
+        assertNotNull(result);
+        assertTrue(result.has(bNode.name));
+        assertEquals(b2_1.data,result.getField(bNode.name));
+        //ancestor not filtered but sorted
+        results = valueService.getGroupedValues(
+                groupNode.id,
+                root1.id,
+                List.of(bNode.id),
+                Collections.emptyMap(),
+                bNode.id
+        );
+        assertNotNull(results);
+        assertEquals(2, results.size());
+        result = results.getFirst();
+        assertNotNull(result);
+        assertTrue(result.has(bNode.name));
+        assertEquals(b1_2.data,result.getField(bNode.name));
     }
 
     @Test
@@ -1921,7 +2013,7 @@ public class ValueServiceTest extends FreshDb {
             }
         }
 
-        // Find the root node and build_id node (named "build" in the QVSS node graph — 
+        // Find the root node and build_id node (named "build" in the QVSS node graph —
         // the Horreum variable that maps to the BUILD_ID extractor)
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "quarkus-spring-boot-comparison").firstResult();

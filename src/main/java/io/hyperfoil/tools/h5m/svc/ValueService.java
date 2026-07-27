@@ -449,7 +449,7 @@ public class ValueService implements ValueServiceInterface {
     @Override
     @Transactional
     public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds){
-        return getGroupedValues(nodeId,filterNodeIds,null,null);
+        return getGroupedValues(nodeId,null,filterNodeIds,null,null);
     }
 
     @Override
@@ -458,31 +458,60 @@ public class ValueService implements ValueServiceInterface {
         return getGroupedValues(nodeId, null);
     }
 
-
     @Override
     @Transactional
     public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId) {
+        return getGroupedValues(nodeId,null,filterNodeIds,fingerprints,sortByNodeId);
+    }
+
+    @Override
+    @Transactional
+    public List<JqValue> getGroupedValues(Long nodeId, Long valueId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId) {
         String nodeFilter = filterNodeIds != null && !filterNodeIds.isEmpty() ? "node_id in (:nodeIds)" : "";
+        String parentValueCte = valueId != null ? switch(db.kind()) {
+            case SQLITE ->
+                """
+                ancestor_value as (
+                    select v.id from value v
+                        where v.id = :valueId
+                        union
+                        select ve.child_id as id from value_edge ve join ancestor_value av on av.id = ve.parent_id
+                ),
+                """;
+            case POSTGRESQL ->
+                """
+                ancestor_value as (
+                    select v.id from value v
+                        where v.id = :valueId
+                        union
+                        select ve.child_id as id from value_edge ve join ancestor_value av on av.id = ve.parent_id
+                ),
+                """;
+            default -> "";
+        } : "";
+        String parentValueFilter = valueId != null ? " and id in (select av.id from ancestor_value av)" : "";
+
         // Sort CTE — tree.data is already converted to JSON text (SQLite) or jsonb
         // (PostgreSQL) by the tree CTE, so we use it directly without further conversion
         String sortCte = sortByNodeId != null ? switch (db.kind()) {
             case SQLITE ->
                     """
                     root_sort as (
-                    select root_id, 
-                    min(case when typeof(json_extract(data,'$')) in ('integer','real') then cast(data as real) end) as sort_num,
-                    min(data) as sort_txt
+                    select
+                        root_id,
+                        min(case when typeof(json_extract(data,'$')) in ('integer','real') then cast(data as real) end) as sort_num,
+                        min(data) as sort_txt
                     from tree where node_id = :sortNodeId group by root_id),
                     """;
             case POSTGRESQL ->
                     """
                     root_sort as (
                     select
-                        root_id, 
+                        root_id,
                         min(case when jsonb_typeof(data) = 'number' then (data::text)::numeric end) as sort_num,
-                        min(data::text) as sort_txt from tree where node_id = :sortNodeId group by root_id),
+                        min(data::text) as sort_txt 
+                    from tree where node_id = :sortNodeId group by root_id),
                     """;
-            default -> "";
         } : "";
         String sortJoin    = sortByNodeId != null ? "left join root_sort rs on b.root_id = rs.root_id" : "";
         String sortGroupBy = sortByNodeId != null ? ", rs.sort_num, rs.sort_txt" : "";
@@ -506,51 +535,53 @@ public class ValueService implements ValueServiceInterface {
         }
 
         String filter = !nodeFilter.isEmpty() || !fingerPrintWhere.isEmpty() ? "where "+ nodeFilter + (!nodeFilter.isEmpty() && !fingerPrintWhere.isEmpty() ? " and " : "" ) + fingerPrintWhere : "";
+        String queryStr = (switch (db.kind()) {
+            case SQLITE ->
+                """
+                with recursive ANCESTOR_CTE tree(id,node_id,root_id,idx,data) as (
+                    select v.id,v.node_id,ve.parent_id as root_id,v.idx,CAST(v.data AS TEXT) as data
+                        from value_edge ve left join value v on ve.child_id = v.id
+                        where ve.parent_id in (select id from value where node_id = :nodeId) ANCESTOR_FILTER
+                    union
+                    select v.id,v.node_id,t.root_id,v.idx,CAST(v.data AS TEXT) as data
+                        from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
+                ),
+                SORT_CTE
+                bynode as (
+                    select node_id,root_id,json_group_array(json(data)) as data
+                        from tree NODE_FILTER group by node_id,root_id order by idx
+                )
+                select json_group_object(n.name,json((case when json_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
+                    from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
+                """;
+            case POSTGRESQL ->
+                """
+                with recursive ANCESTOR_CTE tree(id,node_id,root_id,idx,data) as (
+                    select v.id,v.node_id,ve.parent_id as root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
+                        from value_edge ve left join value v on ve.child_id = v.id
+                        where ve.parent_id in (select id from value where node_id = :nodeId) ANCESTOR_FILTER
+                    union
+                    select v.id,v.node_id,t.root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
+                        from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
+                ),
+                SORT_CTE
+                bynode as (
+                    select node_id,root_id,jsonb_agg(to_jsonb(data)) as data
+                        from tree NODE_FILTER group by node_id,root_id,idx order by idx
+                )
+                select jsonb_object_agg(n.name,to_jsonb((case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
+                    from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
+                """;
+            default -> "";
+        }).replace("ANCESTOR_CTE",parentValueCte)
+            .replace("ANCESTOR_FILTER",parentValueFilter)
+            .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)
+            .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
 
         var query = em.unwrap(Session.class).createNativeQuery(
-                switch (db.kind()) {
-                    case SQLITE ->
-                            """
-                            with recursive tree(id,node_id,root_id,idx,data) as (
-                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,CAST(v.data AS TEXT) as data
-                                    from value_edge ve left join value v on ve.child_id = v.id
-                                    where ve.parent_id in (select id from value where node_id = :nodeId)
-                                union
-                                select v.id,v.node_id,t.root_id,v.idx,CAST(v.data AS TEXT) as data
-                                    from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
-                            ),
-                            SORT_CTE
-                            bynode as (
-                                select node_id,root_id,json_group_array(json(data)) as data
-                                    from tree NODE_FILTER group by node_id,root_id order by idx
-                            )
-                            select json_group_object(n.name,json((case when json_array_length(b.data) > 1 then b.data else b.data->0 end))) as data
-                                from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
-                            """
-                                    .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)
-                                    .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
-                    case POSTGRESQL ->
-                            """
-                            with recursive tree(id,node_id,root_id,idx,data) as (
-                                select v.id,v.node_id,ve.parent_id as root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
-                                    from value_edge ve left join value v on ve.child_id = v.id
-                                    where ve.parent_id in (select id from value where node_id = :nodeId)
-                                union
-                                select v.id,v.node_id,t.root_id,v.idx,convert_from(v.data, 'UTF-8')::jsonb as data
-                                    from value v join value_edge ve on v.id = ve.child_id join tree t on ve.parent_id = t.id
-                            ),
-                            SORT_CTE
-                            bynode as (
-                                select node_id,root_id,jsonb_agg(data) as data
-                                    from tree NODE_FILTER group by node_id,root_id,idx order by idx
-                            )
-                            select jsonb_object_agg(n.name,(case when jsonb_array_length(b.data) > 1 then b.data else b.data->0 end)) as data
-                                from bynode b join node n on b.node_id = n.id SORT_JOIN group by b.root_id SORT_GROUPBY SORT_ORDER;
-                            """
-                                    .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)
-                                    .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
-                    }, String.class
+                queryStr, String.class
         ).setParameter("nodeId", nodeId);
+        if (valueId != null) query.setParameter("valueId", valueId);
         if (filterNodeIds != null && !filterNodeIds.isEmpty()) query.setParameter("nodeIds", filterNodeIds);
         if (sortByNodeId != null)  query.setParameter("sortNodeId", sortByNodeId);
         if(!fingerprintIds.isEmpty()){
@@ -709,7 +740,7 @@ public class ValueService implements ValueServiceInterface {
         if(sortByNodeId != null){
             filterNodeIds.add(sortByNodeId);
         }
-        return getGroupedValues(rootNodeId, filterNodeIds.isEmpty() ? null : filterNodeIds, null, sortByNodeId);
+        return getGroupedValues(rootNodeId, null, filterNodeIds.isEmpty() ? null : filterNodeIds, null, sortByNodeId);
 
     }
 

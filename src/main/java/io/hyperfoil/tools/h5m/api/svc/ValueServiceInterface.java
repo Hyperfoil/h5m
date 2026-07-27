@@ -32,14 +32,6 @@ public interface ValueServiceInterface {
      */
     List<JqValue> getGroupedValues(Long nodeId);
 
-    /**
-     * Retrieves grouped values for a specific node, optionally filtered to specific node IDs.
-     *
-     * @param nodeId The ID of the root node.
-     * @param filterNodeIds Optional list of node IDs to include. If null, all nodes are included.
-     * @return A list of JSON nodes representing the grouped values.
-     */
-    List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds);
 
     /**
      * Retrieves all values produced by a specific node.
@@ -57,9 +49,18 @@ public interface ValueServiceInterface {
          * @param groupByNodeId Node whose value identifies the series (e.g. config fingerprint).
          * @param sortByNodeId  Node whose value orders the rows (acts as X-axis).
        */
-      List<JqValue> getLabelValues(Long folderId,Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId);
+    List<JqValue> getLabelValues(Long folderId,Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId);
+    /**
+     * Retrieves grouped values for a specific node, optionally filtered to specific node IDs.
+     *
+     * @param nodeId The ID of the root node.
+     * @param filterNodeIds Optional list of node IDs to include. If null, all nodes are included.
+     * @return A list of JSON nodes representing the grouped values.
+     */
+    List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds);
 
-      List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId);
+    List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId);
+    List<JqValue> getGroupedValues(Long nodeId, Long valueId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId);
 
 
 }
