@@ -5,8 +5,10 @@ import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.work.Work;
+import io.hyperfoil.tools.h5m.queue.WorkQueue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
@@ -452,4 +454,72 @@ public class RecalculateWorkQueueTest {
         assertEquals(JqValues.parse("3"),bValue.data(),"value should reflect change to node that occurred while queued");
     }
 
+    @Test
+    public void recalculateNode_changing_sources_changes_work_order() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        String testName = StackWalker.getInstance()
+                .walk(s -> s.skip(0).findFirst())
+                .get()
+                .getMethodName();
+        tm.begin();
+        long folderId = folderService.create(testName);
+        FolderEntity folder = folderService.read(folderId);
+
+        assertNotNull(folder);
+
+        NodeEntity a = new JqNode("a",".a",folder.group.root);
+        a.group=folder.group;
+        a.persist();
+        NodeEntity aa = new JqNode("aa",".",a);
+        aa.group=folder.group;
+        aa.persist();
+        NodeEntity aaa = new JqNode("aaa",".+.",a);
+        aaa.group=folder.group;
+        aaa.persist();
+        NodeEntity t = new JqNode("t","add",a);
+        t.group=folder.group;
+        t.persist();
+        tm.commit();
+
+        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+                """
+                { "a" : 1 }
+                """
+        ));
+        Runnable todo = workService.getQueue().poll();
+        assertNotNull(todo);
+        assertInstanceOf(Work.class,todo);
+        workService.execute((Work)todo);
+        //should put t in the work queue
+        //change t to reference aaa and a
+        tm.begin();
+        a = nodeService.read(a.id);
+        aa = nodeService.read(aa.id);
+        aaa = nodeService.read(aaa.id);
+        NodeEntity found = nodeService.read(t.id);
+        found.sources=List.of(a,aa,aaa);
+        found.persist();
+        tm.commit();
+        //
+        assertFalse(uploaded.future.isDone(),"upload should be active");
+        RecalculationTracker tTracker = folderService.recalculateNode(found.id);
+        //should add aaa ahead of t in queue
+
+        //using a loop because right now work for t is duplicating
+        while(!workService.getQueue().isEmpty()){
+            todo = workService.getQueue().poll();
+            assertNotNull(todo);
+            if(todo instanceof Work w){
+                workService.execute(w);
+            }else{
+                fail("runnable should be a work instance");
+            }
+        }
+
+        List<Value> values = valueService.getNodeValues(t.id);
+        assertNotNull(values);
+        assertEquals(1,values.size(),"only one value for t");
+        Value value = values.getFirst();
+        assertNotNull(value);
+        assertEquals(JqValues.parse("4"),value.data());
+    }
 }
