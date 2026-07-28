@@ -16,8 +16,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import io.hyperfoil.tools.h5m.provided.DatabaseEngine;
+import static io.hyperfoil.tools.h5m.provided.DatabaseEngine.Kind.*;
 import jakarta.ws.rs.NotFoundException;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.Session;
 import org.hibernate.query.NativeQuery;
 
@@ -35,15 +36,11 @@ public class ValueService implements ValueServiceInterface {
     @Inject
     EntityManager em;
 
-//    @Inject
-//    @Named("duckdb")
-//    AgroalDataSource duckDatasource;
-
     @Inject
     ApiMapper apiMapper;
 
-    @ConfigProperty(name="quarkus.datasource.db-kind")
-    String dbKind;
+    @Inject
+    DatabaseEngine db;
     @Inject
     NodeService nodeService;
 
@@ -65,6 +62,24 @@ public class ValueService implements ValueServiceInterface {
             value.persist();
         }
         return value;
+    }
+
+    @Transactional
+    public List<ValueEntity> createAll(List<ValueEntity> values){
+        List<ValueEntity> result = new ArrayList<>(values.size());
+        for (ValueEntity value : values) {
+            if (!value.isPersistent()) {
+                result.add(em.merge(value));
+            } else {
+                value.persist();
+                result.add(value);
+            }
+        }
+        em.flush();
+        for (int i = 0; i < values.size(); i++) {
+            values.get(i).id = result.get(i).id;
+        }
+        return result;
     }
 
     @Transactional
@@ -184,8 +199,8 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public List<ValueEntity> findMatchingFingerprint_unused(NodeEntity source, ValueEntity fingerprint, NodeEntity sort){
         List<ValueEntity> rtrn = new ArrayList<>(em.createNativeQuery(
-            switch(dbKind){
-                case "sqlite"->
+            switch(db.kind()){
+                case SQLITE->
                     """
                     with recursive ancestor(vid) as (
                         select v.id as vid 
@@ -210,7 +225,7 @@ public class ValueService implements ValueServiceInterface {
                     )                        
                     select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;
                     """;
-                case "postgresql"->
+                case POSTGRESQL->
                     """
                     with recursive ancestor(vid) as (
                         select v.id as vid 
@@ -235,7 +250,6 @@ public class ValueService implements ValueServiceInterface {
                     )                        
                     select * from value v join descendant d on v.id=d.vid where v.node_id=:sourceId order by sortable asc;                    
                     """;
-                default -> "";
             }, ValueEntity.class)
                                                    .setParameter("nodeId", fingerprint.node.id)
                                                    .setParameter("data", fingerprint.data.toString())
@@ -277,8 +291,8 @@ public class ValueService implements ValueServiceInterface {
                 ),
                 """;
         }
-        sql = sql + switch (dbKind){
-            case "sqlite"->
+        sql = sql + switch (db.kind()){
+            case SQLITE->
                     """
                         ANCESTOR_PREFIX ancestor(vid) as (
                             select v.id as vid
@@ -288,7 +302,7 @@ public class ValueService implements ValueServiceInterface {
                                 from value v join value_edge ve on v.id = ve.parent_id join ancestor a on a.vid = ve.child_id
                         ),
                     """;
-            case "postgresql"->
+            case POSTGRESQL->
                     """
                     ANCESTOR_PREFIX ancestor(vid) as (
                         select v.id as vid
@@ -305,13 +319,12 @@ public class ValueService implements ValueServiceInterface {
                 .replace("VALUE_ANCESTOR_CRITERIA",ancestorValue==null?"":" and exists ( select 1 from valueDescendants where vid = v.id)");
 
         if(domainValue!=null || domainNode!=null) { //we have a sortable domain value
-            String domainValueComp = switch (dbKind){
-                case "sqlite"-> "and v.data GTLT :domain";
-                case "postgresql"-> "and v.data GTLT cast( :domain as jsonb)";
-                default -> "";
+            String domainValueComp = switch (db.kind()){
+                case SQLITE-> "and v.data GTLT :domain";
+                case POSTGRESQL-> "and v.data GTLT cast( :domain as jsonb)";
             };
-            sql += switch (dbKind) {
-                case "sqlite" -> """
+            sql += switch (db.kind()) {
+                case SQLITE -> """
                         sorter(vid,sortable) as (
                             select v.id as vid,v.data as sortable
                                 from value v where v.node_id = :sortId DOMAIN_VALUE_COMP
@@ -330,7 +343,7 @@ public class ValueService implements ValueServiceInterface {
                         select v.id from value v join descendant d on v.id=d.vid 
                             where v.node_id=:sourceId order by sortable ORDER_DIRECTION
                         """;
-                case "postgresql" -> """
+                case POSTGRESQL -> """
                         sorter(vid,sortable) as (
                             select v.id as vid,v.data as sortable
                                 from value v where v.node_id = :sortId DOMAIN_VALUE_COMP
@@ -349,13 +362,13 @@ public class ValueService implements ValueServiceInterface {
                         select v.id from value v join descendant d on v.id=d.vid
                             where v.node_id=:sourceId order by sortable ORDER_DIRECTION
                         """;
-                default -> "";
             };
             sql = sql.replace("DOMAIN_VALUE_COMP",domainValue != null ? domainValueComp : "");
         }else{
             //sorting by created_at
-            // No domain sorting — order by created_at. Both dialects share the same SQL.
-            sql+= """
+            sql+=switch(db.kind()){
+                case SQLITE->
+                        """
                         descendant(vid) as (
                            select v.id as vid
                              from value v join ancestor a on v.id = a.vid
@@ -367,6 +380,20 @@ public class ValueService implements ValueServiceInterface {
                         select v.id from value v join descendant d on v.id=d.vid
                             where v.node_id=:sourceId order by created_at ORDER_DIRECTION
                         """;
+                case POSTGRESQL->
+                        """
+                        descendant(vid) as (
+                           select v.id as vid
+                             from value v join ancestor a on v.id = a.vid
+                             where v.node_id = :groupById --limit descendants to values from the grouping node
+                           union
+                           select v.id as vid
+                                 from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
+                        )
+                        select v.id from value v join descendant d on v.id=d.vid
+                            where v.node_id=:sourceId order by created_at ORDER_DIRECTION
+                        """;
+            };
         }
         sql = sql
                 .replace("GTLT", preceedingValues ? "<=" : ">=") //TODO I think these should be <= and >= to include current sample
@@ -471,8 +498,8 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds, Map<Long,JqValue> fingerprints, Long sortByNodeId) {
         String nodeFilter = filterNodeIds != null && !filterNodeIds.isEmpty() ? "node_id in (:nodeIds)" : "";
-        String sortCte = sortByNodeId != null ? switch (dbKind) {
-            case "sqlite"     ->
+        String sortCte = sortByNodeId != null ? switch (db.kind()) {
+            case SQLITE ->
                     """
                     root_sort as (
                     select root_id, 
@@ -480,7 +507,7 @@ public class ValueService implements ValueServiceInterface {
                     min(data) as sort_txt
                     from tree where node_id = :sortNodeId group by root_id),
                     """;
-            case "postgresql" ->
+            case POSTGRESQL ->
                     """
                     root_sort as (
                     select
@@ -503,9 +530,9 @@ public class ValueService implements ValueServiceInterface {
                     fingerPrintWhere+=" and ";
                 }
                 fingerPrintWhere+= " root_id in ( select ft.root_id from tree ft where ft.node_id = "+id+" and ft.data = "+
-                        switch(dbKind){
-                            case "sqlite"->":data_"+idx;
-                            case "postgresql"->"cast( :data_"+idx+" as jsonb)";
+                        switch(db.kind()){
+                            case SQLITE -> ":data_"+idx;
+                            case POSTGRESQL -> "cast( :data_"+idx+" as jsonb)";
                             default -> "";
                         }+") ";
             }
@@ -514,8 +541,8 @@ public class ValueService implements ValueServiceInterface {
         String filter = !nodeFilter.isEmpty() || !fingerPrintWhere.isEmpty() ? "where "+ nodeFilter + (!nodeFilter.isEmpty() && !fingerPrintWhere.isEmpty() ? " and " : "" ) + fingerPrintWhere : "";
 
         var query = em.unwrap(Session.class).createNativeQuery(
-                switch (dbKind) {
-                    case "sqlite" ->
+                switch (db.kind()) {
+                    case SQLITE ->
                             """
                             with recursive tree(id,node_id,root_id,idx,data) as (
                                 select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
@@ -535,7 +562,7 @@ public class ValueService implements ValueServiceInterface {
                             """
                                     .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)
                                     .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
-                    case "postgresql" ->
+                    case POSTGRESQL ->
                             """
                             with recursive tree(id,node_id,root_id,idx,data) as (
                                 select v.id,v.node_id,ve.parent_id as root_id,v.idx,v.data
@@ -555,8 +582,7 @@ public class ValueService implements ValueServiceInterface {
                             """
                                     .replace("NODE_FILTER", filter).replace("SORT_CTE", sortCte)
                                     .replace("SORT_JOIN", sortJoin).replace("SORT_GROUPBY", sortGroupBy).replace("SORT_ORDER", sortOrder);
-                    default -> "";
-                }, String.class
+                    }, String.class
         ).setParameter("nodeId", nodeId);
         if (filterNodeIds != null && !filterNodeIds.isEmpty()) query.setParameter("nodeIds", filterNodeIds);
         if (sortByNodeId != null)  query.setParameter("sortNodeId", sortByNodeId);
