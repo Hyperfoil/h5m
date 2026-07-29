@@ -1,0 +1,39 @@
+name: Container Image
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build and push container image
+        run: >
+          mvn -B package -DskipTests
+          -Dquarkus.container-image.build=true
+          -Dquarkus.container-image.push=true
+          -Dquarkus.container-image.tag=latest
+          -Dquarkus.container-image.username=${{ github.actor }}
+          -Dquarkus.container-image.password=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up old untagged container versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: h5m
+          package-type: container
+          delete-only-untagged-versions: true
+          min-versions-to-keep: 0

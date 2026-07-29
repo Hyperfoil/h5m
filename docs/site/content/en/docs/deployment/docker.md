@@ -5,61 +5,23 @@ description: Running h5m in a Docker container.
 draft: false
 ---
 
-{{< alert color="warning" >}}
-h5m does not currently publish an official Docker image. The examples on this page show how to build and run your own container image using standard Quarkus patterns.
-{{< /alert >}}
+## Container Image
 
-## Build the JAR First
+A container image is published to GitHub Container Registry on every push to `main`:
+
+```bash
+docker pull ghcr.io/hyperfoil/h5m:latest
+```
+
+Alternatively, build locally using Quarkus JIB (no Docker daemon required):
 
 ```bash
 git clone https://github.com/hyperfoil/h5m.git
 cd h5m
-mvn clean package
+mvn clean package -DskipTests -Dquarkus.container-image.build=true
 ```
 
-## Create a Dockerfile
-
-Place this `Dockerfile` in the project root:
-
-```dockerfile
-FROM eclipse-temurin:21-jre
-
-WORKDIR /app
-
-COPY target/h5m.jar /app/h5m.jar
-
-# Data directory for SQLite database
-RUN mkdir -p /data && \
-    useradd -r -u 1001 h5m && \
-    chown h5m:h5m /data
-
-USER 1001
-
-EXPOSE 8080
-
-ENV QUARKUS_DATASOURCE_DB_KIND=sqlite
-ENV QUARKUS_DATASOURCE_JDBC_URL=jdbc:sqlite:/data/h5m.db
-
-ENTRYPOINT ["java", "-jar", "/app/h5m.jar"]
-```
-
-## Build the Image
-
-```bash
-docker build -t h5m:latest .
-```
-
-## Run with SQLite (Persistent Volume)
-
-```bash
-docker run -d \
-  --name h5m \
-  -p 8080:8080 \
-  -v h5m-data:/data \
-  h5m:latest
-```
-
-Data persists in the `h5m-data` Docker volume between restarts.
+All examples below work with both Docker and Podman.
 
 ## Run with PostgreSQL
 
@@ -71,7 +33,7 @@ docker run -d \
   -e QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://db:5432/h5m \
   -e QUARKUS_DATASOURCE_USERNAME=h5m \
   -e QUARKUS_DATASOURCE_PASSWORD=secret \
-  h5m:latest
+  ghcr.io/hyperfoil/h5m:latest
 ```
 
 ## Docker Compose
@@ -81,7 +43,7 @@ A minimal Compose file with h5m and PostgreSQL:
 ```yaml
 services:
   db:
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_USER: h5m
       POSTGRES_PASSWORD: secret
@@ -94,7 +56,7 @@ services:
       retries: 5
 
   h5m:
-    image: h5m:latest
+    image: ghcr.io/hyperfoil/h5m:latest
     ports:
       - "8080:8080"
     environment:
@@ -116,6 +78,20 @@ Start with:
 docker compose up -d
 ```
 
+## Health Checks
+
+h5m includes SmallRye Health endpoints for readiness and liveness probes:
+
+- `GET /q/health/ready` -- returns 200 when the application is ready to serve requests
+- `GET /q/health/live` -- returns 200 when the application is alive
+
+For Testcontainers:
+
+```java
+new GenericContainer<>("ghcr.io/hyperfoil/h5m:latest")
+    .waitingFor(Wait.forHttp("/q/health/ready").forStatusCode(200))
+```
+
 ## With OIDC
 
 Pass OIDC environment variables at runtime:
@@ -133,16 +109,7 @@ docker run -d \
   -e QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://db:5432/h5m \
   -e QUARKUS_DATASOURCE_USERNAME=h5m \
   -e QUARKUS_DATASOURCE_PASSWORD=secret \
-  h5m:latest
-```
-
-## Health Check
-
-Add a Docker health check to detect startup failures:
-
-```dockerfile
-HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
-  CMD curl -f http://localhost:8080/api/folder || exit 1
+  ghcr.io/hyperfoil/h5m:latest
 ```
 
 ## Kubernetes
@@ -166,7 +133,7 @@ spec:
     spec:
       containers:
         - name: h5m
-          image: h5m:latest
+          image: ghcr.io/hyperfoil/h5m:latest
           ports:
             - containerPort: 8080
           env:
@@ -186,12 +153,12 @@ spec:
                   key: password
           livenessProbe:
             httpGet:
-              path: /api/folder
+              path: /q/health/live
               port: 8080
             initialDelaySeconds: 15
           readinessProbe:
             httpGet:
-              path: /api/folder
+              path: /q/health/ready
               port: 8080
             initialDelaySeconds: 10
 ```
