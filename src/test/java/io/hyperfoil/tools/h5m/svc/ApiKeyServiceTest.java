@@ -2,8 +2,8 @@ package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.ApiKey;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
@@ -48,7 +48,7 @@ public class ApiKeyServiceTest extends FreshDb {
         String rawKey = apiKeyService.create("carol", "valid key").rawKey();
         User user = apiKeyService.validateKey(rawKey);
         assertNotNull(user);
-        assertEquals("carol", user.username);
+        assertEquals("carol", user.username());
     }
 
     @Test

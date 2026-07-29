@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -31,7 +31,7 @@ public class AuthorizationService {
             return true;
         }
         User user = userService.byUsername(username);
-        return user != null && user.role == Role.ADMIN;
+        return user != null && user.role() == Role.ADMIN;
     }
 
     @Transactional

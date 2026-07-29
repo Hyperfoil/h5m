@@ -1,4 +1,4 @@
-package io.hyperfoil.tools.h5m.entity;
+package io.hyperfoil.tools.h5m.api;
 
 public enum Role {
     ADMIN,

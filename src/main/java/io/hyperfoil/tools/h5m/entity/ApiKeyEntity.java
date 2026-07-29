@@ -23,7 +23,7 @@ public class ApiKeyEntity extends PanacheEntityBase {
     public String keyHash; // SHA-256 hex
 
     @ManyToOne(fetch = FetchType.EAGER)
-    public User user;
+    public UserEntity user;
 
     public String description;
 

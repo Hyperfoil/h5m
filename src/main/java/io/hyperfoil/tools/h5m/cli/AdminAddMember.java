@@ -2,8 +2,8 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.TeamServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
-import io.hyperfoil.tools.h5m.entity.Team;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Team;
+import io.hyperfoil.tools.h5m.api.User;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -36,7 +36,7 @@ public class AdminAddMember implements Callable<Integer> {
             System.err.println("Team not found: " + teamName);
             return 1;
         }
-        teamService.addMember(team.id, user.id);
+        teamService.addMember(team.id(), user.id());
         System.out.println("Added " + username + " to team " + teamName);
         return 0;
     }

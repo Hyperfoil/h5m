@@ -1,10 +1,11 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.ApiKey;
-import io.hyperfoil.tools.h5m.entity.Role;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
 import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.entity.UserEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.quarkus.logging.Log;
 import io.quarkus.runtime.StartupEvent;
@@ -53,7 +54,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
      */
     @Transactional
     public ApiKey create(String username, String description, String rawKey) {
-        User user = userService.byUsername(username);
+        UserEntity user = UserEntity.find("username", username).firstResult();
         if (user == null) {
             throw new IllegalArgumentException("User not found: " + username);
         }
@@ -105,7 +106,8 @@ public class ApiKeyService implements ApiKeyServiceInterface {
             return null;
         }
         apiKey.recordAccess();
-        return apiKey.user;
+        UserEntity user = apiKey.user;
+        return user != null ? new User(user.id, user.username, user.role) : null;
     }
 
     static String hashKey(String rawKey) {

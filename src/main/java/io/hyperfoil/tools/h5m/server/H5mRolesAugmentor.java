@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.server;
 
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.svc.UserService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -34,7 +34,7 @@ public class H5mRolesAugmentor implements SecurityIdentityAugmentor {
         }
         QuarkusSecurityIdentity.Builder builder = QuarkusSecurityIdentity.builder(identity);
         builder.addRole("user");
-        if (user.role == Role.ADMIN) {
+        if (user.role() == Role.ADMIN) {
             builder.addRole("admin");
         }
         return builder.build();

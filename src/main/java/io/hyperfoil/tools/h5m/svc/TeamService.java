@@ -1,9 +1,12 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.Team;
 import io.hyperfoil.tools.h5m.api.svc.TeamServiceInterface;
-import io.hyperfoil.tools.h5m.entity.Team;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.entity.TeamEntity;
+import io.hyperfoil.tools.h5m.entity.UserEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
@@ -11,10 +14,13 @@ import java.util.List;
 @ApplicationScoped
 public class TeamService implements TeamServiceInterface {
 
+    @Inject
+    ApiMapper apiMapper;
+
     @Override
     @Transactional
     public long create(String name) {
-        Team team = new Team(name);
+        TeamEntity team = new TeamEntity(name);
         team.persist();
         return team.id;
     }
@@ -22,26 +28,28 @@ public class TeamService implements TeamServiceInterface {
     @Override
     @Transactional
     public void delete(long teamId) {
-        Team.deleteById(teamId);
+        TeamEntity.deleteById(teamId);
     }
 
     @Override
     @Transactional
     public Team byName(String name) {
-        return Team.find("name", name).firstResult();
+        TeamEntity entity = TeamEntity.find("name", name).firstResult();
+        return apiMapper.toTeam(entity);
     }
 
     @Override
     @Transactional
     public List<Team> list() {
-        return Team.listAll();
+        List<TeamEntity> entities = TeamEntity.listAll();
+        return entities.stream().map(apiMapper::toTeam).toList();
     }
 
     @Override
     @Transactional
     public void addMember(long teamId, long userId) {
-        Team team = Team.findById(teamId);
-        User user = User.findById(userId);
+        TeamEntity team = TeamEntity.findById(teamId);
+        UserEntity user = UserEntity.findById(userId);
         if (team != null && user != null && !team.members.contains(user)) {
             team.members.add(user);
         }
@@ -50,8 +58,8 @@ public class TeamService implements TeamServiceInterface {
     @Override
     @Transactional
     public void removeMember(long teamId, long userId) {
-        Team team = Team.findById(teamId);
-        User user = User.findById(userId);
+        TeamEntity team = TeamEntity.findById(teamId);
+        UserEntity user = UserEntity.findById(userId);
         if (team != null && user != null) {
             team.members.remove(user);
         }

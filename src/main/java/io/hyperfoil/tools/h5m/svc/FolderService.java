@@ -17,7 +17,7 @@ import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
 import io.hyperfoil.tools.h5m.api.ProcessingType;
-import io.hyperfoil.tools.h5m.entity.Team;
+import io.hyperfoil.tools.h5m.entity.TeamEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.ViewEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
@@ -99,7 +99,7 @@ public class FolderService implements FolderServiceInterface {
 
     @Transactional
     public long create(String name, String teamName) {
-        Team team = Team.find("name", teamName).firstResult();
+        TeamEntity team = TeamEntity.find("name", teamName).firstResult();
         if (team == null) {
             throw new IllegalArgumentException("Team not found: " + teamName);
         }

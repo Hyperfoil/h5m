@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.server;
 
-import io.hyperfoil.tools.h5m.entity.Role;
+import io.hyperfoil.tools.h5m.api.Role;
 import io.hyperfoil.tools.h5m.svc.UserService;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;

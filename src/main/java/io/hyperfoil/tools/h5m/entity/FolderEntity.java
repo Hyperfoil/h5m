@@ -17,7 +17,7 @@ public class FolderEntity extends PanacheEntityBase {
     public NodeGroupEntity group;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    public Team team;
+    public TeamEntity team;
 
     @OneToMany(mappedBy = "folder", cascade = CascadeType.ALL, orphanRemoval = true)
     public java.util.List<ViewEntity> views = new java.util.ArrayList<>();

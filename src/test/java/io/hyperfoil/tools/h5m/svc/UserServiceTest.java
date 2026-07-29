@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -23,8 +23,8 @@ public class UserServiceTest extends FreshDb {
         assertTrue(id > 0);
         User user = userService.byUsername("stalep");
         assertNotNull(user);
-        assertEquals("stalep", user.username);
-        assertEquals(Role.ADMIN, user.role);
+        assertEquals("stalep", user.username());
+        assertEquals(Role.ADMIN, user.role());
     }
 
     @Test
@@ -40,7 +40,7 @@ public class UserServiceTest extends FreshDb {
         long id = userService.create("carol", Role.USER);
         userService.setRole(id, Role.ADMIN);
         User user = userService.byUsername("carol");
-        assertEquals(Role.ADMIN, user.role);
+        assertEquals(Role.ADMIN, user.role());
     }
 
     @Test

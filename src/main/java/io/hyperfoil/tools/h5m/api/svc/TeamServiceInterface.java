@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.api.svc;
 
-import io.hyperfoil.tools.h5m.entity.Team;
+import io.hyperfoil.tools.h5m.api.Team;
 
 import java.util.List;
 

@@ -2,9 +2,9 @@ package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.Team;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.entity.TeamEntity;
+import io.hyperfoil.tools.h5m.api.User;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
@@ -60,7 +60,7 @@ public class AuthorizationServiceTest extends FreshDb {
 
         FolderEntity folder = new FolderEntity();
         folder.name = "test-folder";
-        folder.team = Team.findById(teamId);
+        folder.team = TeamEntity.findById(teamId);
         folder.persist();
 
         assertTrue(authService.canModifyFolder("alice", folder));
@@ -74,7 +74,7 @@ public class AuthorizationServiceTest extends FreshDb {
 
         FolderEntity folder = new FolderEntity();
         folder.name = "test-folder";
-        folder.team = Team.findById(teamId);
+        folder.team = TeamEntity.findById(teamId);
         folder.persist();
 
         assertFalse(authService.canModifyFolder("outsider", folder));
@@ -88,7 +88,7 @@ public class AuthorizationServiceTest extends FreshDb {
 
         FolderEntity folder = new FolderEntity();
         folder.name = "test-folder";
-        folder.team = Team.findById(teamId);
+        folder.team = TeamEntity.findById(teamId);
         folder.persist();
 
         assertTrue(authService.canModifyFolder("boss", folder));
@@ -114,7 +114,7 @@ public class AuthorizationServiceTest extends FreshDb {
 
         FolderEntity folder = new FolderEntity();
         folder.name = "test-folder";
-        folder.team = Team.findById(teamId);
+        folder.team = TeamEntity.findById(teamId);
         folder.persist();
 
         assertThrows(SecurityException.class,

@@ -5,6 +5,8 @@ import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
+import io.hyperfoil.tools.h5m.entity.TeamEntity;
+import io.hyperfoil.tools.h5m.entity.UserEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.ViewEntity;
 import io.hyperfoil.tools.h5m.entity.ViewComponentEntity;
@@ -54,5 +56,15 @@ public interface ApiMapper {
                 entity.isExpired(now),
                 rawKey
         );
+    }
+
+    default User toUser(UserEntity entity) {
+        if (entity == null) return null;
+        return new User(entity.id, entity.username, entity.role);
+    }
+
+    default Team toTeam(TeamEntity entity) {
+        if (entity == null) return null;
+        return new Team(entity.id, entity.name, entity.members != null ? entity.members.size() : 0);
     }
 }

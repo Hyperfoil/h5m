@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
-import io.hyperfoil.tools.h5m.entity.Role;
+import io.hyperfoil.tools.h5m.api.Role;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 

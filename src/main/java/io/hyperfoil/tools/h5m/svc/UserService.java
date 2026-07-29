@@ -1,9 +1,12 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.entity.UserEntity;
+import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
@@ -11,10 +14,13 @@ import java.util.List;
 @ApplicationScoped
 public class UserService implements UserServiceInterface {
 
+    @Inject
+    ApiMapper apiMapper;
+
     @Override
     @Transactional
     public long create(String username, Role role) {
-        User user = new User(username, role);
+        UserEntity user = new UserEntity(username, role);
         user.persist();
         return user.id;
     }
@@ -22,19 +28,21 @@ public class UserService implements UserServiceInterface {
     @Override
     @Transactional
     public User byUsername(String username) {
-        return User.find("username", username).firstResult();
+        UserEntity entity = UserEntity.find("username", username).firstResult();
+        return apiMapper.toUser(entity);
     }
 
     @Override
     @Transactional
     public List<User> list() {
-        return User.listAll();
+        List<UserEntity> entities = UserEntity.listAll();
+        return entities.stream().map(apiMapper::toUser).toList();
     }
 
     @Override
     @Transactional
     public void setRole(long userId, Role role) {
-        User user = User.findById(userId);
+        UserEntity user = UserEntity.findById(userId);
         if (user != null) {
             user.role = role;
         }
@@ -43,6 +51,6 @@ public class UserService implements UserServiceInterface {
     @Override
     @Transactional
     public long count() {
-        return User.count();
+        return UserEntity.count();
     }
 }

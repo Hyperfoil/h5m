@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.rest;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.Role;
+import io.hyperfoil.tools.h5m.api.Role;
 import io.hyperfoil.tools.h5m.svc.ApiKeyService;
 import io.hyperfoil.tools.h5m.svc.SecurityEnabledProfile;
 import io.hyperfoil.tools.h5m.svc.UserService;

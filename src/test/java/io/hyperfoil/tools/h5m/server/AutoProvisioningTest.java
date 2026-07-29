@@ -1,8 +1,8 @@
 package io.hyperfoil.tools.h5m.server;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.svc.SecurityEnabledProfile;
 import io.hyperfoil.tools.h5m.svc.UserService;
 import io.quarkus.security.identity.AuthenticationRequestContext;
@@ -51,7 +51,7 @@ public class AutoProvisioningTest extends FreshDb {
 
         User user = userService.byUsername("first-user");
         assertNotNull(user);
-        assertEquals(Role.ADMIN, user.role);
+        assertEquals(Role.ADMIN, user.role());
     }
 
     @Test
@@ -64,7 +64,7 @@ public class AutoProvisioningTest extends FreshDb {
 
         User user = userService.byUsername("new-user");
         assertNotNull(user);
-        assertEquals(Role.USER, user.role);
+        assertEquals(Role.USER, user.role());
     }
 
     @Test

@@ -1,9 +1,9 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.entity.Role;
-import io.hyperfoil.tools.h5m.entity.Team;
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.Role;
+import io.hyperfoil.tools.h5m.api.Team;
+import io.hyperfoil.tools.h5m.entity.TeamEntity;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -28,7 +28,7 @@ public class TeamServiceTest extends FreshDb {
         assertTrue(id > 0);
         Team team = teamService.byName("test-team");
         assertNotNull(team);
-        assertEquals("test-team", team.name);
+        assertEquals("test-team", team.name());
     }
 
     @Test
@@ -54,10 +54,10 @@ public class TeamServiceTest extends FreshDb {
         long userId = userService.create("alice", Role.USER);
         teamService.addMember(teamId, userId);
 
-        Team team = Team.findById(teamId);
-        assertNotNull(team);
-        assertEquals(1, team.members.size());
-        assertEquals("alice", team.members.get(0).username);
+        TeamEntity teamEntity = TeamEntity.findById(teamId);
+        assertNotNull(teamEntity);
+        assertEquals(1, teamEntity.members.size());
+        assertEquals("alice", teamEntity.members.get(0).username);
     }
 
     @Test
@@ -67,12 +67,12 @@ public class TeamServiceTest extends FreshDb {
         long userId = userService.create("bob", Role.USER);
         teamService.addMember(teamId, userId);
 
-        Team team = Team.findById(teamId);
-        assertEquals(1, team.members.size());
+        TeamEntity teamEntity = TeamEntity.findById(teamId);
+        assertEquals(1, teamEntity.members.size());
 
         teamService.removeMember(teamId, userId);
-        team = Team.findById(teamId);
-        assertEquals(0, team.members.size());
+        teamEntity = TeamEntity.findById(teamId);
+        assertEquals(0, teamEntity.members.size());
     }
 
     @Test
@@ -83,7 +83,7 @@ public class TeamServiceTest extends FreshDb {
         teamService.addMember(teamId, userId);
         teamService.addMember(teamId, userId);
 
-        Team team = Team.findById(teamId);
-        assertEquals(1, team.members.size());
+        TeamEntity teamEntity = TeamEntity.findById(teamId);
+        assertEquals(1, teamEntity.members.size());
     }
 }

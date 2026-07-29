@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.entity;
 
+import io.hyperfoil.tools.h5m.api.Role;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity(name = "h5m_user")
-public class User extends PanacheEntityBase {
+public class UserEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,18 +28,18 @@ public class User extends PanacheEntityBase {
     public Role role;
 
     @ManyToMany(mappedBy = "members")
-    public List<Team> teams = new ArrayList<>();
+    public List<TeamEntity> teams = new ArrayList<>();
 
-    public User() {}
+    public UserEntity() {}
 
-    public User(String username, Role role) {
+    public UserEntity(String username, Role role) {
         this.username = username;
         this.role = role;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof User that)) {
+        if (!(o instanceof UserEntity that)) {
             return false;
         }
         return username.equals(that.username);
@@ -51,6 +52,6 @@ public class User extends PanacheEntityBase {
 
     @Override
     public String toString() {
-        return "User<" + id + ">[ username=" + username + " role=" + role + " ]";
+        return "UserEntity<" + id + ">[ username=" + username + " role=" + role + " ]";
     }
 }

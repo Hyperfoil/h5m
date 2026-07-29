@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.server;
 
-import io.hyperfoil.tools.h5m.entity.User;
+import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.svc.ApiKeyService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -37,9 +37,9 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
             return null;
         }
         QuarkusSecurityIdentity.Builder builder = QuarkusSecurityIdentity.builder()
-                .setPrincipal(new QuarkusPrincipal(user.username));
-        if (user.role != null) {
-            builder.addRole(user.role.name().toLowerCase());
+                .setPrincipal(new QuarkusPrincipal(user.username()));
+        if (user.role() != null) {
+            builder.addRole(user.role().name().toLowerCase());
         }
         return builder.build();
     }

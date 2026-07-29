@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity(name = "team")
-public class Team extends PanacheEntityBase {
+public class TeamEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -29,17 +29,17 @@ public class Team extends PanacheEntityBase {
             joinColumns = @JoinColumn(name = "team_id"),
             inverseJoinColumns = @JoinColumn(name = "user_id")
     )
-    public List<User> members = new ArrayList<>();
+    public List<UserEntity> members = new ArrayList<>();
 
-    public Team() {}
+    public TeamEntity() {}
 
-    public Team(String name) {
+    public TeamEntity(String name) {
         this.name = name;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof Team that)) {
+        if (!(o instanceof TeamEntity that)) {
             return false;
         }
         return name.equals(that.name);
@@ -52,6 +52,6 @@ public class Team extends PanacheEntityBase {
 
     @Override
     public String toString() {
-        return "Team<" + id + ">[ name=" + name + " ]";
+        return "TeamEntity<" + id + ">[ name=" + name + " ]";
     }
 }

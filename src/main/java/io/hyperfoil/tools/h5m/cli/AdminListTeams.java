@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.TeamServiceInterface;
-import io.hyperfoil.tools.h5m.entity.Team;
+import io.hyperfoil.tools.h5m.api.Team;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
 
@@ -18,6 +18,6 @@ public class AdminListTeams implements Runnable {
         List<Team> teams = teamService.list();
         System.out.println(ListCmd.table(80, teams,
                 List.of("name", "members"),
-                List.of(t -> t.name, t -> t.members.size())));
+                List.of(t -> t.name(), t -> t.memberCount())));
     }
 }
