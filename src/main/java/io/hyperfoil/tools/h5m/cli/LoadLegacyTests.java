@@ -96,7 +96,11 @@ public class LoadLegacyTests implements Callable<Integer> {
 
         Map<Extractor,NodeEntity> extractorNodes = new HashMap<>();
         Map<Label,NodeEntity> labelToNodes = new HashMap<>();
-        Map<NodeEntity,Label> nodeToLabel = new HashMap<>();
+        // Use IdentityHashMap because NodeEntity.hashCode() changes when id is
+        // set by em.persist() — a regular HashMap loses entries whose keys were
+        // inserted before persistence (hashCode was based on name+operation)
+        // and looked up after persistence (hashCode is based on id).
+        Map<NodeEntity,Label> nodeToLabel = new IdentityHashMap<>();
         HashedLists<String,NodeEntity> nodesByName = new HashedLists<>();
 
         public void tagNodeAsExtractor(Extractor extractor, NodeEntity node) {
@@ -886,7 +890,14 @@ public class LoadLegacyTests implements Callable<Integer> {
                 //FolderEntity.persist(folder);
                 FolderImportResult result = createFolder(test);
                 long folderId = folderService.create(result.folder());
-                importViews(connection, test, folderId, result.folder().name, result.nodeTracking());
+                try {
+                    importViews(connection, test, folderId, result.folder().name, result.nodeTracking());
+                } catch (Exception e) {
+                    // View import is best-effort — the folder and nodes are already
+                    // persisted. Catch any unexpected errors to prevent view import
+                    // failures from rolling back the folder and node creation.
+                    log("WARNING: view import failed for " + test.name + ": " + e.getMessage());
+                }
             }
         }
         finally {
@@ -932,17 +943,22 @@ public class LoadLegacyTests implements Callable<Integer> {
 
                                 String labelName = labelsArray.getElement(0).asText();
 
-                                // Resolve label name to h5m node using NodeTracking
-                                // from folder creation (nodes already persisted with IDs)
+                                // Resolve label name to h5m node using NodeTracking.
+                                // Try getLabelNodes first (nodes explicitly tagged as labels),
+                                // then fall back to getNodes (all nodes by name) as a safety
+                                // net in case a node wasn't tagged during import.
                                 List<NodeEntity> labelNodes = nodeTracking.getLabelNodes(labelName);
+                                if (labelNodes.isEmpty()) {
+                                    labelNodes = nodeTracking.getNodes(labelName);
+                                }
                                 NodeEntity node = labelNodes.isEmpty() ? null : labelNodes.getFirst();
 
-                                if (node != null) {
+                                if (node != null && node.id != null) {
                                     components.add(new ViewComponent(
                                             null, node.id, node.name,
                                             node.type().display(), headerName, headerOrder));
                                 } else {
-                                    System.out.println("  Warning: label '" + labelName + "' not found for view '" + viewName + "'");
+                                    log("  Warning: label '" + labelName + "' not found for view '" + viewName + "'");
                                 }
                             }
                         }

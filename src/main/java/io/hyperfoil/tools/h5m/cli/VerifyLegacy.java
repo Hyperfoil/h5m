@@ -2,6 +2,9 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
+import io.hyperfoil.tools.h5m.api.View;
+import io.hyperfoil.tools.h5m.api.ViewComponent;
+import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.h5m.svc.ValueService;
@@ -38,6 +41,9 @@ public class VerifyLegacy implements Callable<Integer> {
     @Inject
     FolderService folderService;
 
+    @Inject
+    ViewServiceInterface viewService;
+
     @Override
     @Transactional
     public Integer call() throws Exception {
@@ -71,7 +77,11 @@ public class VerifyLegacy implements Callable<Integer> {
             System.out.println("\n=== NODE STRUCTURE ===");
             compareNodeStructure(legacyConn, testName);
 
-            // Step 2: Check source data quality
+            // Step 2: Compare views
+            System.out.println("\n=== VIEWS ===");
+            compareViews(legacyConn, testId, testName);
+
+            // Step 3: Check source data quality
             System.out.println("\n=== SOURCE DATA QUALITY ===");
             Set<String> stubLabels = checkSourceDataQuality(legacyConn);
 
@@ -294,6 +304,119 @@ public class VerifyLegacy implements Callable<Integer> {
         }
 
         System.out.println("Change detection nodes: Horreum=" + horreumChangeDetections + " h5m=" + h5mChangeDetections);
+    }
+
+    /**
+     * Compares Horreum views with h5m views for the imported test.
+     * Checks view names, component counts, and label-to-node mappings.
+     */
+    private void compareViews(Connection legacyConn, long testId, String testName) throws SQLException {
+        // Get Horreum views
+        Map<String, List<String[]>> horreumViews = new LinkedHashMap<>(); // viewName → [(headerName, labelName)]
+        try (PreparedStatement viewStmt = legacyConn.prepareStatement(
+                "SELECT id, name FROM view WHERE test_id = ? ORDER BY name")) {
+            viewStmt.setLong(1, testId);
+            try (ResultSet viewRs = viewStmt.executeQuery()) {
+                while (viewRs.next()) {
+                    long viewId = viewRs.getLong("id");
+                    String viewName = viewRs.getString("name");
+                    List<String[]> components = new ArrayList<>();
+                    try (PreparedStatement compStmt = legacyConn.prepareStatement(
+                            "SELECT headername, labels FROM viewcomponent WHERE view_id = ? ORDER BY headerorder")) {
+                        compStmt.setLong(1, viewId);
+                        try (ResultSet compRs = compStmt.executeQuery()) {
+                            while (compRs.next()) {
+                                String headerName = compRs.getString("headername");
+                                String labelsJson = compRs.getString("labels");
+                                String labelName = "";
+                                if (labelsJson != null) {
+                                    // labels is a JSON array, take the first element
+                                    var parsed = io.hyperfoil.tools.jjq.value.JqValues.parse(labelsJson);
+                                    if (parsed != null && parsed.isArray() && parsed.length() > 0) {
+                                        labelName = parsed.getElement(0).asText();
+                                    }
+                                }
+                                components.add(new String[]{headerName, labelName});
+                            }
+                        }
+                    }
+                    horreumViews.put(viewName, components);
+                }
+            }
+        }
+
+        // Get h5m views
+        List<View> h5mViews = viewService.getViews(testName);
+        Map<String, View> h5mViewsByName = new LinkedHashMap<>();
+        for (View v : h5mViews) {
+            h5mViewsByName.put(v.name(), v);
+        }
+
+        System.out.println("  Horreum views: " + horreumViews.size());
+        System.out.println("  h5m views: " + h5mViews.size());
+
+        int totalComponents = 0;
+        int matchedComponents = 0;
+
+        for (var entry : horreumViews.entrySet()) {
+            String viewName = entry.getKey();
+            List<String[]> horreumComponents = entry.getValue();
+            View h5mView = h5mViewsByName.get(viewName);
+
+            if (h5mView == null) {
+                System.out.println("  View '" + viewName + "': MISSING in h5m (" + horreumComponents.size() + " components in Horreum)");
+                totalComponents += horreumComponents.size();
+                continue;
+            }
+
+            Map<String, ViewComponent> h5mComponentsByHeader = new LinkedHashMap<>();
+            if (h5mView.components() != null) {
+                for (ViewComponent vc : h5mView.components()) {
+                    h5mComponentsByHeader.put(vc.headerName(), vc);
+                }
+            }
+
+            int matched = 0;
+            List<String> mismatches = new ArrayList<>();
+            for (String[] hc : horreumComponents) {
+                String headerName = hc[0];
+                String labelName = hc[1];
+                totalComponents++;
+
+                ViewComponent h5mComp = h5mComponentsByHeader.get(headerName);
+                if (h5mComp == null) {
+                    mismatches.add(headerName + " (missing)");
+                } else if (labelName != null && !labelName.isEmpty()
+                        && h5mComp.nodeName() != null && !labelName.equals(h5mComp.nodeName())) {
+                    mismatches.add(headerName + " (label='" + labelName + "' → node='" + h5mComp.nodeName() + "')");
+                    matched++; // component exists but node name differs
+                } else {
+                    matched++;
+                }
+            }
+            matchedComponents += matched;
+
+            if (mismatches.isEmpty()) {
+                System.out.println("  View '" + viewName + "': " + matched + "/" + horreumComponents.size() + " components match");
+            } else {
+                System.out.println("  View '" + viewName + "': " + matched + "/" + horreumComponents.size() + " components match, issues:");
+                for (String m : mismatches) {
+                    System.out.println("    - " + m);
+                }
+            }
+        }
+
+        // Check for extra h5m views not in Horreum (excluding auto-created "Default")
+        for (String h5mName : h5mViewsByName.keySet()) {
+            if (!horreumViews.containsKey(h5mName) && !"Default".equals(h5mName)) {
+                System.out.println("  View '" + h5mName + "': extra in h5m (not in Horreum)");
+            }
+        }
+
+        if (totalComponents > 0) {
+            System.out.printf("  View match rate: %.1f%% (%d/%d components)%n",
+                    100.0 * matchedComponents / totalComponents, matchedComponents, totalComponents);
+        }
     }
 
     /**

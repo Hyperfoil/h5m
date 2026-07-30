@@ -185,10 +185,16 @@ public abstract class NodeEntity extends PanacheEntityBase implements Comparable
         return false;
     }
 
+    /**
+     * Note: hashCode changes when id transitions from null (unpersisted) to a
+     * value (after em.persist/merge). Do not use unpersisted NodeEntity objects
+     * as HashMap or HashSet keys if you plan to look them up after persistence.
+     * Use IdentityHashMap instead.
+     */
     @Override
     public int hashCode(){
         if(id != null){
-            return Objects.hash(id);//, name, operation);
+            return Objects.hash(id);
         }
         // hash source ids one level deep to avoid recursion on deep graphs
         int sourcesHash = 1;
