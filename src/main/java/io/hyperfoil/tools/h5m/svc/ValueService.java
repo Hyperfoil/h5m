@@ -54,12 +54,7 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public ValueEntity create(ValueEntity value){
         if(!value.isPersistent()){
-            ValueEntity merged = em.merge(value);
-            em.flush();
-            value.id = merged.id;
-            return merged;
-        }else{
-            value.persist();
+            value = em.merge(value);
         }
         return value;
     }
@@ -68,14 +63,11 @@ public class ValueService implements ValueServiceInterface {
     public List<ValueEntity> createAll(List<ValueEntity> values){
         List<ValueEntity> result = new ArrayList<>(values.size());
         for (ValueEntity value : values) {
-            if (!value.isPersistent()) {
-                result.add(em.merge(value));
-            } else {
-                value.persist();
-                result.add(value);
+            if(!value.isPersistent()){
+                value = em.merge(value);
             }
+            result.add(value);
         }
-        em.flush();
         for (int i = 0; i < values.size(); i++) {
             values.get(i).id = result.get(i).id;
         }

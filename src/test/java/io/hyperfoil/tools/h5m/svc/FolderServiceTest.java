@@ -78,9 +78,8 @@ public class FolderServiceTest extends FreshDb {
         // where the value was persisted but work was never completed)
         tm.begin();
         FolderEntity folder2 = FolderEntity.find("name", "recovery-test").firstResult();
-        ValueEntity rootValue = new ValueEntity(folder2, folder2.group.root,
-                JqValues.parse("{\"key\": \"recovered\"}"));
-        valueService.create(rootValue);
+        ValueEntity rootValue = valueService.create(new ValueEntity(folder2, folder2.group.root,
+                JqValues.parse("{\"key\": \"recovered\"}")));
 
         // Create an incomplete tracking record (simulating crash before completion)
         ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
@@ -135,9 +134,8 @@ public class FolderServiceTest extends FreshDb {
         tm.begin();
         long folderId = folderService.create("temp-folder");
         FolderEntity folder = folderService.read(folderId);
-        ValueEntity rootValue = new ValueEntity(folder, folder.group.root,
-                JqValues.parse("{\"key\": \"orphaned\"}"));
-        valueService.create(rootValue);
+        ValueEntity rootValue = valueService.create(new ValueEntity(folder, folder.group.root,
+                JqValues.parse("{\"key\": \"orphaned\"}")));
         long rootValueId = rootValue.id;
 
         ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, 888888L, rootValueId);
@@ -181,18 +179,17 @@ public class FolderServiceTest extends FreshDb {
         // Create root value AND computed values (simulating all work completed)
         tm.begin();
         FolderEntity f = FolderEntity.find("name", "already-computed").firstResult();
-        ValueEntity rootValue = new ValueEntity(f, f.group.root,
-                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}"));
-        valueService.create(rootValue);
+        ValueEntity rootValue = valueService.create(new ValueEntity(f, f.group.root,
+                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}")));
 
         // Both nodes already have their computed values
         ValueEntity keyValue = new ValueEntity(f, extractKey, JqValues.parse("\"k1\""));
         keyValue.sources = List.of(rootValue);
-        valueService.create(keyValue);
+        keyValue = valueService.create(keyValue);
 
         ValueEntity valValue = new ValueEntity(f, extractValue, JqValues.parse("\"v1\""));
         valValue.sources = List.of(rootValue);
-        valueService.create(valValue);
+        valValue = valueService.create(valValue);
 
         // But tracking was never marked completed (crash happened here)
         ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
@@ -373,9 +370,8 @@ public class FolderServiceTest extends FreshDb {
         // Create root value and incomplete tracking (simulating crash)
         tm.begin();
         FolderEntity f = FolderEntity.find("name", "multi-node-test").firstResult();
-        ValueEntity rootValue = new ValueEntity(f, f.group.root,
-                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}"));
-        valueService.create(rootValue);
+        ValueEntity rootValue = valueService.create(new ValueEntity(f, f.group.root,
+                JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}")));
 
         ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
         tracking.persist();

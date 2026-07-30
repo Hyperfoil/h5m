@@ -15,6 +15,7 @@ import org.hibernate.engine.jdbc.dialect.spi.DialectResolutionInfo;
  * at build time. This wrapper is set via {@code quarkus.hibernate-orm.dialect} and resolves the
  * actual dialect at application startup from the JDBC URL.
  */
+@SuppressWarnings({"deprecation", "removal"})
 public class H5mDialect extends Dialect {
 
     private static final ThreadLocal<Dialect> CONSTRUCTING = new ThreadLocal<>();

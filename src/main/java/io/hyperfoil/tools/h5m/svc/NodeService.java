@@ -88,10 +88,7 @@ public class NodeService implements NodeServiceInterface {
 
         if(!node.isPersistent()){
             node.id = null;
-            NodeEntity merged = em.merge(node);
-            em.flush();
-            node.id = merged.id;
-            return merged;
+            em.persist(node);
         }
         return node;
     }
@@ -110,9 +107,8 @@ public class NodeService implements NodeServiceInterface {
         if(node.sources.isEmpty()){
             node.sources.add(node.group.root);
         }
-        NodeEntity merged = em.merge(node);
-        em.flush();
-        return merged.id;
+        em.persist(node);
+        return node.id;
     }
 
     @Override
@@ -129,9 +125,8 @@ public class NodeService implements NodeServiceInterface {
         node.group = NodeGroupEntity.findById(groupId);
         node.sources = NodeEntity.findByIds(sources);
 
-        NodeEntity merged = em.merge(node);
-        em.flush();
-        return merged.id;
+        em.persist(node);
+        return node.id;
     }
 
     /** Convert configuration (Map from REST or record from CLI) to JqObject for FixedThreshold. */
@@ -249,7 +244,6 @@ public class NodeService implements NodeServiceInterface {
                 }
             }
             em.merge(node);
-            em.flush();
         }
         return node.id;
     }

@@ -89,13 +89,10 @@ public class FolderService implements FolderServiceInterface {
 
     @Transactional
     public long create(FolderEntity entity){
-        if(!entity.isPersistent()){
-            FolderEntity merged = em.merge(entity);
-            em.flush();
-            entity.id = merged.id;
-            return entity.id;
-        }else{
-            entity.persist();
+        if(entity.id == null){
+            em.persist(entity);
+        } else if(!entity.isPersistent()) {
+            entity = em.merge(entity);
         }
         return entity.id;
     }
@@ -263,8 +260,7 @@ public class FolderService implements FolderServiceInterface {
                     "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
                     FolderEntity.class
             ).setParameter("name", name).getSingleResult();
-            ValueEntity newValue = new ValueEntity(folder, folder.group.root, data);
-            valueService.create(newValue);
+            ValueEntity newValue = valueService.create(new ValueEntity(folder, folder.group.root, data));
 
             // Track this upload for crash recovery — marked completed when all work finishes
             ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folder.id, newValue.id);
@@ -452,9 +448,9 @@ public class FolderService implements FolderServiceInterface {
             };
 
             node.group = group;
-            NodeEntity merged = em.merge(node);
-            group.sources.add(merged);
-            idMap.put(exportedId, merged);
+            em.persist(node);
+            group.sources.add(node);
+            idMap.put(exportedId, node);
         }
 
         em.flush();
