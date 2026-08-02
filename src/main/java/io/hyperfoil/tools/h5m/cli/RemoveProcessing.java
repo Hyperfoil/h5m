@@ -7,7 +7,7 @@ import org.aesh.command.Command;
 import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 
-@CommandDefinition(name = "processing", description = "remove unfinished processing from queue", generateHelp = true)
+@CommandDefinition(name = "remove-processing", description = "remove unfinished processing from queue", generateHelp = true)
 public class RemoveProcessing implements Command<H5mCommandInvocation> {
 
     @Inject

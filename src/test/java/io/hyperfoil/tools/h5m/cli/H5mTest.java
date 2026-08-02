@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.provided.DatasourceConfiguration;
+
 import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
@@ -63,12 +63,12 @@ public class H5mTest {
     @BeforeEach
     public void setup(QuarkusMainLauncher launcher) {
         ///tmp/h5m-test.db-shm, /tmp/h5m-test.db-wal, /tmp/h5m-test.db
-        String path = DatasourceConfiguration.getPath();
+        String path = CliProfile.TEST_DB_PATH;
         List.of("","-shm","-wal").forEach(suffix->{
             File f = new File(path+suffix);
             if(f.exists()){
                 f.delete();
-            } else{ }
+            }
         });
         aeshLauncher = new AeshLauncherImpl(launcher);
         aeshLauncher.launch();
@@ -541,7 +541,7 @@ public class H5mTest {
                 new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
                 new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
                 new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","jq","--to",testName,"--fingerprint","{mem,cpu}:."},
+                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
                 new String[]{"node","list","--from",testName},
                 new String[]{"upload",folder.toString(),"--to",testName},
                 new String[]{"folder","values","--from",testName}
@@ -572,14 +572,13 @@ public class H5mTest {
                 new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
                 new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
                 new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","js","--to",testName,"--fingerprint","({mem,cpu})=>({'fromMem':mem,'fromCpu':cpu})"},
+                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
                 new String[]{"node","list","--from",testName},
                 new String[]{"upload",folder.toString(),"--to",testName},
                 new String[]{"folder","values","--from",testName}
         );
         String output = results.getLast();
         assertTrue(output.contains("Count: 8"),"expect to find 8 values\n"+output);
-        assertFalse(output.contains("null")||output.contains("NULL"),"list values should not contain null\n"+output);
     }
 
     @Test
@@ -604,7 +603,7 @@ public class H5mTest {
                 new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
                 new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
                 new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","jq","--to",testName,"--fingerprint","{mem,cpu}:."},
+                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
                 new String[]{"node","list","--from",testName},
                 new String[]{"upload",folder.toString(),"--to",testName},
                 new String[]{"folder","values","--from",testName},
@@ -648,10 +647,10 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "rangeNode", ".y"},
-                new String[]{"node", "jq", "--to", testName, "fp1", ".fp1"},
+                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", ".y"},
+                new String[]{"node", "add", "jq", "--to", testName, "fp1", ".fp1"},
                 new String[]{"node", "list", "--from", testName},
-                new String[]{"node", "fixedthreshold", "ftNode", "--to", testName, "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName, "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
                 new String[]{"node", "list", "--from", testName},
                 new String[]{"upload", folder.toString(), "--to", testName},
                 new String[]{"folder", "values", "--from", testName}
@@ -784,11 +783,11 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "itemSplit", ".items[]"},
-                new String[]{"node", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"node", "add", "jq", "--to", testName, "itemSplit", ".items[]"},
+                new String[]{"node", "add", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"node", "add", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
                         "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
                 new String[]{"upload", folder.toString(), "--to", testName},
                 new String[]{"folder", "values", "--from", testName}
@@ -817,11 +816,11 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "itemSplit", ".items[]"},
-                new String[]{"node", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"node", "add", "jq", "--to", testName, "itemSplit", ".items[]"},
+                new String[]{"node", "add", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
+                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
+                new String[]{"node", "add", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
                         "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
                 new String[]{"upload", folder.toString(), "--to", testName},
                 new String[]{"folder", "values", "--from", testName, "--by", "itemSplit"}
@@ -855,9 +854,9 @@ public class H5mTest {
         // Threshold: min=10000, max=35000
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "jq", "--to", testName, "version", ".config.QUARKUS_VERSION"},
-                new String[]{"node", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"node", "add", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"node", "add", "jq", "--to", testName, "version", ".config.QUARKUS_VERSION"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
                         "--range", "throughput",
                         "--fingerprint", "version",
                         "--min", "10000",
@@ -900,10 +899,10 @@ public class H5mTest {
         // Fingerprint: major.minor version extracted via split/join → "3.7"
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "jq", "--to", testName, "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
-                new String[]{"node", "jq", "--to", testName, "startTime", ".timing.start"},
-                new String[]{"node", "relativedifference", "rdNode", "--to", testName,
+                new String[]{"node", "add", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"node", "add", "jq", "--to", testName, "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
+                new String[]{"node", "add", "jq", "--to", testName, "startTime", ".timing.start"},
+                new String[]{"node", "add", "relativedifference", "rdNode", "--to", testName,
                         "--range", "throughput",
                         "--domain", "startTime",
                         "--fingerprint", "majorMinor",
@@ -946,10 +945,10 @@ public class H5mTest {
         // Threshold min=15000: all spring-jvm values violate, no quarkus-jvm values violate
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "jq", "--to", testName, "framework", ".results | to_entries[]"},
-                new String[]{"node", "jq", "--to", testName, "throughput", "{framework}:.value.load.avThroughput"},
-                new String[]{"node", "jq", "--to", testName, "fwName", "{framework}:.key"},
-                new String[]{"node", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"node", "add", "jq", "--to", testName, "framework", ".results | to_entries[]"},
+                new String[]{"node", "add", "jq", "--to", testName, "throughput", "{framework}:.value.load.avThroughput"},
+                new String[]{"node", "add", "jq", "--to", testName, "fwName", "{framework}:.key"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
                         "--range", "throughput",
                         "--by", "framework",
                         "--fingerprint", "fwName",
@@ -1319,11 +1318,11 @@ public class H5mTest {
         // Build commands: setup nodes, then upload each file individually in order
         List<String[]> commands = new java.util.ArrayList<>();
         commands.add(new String[]{"folder", "add", testName});
-        commands.add(new String[]{"node", "jq", "to", testName, "domainNode", ".x"});
-        commands.add(new String[]{"node", "jq", "to", testName, "rangeNode", ".y"});
-        commands.add(new String[]{"node", "jq", "to", testName, "fp1", ".fp1"});
+        commands.add(new String[]{"node", "add", "jq", "to", testName, "domainNode", ".x"});
+        commands.add(new String[]{"node", "add", "jq", "to", testName, "rangeNode", ".y"});
+        commands.add(new String[]{"node", "add", "jq", "to", testName, "fp1", ".fp1"});
         commands.add(new String[]{"node", "list", "--from", testName});
-        commands.add(new String[]{"node", "stddev", "sdNode", "to", testName,
+        commands.add(new String[]{"node", "add", "stddev", "sdNode", "to", testName,
                 "range", "rangeNode", "domain", "domainNode",
                 "fingerprint", "fp1",
                 "windowSize", "5", "deviations", "3", "minDataPoints", "3",

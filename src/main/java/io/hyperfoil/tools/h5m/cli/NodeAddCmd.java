@@ -12,6 +12,7 @@ import org.aesh.command.CommandResult;
         AddJs.class,
         AddJsonata.class,
         AddSplit.class,
+        AddFingerprint.class,
         AddFixedThreshold.class,
         AddRelativeDifference.class,
         AddStdDevAnomaly.class,

@@ -10,7 +10,7 @@ import org.aesh.command.CommandResult;
 
 import java.util.List;
 
-@CommandDefinition(name = "processing", description = "list incomplete processing events", generateHelp = true)
+@CommandDefinition(name = "list-processing", description = "list incomplete processing events", generateHelp = true)
 public class ListProcessing implements Command<H5mCommandInvocation> {
 
     @Inject
