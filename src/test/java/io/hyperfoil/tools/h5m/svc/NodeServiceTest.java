@@ -2086,7 +2086,7 @@ public class NodeServiceTest extends FreshDb {
     @Test
     public void jsonpathToJq_filter_with_quoted_fields_and_trailing_path() {
         assertEquals(
-                ".faban.summary.benchResults.driverSummary[]? | select(.[\"@name\"] == \"MfgDriver\").customStats.stat[0].passed.[\"text()\"]",
+                ".faban.summary.benchResults.driverSummary[]? | select(.[\"@name\"] == \"MfgDriver\").customStats.stat[0].passed.\"text()\"",
                 NodeService.jsonpathToJq("$.faban.summary.benchResults.driverSummary[*] ? (@.\"@name\" == \"MfgDriver\").customStats.stat[0].passed.\"text()\""));
     }
 

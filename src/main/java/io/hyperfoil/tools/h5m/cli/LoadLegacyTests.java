@@ -154,6 +154,137 @@ public class LoadLegacyTests implements Callable<Integer> {
         return NodeService.jsonpathToJq(jsonpath);
     }
 
+    /**
+     * Converts a PostgreSQL SQL/JSON path to a jq expression with lax-mode
+     * auto-array-unwrapping at each intermediate path segment.
+     * <p>
+     * PostgreSQL's default {@code lax} mode automatically unwraps arrays when
+     * traversing with dot notation (e.g., {@code $.a.b.c} will descend into
+     * arrays at {@code a} or {@code b} transparently). Standard jq requires
+     * explicit {@code []} to iterate arrays.
+     * <p>
+     * This method replicates lax semantics by wrapping each intermediate segment
+     * with a conditional: {@code if (.seg | type) == "array" then .seg[] else .seg end}.
+     * The final segment is left as-is.
+     */
+    static String jsonpathToJqLax(String jsonpath) {
+        String jq = NodeService.jsonpathToJq(jsonpath);
+        return applyLaxUnwrapping(jq);
+    }
+
+    /**
+     * Like {@link #jsonpathToJqLax(String)} but wraps the result in {@code [...]}
+     * to collect all matches into an array, matching {@code jsonb_path_query_array}
+     * with lax mode.
+     */
+    static String jsonpathToJqLaxArray(String jsonpath) {
+        String jq = jsonpathToJqLax(jsonpath);
+        if (jq.contains("[]?") || jq.contains("[] else")) {
+            return "[" + jq + "]";
+        } else {
+            return "[" + jq + " // empty]";
+        }
+    }
+
+    /**
+     * Post-processes a jq expression to add lax-mode conditional array unwrapping
+     * at each intermediate dot-access segment. Segments that already have iterators
+     * ({@code []?}) or pipes ({@code |}) are left unchanged.
+     */
+    static String applyLaxUnwrapping(String jq) {
+        if (jq == null || jq.equals(".") || !jq.startsWith(".")) return jq;
+
+        // If the expression contains pipes (filters, methods), only apply lax
+        // to the portion before the first pipe
+        String prefix = jq;
+        String suffix = "";
+        int pipeIdx = findFirstPipeOutsideParens(jq);
+        if (pipeIdx >= 0) {
+            prefix = jq.substring(0, pipeIdx).trim();
+            suffix = " " + jq.substring(pipeIdx).trim();
+        }
+
+        List<String> segments = splitDotSegments(prefix);
+        if (segments.size() <= 1) return jq;
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            String seg = segments.get(i);
+            boolean isLast = (i == segments.size() - 1);
+            boolean hasIterator = seg.contains("[]");
+
+            if (isLast || hasIterator) {
+                if (sb.length() > 0 && !sb.toString().endsWith("| ")) sb.append(" | ");
+                sb.append(seg);
+            } else {
+                if (sb.length() > 0 && !sb.toString().endsWith("| ")) sb.append(" | ");
+                sb.append("if (").append(seg).append(" | type) == \"array\" then ")
+                  .append(seg).append("[] else ").append(seg).append(" end");
+            }
+        }
+        sb.append(suffix);
+        return sb.toString();
+    }
+
+    /**
+     * Splits a jq dot-access path into segments, respecting quoted keys and
+     * bracket access. For example:
+     * {@code .a.b.c} → {@code [".a", ".b", ".c"]},
+     * {@code .a[]?.b.c} → {@code [".a[]?", ".b", ".c"]}.
+     */
+    static List<String> splitDotSegments(String jq) {
+        List<String> segments = new ArrayList<>();
+        if (jq == null || jq.isEmpty()) return segments;
+
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        boolean inBrackets = false;
+
+        for (int i = 0; i < jq.length(); i++) {
+            char c = jq.charAt(i);
+            if (c == '"' && (i == 0 || jq.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                current.append(c);
+            } else if (!inQuotes && c == '[') {
+                inBrackets = true;
+                current.append(c);
+            } else if (!inQuotes && c == ']') {
+                inBrackets = false;
+                current.append(c);
+            } else if (!inQuotes && !inBrackets && c == '?' && current.toString().endsWith("]")) {
+                current.append(c);
+            } else if (!inQuotes && !inBrackets && c == '.' && current.length() > 0) {
+                segments.add(current.toString());
+                current = new StringBuilder();
+                current.append(c);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) {
+            segments.add(current.toString());
+        }
+        return segments;
+    }
+
+    private static int findFirstPipeOutsideParens(String jq) {
+        boolean inQuotes = false;
+        int parenDepth = 0;
+        for (int i = 0; i < jq.length(); i++) {
+            char c = jq.charAt(i);
+            if (c == '"' && (i == 0 || jq.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+            } else if (!inQuotes && c == '(') {
+                parenDepth++;
+            } else if (!inQuotes && c == ')') {
+                parenDepth--;
+            } else if (!inQuotes && parenDepth == 0 && c == '|') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     @Inject
     FolderService folderService;
 
@@ -262,8 +393,8 @@ public class LoadLegacyTests implements Callable<Integer> {
 
             // Convert jsonpath to jq — sqlall (isArray) wraps in [...] to collect all matches
             String jqOperation = extractor.isArray
-                    ? NodeService.jsonpathToJqArray(extractor.jsonpath())
-                    : NodeService.jsonpathToJq(extractor.jsonpath());
+                    ? jsonpathToJqLaxArray(extractor.jsonpath())
+                    : jsonpathToJqLax(extractor.jsonpath());
             NodeEntity node = JqNode.parse(extractorName, jqOperation, nodeTracking::getNodes);
             if (node == null) {
                 System.err.println("failed to create node for extractor " + extractor);

@@ -675,4 +675,102 @@ public class LoadLegacyTestsTest {
         assertFalse(JsNode.isNullEmptyOrIdentityFunction(entity.operation),"js node should have an operation that returns the input");
         assertEquals(2,entity.sources.size(),"both extractors should be sources for the node");
     }
+
+    // --- Lax jsonpath conversion tests ---
+
+    @Test
+    public void jsonpathToJqLax_simple_path() {
+        // $.a.b.c — intermediate segments a and b get conditional unwrapping
+        String result = LoadLegacyTests.jsonpathToJqLax("$.a.b.c");
+        assertTrue(result.contains("if (.a | type) == \"array\" then .a[] else .a end"),
+                "should unwrap intermediate segment a: " + result);
+        assertTrue(result.contains("if (.b | type) == \"array\" then .b[] else .b end"),
+                "should unwrap intermediate segment b: " + result);
+        assertTrue(result.endsWith(".c"), "final segment c should not be wrapped: " + result);
+    }
+
+    @Test
+    public void jsonpathToJqLax_single_segment() {
+        // $.a — single segment, no intermediate to unwrap
+        assertEquals(".a", LoadLegacyTests.jsonpathToJqLax("$.a"));
+    }
+
+    @Test
+    public void jsonpathToJqLax_two_segments() {
+        // $.a.b — only a is intermediate
+        String result = LoadLegacyTests.jsonpathToJqLax("$.a.b");
+        assertTrue(result.contains("if (.a | type) == \"array\" then .a[] else .a end"),
+                "should unwrap intermediate segment a: " + result);
+        assertTrue(result.endsWith(".b"), "final segment b should not be wrapped: " + result);
+    }
+
+    @Test
+    public void jsonpathToJqLax_with_existing_iterator() {
+        // $.a[*].b.c — a already has [*] (converted to []?), only b needs unwrapping
+        String result = LoadLegacyTests.jsonpathToJqLax("$.a[*].b.c");
+        assertTrue(result.contains(".a[]?"), "a should keep its iterator: " + result);
+        assertFalse(result.contains("if (.a"), "a should not get conditional (already has iterator): " + result);
+        assertTrue(result.contains("if (.b | type) == \"array\" then .b[] else .b end"),
+                "should unwrap intermediate segment b: " + result);
+        assertTrue(result.endsWith(".c"), "final segment c should not be wrapped: " + result);
+    }
+
+    @Test
+    public void jsonpathToJqLax_identity() {
+        // $ — just the root
+        assertEquals(".", LoadLegacyTests.jsonpathToJqLax("$"));
+    }
+
+    @Test
+    public void jsonpathToJqLax_produces_correct_jq_for_array_at_b() {
+        // Verify the actual jq from the issue works: {"a":{"b":[{"c":"one"}]}}
+        String jq = LoadLegacyTests.jsonpathToJqLax("$.a.b.c");
+        var program = io.hyperfoil.tools.jjq.JqProgram.compile(jq);
+        var input = JqValues.parse("{\"a\":{\"b\":[{\"c\":\"one\"}]}}");
+        var results = program.applyAll(input);
+        assertEquals(1, results.size(), "should produce one result: " + results);
+        assertEquals("one", results.get(0).asText(), "should extract 'one' through array: " + results);
+    }
+
+    @Test
+    public void jsonpathToJqLax_works_without_arrays() {
+        // Same path but no arrays — should still work (conditional is a no-op)
+        String jq = LoadLegacyTests.jsonpathToJqLax("$.a.b.c");
+        var program = io.hyperfoil.tools.jjq.JqProgram.compile(jq);
+        var input = JqValues.parse("{\"a\":{\"b\":{\"c\":\"one\"}}}");
+        var results = program.applyAll(input);
+        assertEquals(1, results.size(), "should produce one result: " + results);
+        assertEquals("one", results.get(0).asText(), "should extract 'one' without arrays: " + results);
+    }
+
+    @Test
+    public void jsonpathToJqLax_missing_path_returns_empty() {
+        // Missing intermediate key — should produce no results, not an error
+        String jq = LoadLegacyTests.jsonpathToJqLax("$.a.b.c");
+        var program = io.hyperfoil.tools.jjq.JqProgram.compile(jq);
+        var input = JqValues.parse("{\"a\":{\"d\":[{\"c\":\"one\"}]}}");
+        var results = program.applyAll(input);
+        // jq will return null for .b on {"d":...} — the conditional won't error
+        assertTrue(results.isEmpty() || results.get(0).isNull(),
+                "missing path should produce empty/null result: " + results);
+    }
+
+    @Test
+    public void jsonpathToJqLaxArray_wraps_in_brackets() {
+        String result = LoadLegacyTests.jsonpathToJqLaxArray("$.a.b.c");
+        assertTrue(result.startsWith("["), "should start with [: " + result);
+        assertTrue(result.endsWith("]"), "should end with ]: " + result);
+    }
+
+    @Test
+    public void jsonpathToJqLaxArray_produces_array_for_array_at_b() {
+        // Matches the example from issue #230
+        String jq = LoadLegacyTests.jsonpathToJqLaxArray("$.a.b.c");
+        var program = io.hyperfoil.tools.jjq.JqProgram.compile(jq);
+        var input = JqValues.parse("{\"a\":{\"b\":[{\"c\":\"one\"}]}}");
+        var results = program.applyAll(input);
+        assertEquals(1, results.size(), "should produce one result (the array): " + results);
+        assertTrue(results.get(0).isArray(), "result should be an array: " + results);
+        assertEquals("one", results.get(0).getElement(0).asText());
+    }
 }

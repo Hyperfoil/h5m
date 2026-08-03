@@ -1141,7 +1141,7 @@ public class NodeService implements NodeServiceInterface {
      * when the path doesn't exist — matching jsonb_path_query_array's behavior
      * of returning {@code []} for missing paths.
      */
-    public static String jsonpathToJqArray(String jsonpath) {
+     public static String jsonpathToJqArray(String jsonpath) {
         String jq = jsonpathToJq(jsonpath);
         if (jq.contains("[]?")) {
             // Has iterators — [...] naturally produces [] when no matches
@@ -1266,10 +1266,7 @@ public class NodeService implements NodeServiceInterface {
             result.append(" | select(").append(filterBody).append(")");
             i = parenEnd;
         }
-        // Convert remaining ."text()" style field access to ["text()"]
-        String output = result.toString();
-        output = output.replaceAll("\\.\"([^\"]+)\"", ".[\"$1\"]");
-        return output;
+        return result.toString();
     }
 
     public static String renameParameters(String function,Map<String,String> renames){
