@@ -38,6 +38,10 @@ public class UploadCmd implements Command<H5mCommandInvocation> {
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         if (folderName == null && invocation.hasFolderContext()) folderName = invocation.getFolderName();
+        if (path == null) {
+            invocation.println("path to JSON file or directory is required");
+            return CommandResult.FAILURE;
+        }
         Folder folder = folderService.byName(folderName);
         if (folder == null) {
             invocation.println("could not find folder " + folderName);

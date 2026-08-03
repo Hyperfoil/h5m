@@ -19,8 +19,13 @@ public class RemoveFolder implements Command<H5mCommandInvocation> {
 
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (name == null) {
+            invocation.println("folder name is required");
+            return CommandResult.FAILURE;
+        }
         if(folderService.delete(name) == 0){
-            invocation.println("FolderEntity "+name+" not found");
+            invocation.println("Folder " + name + " not found");
+            return CommandResult.FAILURE;
         }
         return CommandResult.SUCCESS;
     }

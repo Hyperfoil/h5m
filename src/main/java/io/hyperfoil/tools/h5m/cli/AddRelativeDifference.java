@@ -106,7 +106,7 @@ public class AddRelativeDifference implements Command<H5mCommandInvocation> {
         if(groupBy!=null && !groupBy.isEmpty()){
             foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id());
             if(foundNodes.isEmpty()){
-                invocation.println("could not find matching group by node with name"+groupBy);
+                invocation.println("could not find matching group by node with name " + groupBy);
                 return CommandResult.FAILURE;
             }else if (foundNodes.size()>1){
                 invocation.println("found more than one matching group by node for name "+groupBy+"\n  "+foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));

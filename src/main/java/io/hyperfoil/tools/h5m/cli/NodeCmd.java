@@ -7,7 +7,7 @@ import org.aesh.command.CommandResult;
 
 @CommandDefinition(
     name = "node",
-    description = "Node management: add computation nodes (jq, js, jsonata, sqlpath, etc.), list, remove, and update",
+    description = "Node management: add computation nodes (jq, js, jsonata, etc.), list, remove, and update",
     groupCommands = {
         NodeAddCmd.class,
         ListNode.class,

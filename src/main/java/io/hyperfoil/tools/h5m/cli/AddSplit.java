@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.NodeGroup;
+import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
@@ -49,8 +50,7 @@ public class AddSplit implements Command<H5mCommandInvocation> {
             return CommandResult.FAILURE;
         }
 
-
-
+        nodeService.create(name, foundGroup.id(), NodeType.SPLIT, operation);
         return CommandResult.SUCCESS;
     }
 }

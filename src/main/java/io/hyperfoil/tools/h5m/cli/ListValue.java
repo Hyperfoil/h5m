@@ -68,7 +68,7 @@ public class ListValue implements Command<H5mCommandInvocation> {
         }
         NodeGroup nodeGroup = nodeGroupService.byName(groupName);
         if(nodeGroup == null){
-            invocation.println("NodeEntity group "+groupName+" not found");
+            invocation.println("Node group " + groupName + " not found");
             return CommandResult.FAILURE;
         }
 

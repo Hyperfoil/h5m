@@ -23,7 +23,7 @@ import org.aesh.command.CommandResult;
 public class NodeAddCmd implements Command<H5mCommandInvocation> {
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
-        invocation.println("Use 'node add <type>'. Types: jq, js, jsonata, sqlpath, sqlpathall, split, fixedthreshold, relativedifference, stddev");
+        invocation.println("Use 'node add <type>'. Types: jq, js, jsonata, split, fingerprint, fixedthreshold, relativedifference, stddev, edivisive");
         return CommandResult.SUCCESS;
     }
 }
