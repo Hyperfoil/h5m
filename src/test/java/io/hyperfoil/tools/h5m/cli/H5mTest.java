@@ -41,7 +41,7 @@ public class H5mTest {
         for (int i = 0; i < args.length; i++) {
             if (i > 0) sb.append(' ');
             String arg = args[i];
-            boolean needsQuoting = arg.contains(" ") || arg.contains("\n") || arg.contains("\"") || arg.contains("{") || arg.contains("}");
+            boolean needsQuoting = arg.contains(" ") || arg.contains("\n") || arg.contains("\"") || arg.contains("{") || arg.contains("}") || arg.contains("|");
             if (!needsQuoting) {
                 sb.append(arg);
             } else if (arg.contains("\"") && !arg.contains("'")) {
@@ -59,8 +59,10 @@ public class H5mTest {
         List<String> outputs = new ArrayList<>();
         for (String[] arg : args) {
             String command = toCommand(arg);
-            System.out.println("run: " + command);
+            long start = System.currentTimeMillis();
             String output = launcher.executeCommand(command, CMD_TIMEOUT);
+            long elapsed = System.currentTimeMillis() - start;
+            System.out.printf("run (%dms): %s%n", elapsed, command);
             outputs.add(output);
         }
         return outputs;
@@ -163,17 +165,20 @@ public class H5mTest {
                 .getMethodName();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".buz"},
-                new String[]{"node","add","jq","--to",testName,"bar",".bar"},
-                new String[]{"node","add","jq","--to",testName,"biz",".biz"},
-                new String[]{"node","add","js","--to",testName,"dataset","function* dataset({foo, bar, biz}){\nyield foo;\nyield bar;\nyield biz;\n}"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","list","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".buz"},
+                new String[]{"node","add","jq","bar",".bar"},
+                new String[]{"node","add","jq","biz",".biz"},
+                new String[]{"node","add","js","dataset","function* dataset({foo, bar, biz}){\nyield foo;\nyield bar;\nyield biz;\n}"},
+                new String[]{"node","list"},
+                new String[]{"node","list"},
+                new String[]{"cd",".."}
         );
         // All commands should succeed without throwing
     }
     @Test
     public void add_jq_list_node() {
+        // Uses explicit --to/--from (no cd) to verify that path works
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
                 .get()
@@ -196,15 +201,17 @@ public class H5mTest {
                 .getMethodName();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"domainNode",".x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode",".y"},
-                new String[]{"node","add","jq","--to",testName,"fp1",".fp1"},
-                new String[]{"node","add","jq","--to",testName,"fp2",".fp2"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","add","relativedifference","rd1","--to",testName,"--range","rangeNode","--domain","domainNode","--fingerprint","fp1,fp2"},
-                new String[]{"node","list","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","domainNode",".x"},
+                new String[]{"node","add","jq","rangeNode",".y"},
+                new String[]{"node","add","jq","fp1",".fp1"},
+                new String[]{"node","add","jq","fp2",".fp2"},
+                new String[]{"node","list"},
+                new String[]{"node","add","relativedifference","rd1","--range","rangeNode","--domain","domainNode","--fingerprint","fp1,fp2"},
+                new String[]{"node","list"},
+                new String[]{"cd",".."}
         );
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("rd1"),"expect to find rd1: "+output);
 
 
@@ -240,19 +247,21 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"domainNode",".x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode",".y"},
-                new String[]{"node","add","jq","--to",testName,"fp1",".fp1"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","add","relativedifference","relativediff","--to",testName,"--range","rangeNode","--domain","domainNode","--fingerprint","fp1","--window","1","--minPrevious","1"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",filePath01.toString(),"--to",testName},
-                new String[]{"upload",filePath02.toString(),"--to",testName},
-                new String[]{"upload",filePath03.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","domainNode",".x"},
+                new String[]{"node","add","jq","rangeNode",".y"},
+                new String[]{"node","add","jq","fp1",".fp1"},
+                new String[]{"node","list"},
+                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--fingerprint","fp1","--window","1","--minPrevious","1"},
+                new String[]{"node","list"},
+                new String[]{"upload",filePath01.toString()},
+                new String[]{"upload",filePath02.toString()},
+                new String[]{"upload",filePath03.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         assertTrue(last.contains("Count: 13"),"expect 13 values from test");
     }
     @Disabled("There should be only changes detected for x = 2 and x = 12 but there are two other detected for x = 3 and x = 13")
@@ -295,21 +304,23 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"split",".each[]"},
-                new String[]{"node","add","jq","--to",testName,"domainNode","{split}:.x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","--to",testName,"fp1","{split}:.fp1"},
-                new String[]{"node","add","jq","--to",testName,"fp2","{split}:.fp2"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","add","relativedifference","relativediff","--to",testName,"--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp1,fp2","--window","1","--minPrevious","1"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",filePath01.toString(),"--to",testName},
-                new String[]{"upload",filePath02.toString(),"--to",testName},
-                new String[]{"upload",filePath03.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","split",".each[]"},
+                new String[]{"node","add","jq","domainNode","{split}:.x"},
+                new String[]{"node","add","jq","rangeNode","{split}:.y"},
+                new String[]{"node","add","jq","fp1","{split}:.fp1"},
+                new String[]{"node","add","jq","fp2","{split}:.fp2"},
+                new String[]{"node","list"},
+                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp1,fp2","--window","1","--minPrevious","1"},
+                new String[]{"node","list"},
+                new String[]{"upload",filePath01.toString()},
+                new String[]{"upload",filePath02.toString()},
+                new String[]{"upload",filePath03.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         assertTrue(last.contains("Count: 38"),"expect 38 values from test");
     }
 
@@ -321,12 +332,14 @@ public class H5mTest {
                 .getMethodName();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"biz",".biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","remove","biz","--from",testName},
-                new String[]{"node","list","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","biz",".biz"},
+                new String[]{"node","list"},
+                new String[]{"node","remove","biz"},
+                new String[]{"node","list"},
+                new String[]{"cd",".."}
         );
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertFalse(output.contains("biz"),"expect to NOT find biz: "+output);
     }
 
@@ -349,6 +362,7 @@ public class H5mTest {
                 """
         );
         //filePath.toFile().deleteOnExit();
+        // Uses explicit --to/--from (no cd) to verify that path works
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
                 new String[]{"node","add","jq","--to",testName,"foo",".foo"},
@@ -397,15 +411,17 @@ public class H5mTest {
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo"},
-                new String[]{"node","add","jq","--to",testName,"bar","{foo}:.bar"},
-                new String[]{"node","add","jq","--to",testName,"biz","{bar}:.biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo"},
+                new String[]{"node","add","jq","bar","{foo}:.bar"},
+                new String[]{"node","add","jq","biz","{bar}:.biz"},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 6"));
         // Intermediate nodes (foo, bar) are ephemeral — their data is nullified after processing.
         // Only the leaf node (biz) retains its data.
@@ -433,15 +449,17 @@ public class H5mTest {
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jsonata","--to",testName,"foo","foo"},
-                new String[]{"node","add","jsonata","--to",testName,"bar","{foo}:bar"},
-                new String[]{"node","add","jsonata","--to",testName,"biz","{bar}:biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jsonata","foo","foo"},
+                new String[]{"node","add","jsonata","bar","{foo}:bar"},
+                new String[]{"node","add","jsonata","biz","{bar}:biz"},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 3"),"expect 3 values\n"+output);
         // Intermediate nodes (foo, bar) are ephemeral — only leaf node (biz) retains data.
         assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
@@ -467,15 +485,17 @@ public class H5mTest {
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","sqlpath","--to",testName,"foo","$.foo"},
-                new String[]{"node","add","sqlpath","--to",testName,"bar","{foo}:$.bar"},
-                new String[]{"node","add","sqlpath","--to",testName,"biz","{bar}:$.biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","sqlpath","foo","$.foo"},
+                new String[]{"node","add","sqlpath","bar","{foo}:$.bar"},
+                new String[]{"node","add","sqlpath","biz","{bar}:$.biz"},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 3"),"expect 3 values\n"+output);
         // Intermediate nodes (foo, bar) are ephemeral — only leaf node (biz) retains data.
         assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
@@ -509,16 +529,18 @@ public class H5mTest {
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},//this should act like a dataset
-                new String[]{"node","add","jq","--to",testName,"name","{foo}:.name"},
-                new String[]{"node","add","jq","--to",testName,"bar","{foo}:.bar"},
-                new String[]{"node","add","jq","--to",testName,"biz","{bar}:.biz[] + \"-it\""},//this should also split into a dataset
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName,"--by","foo"}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo[]"},//this should act like a dataset
+                new String[]{"node","add","jq","name","{foo}:.name"},
+                new String[]{"node","add","jq","bar","{foo}:.bar"},
+                new String[]{"node","add","jq","biz","{bar}:.biz[] + \"-it\""},//this should also split into a dataset
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values","--by","foo"},
+                new String[]{"cd",".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         assertTrue(last.contains("Count: 2"),"expect to find 2 results by foo");
     }
     @Test
@@ -540,16 +562,18 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
-                new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo[]"},
+                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
+                new String[]{"node","add","jq","mem","{foo}:.mem"},
+                new String[]{"node","add","fingerprint","{mem,cpu}:."},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
 
         );
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 8"));
     }
     @Test
@@ -571,15 +595,17 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
-                new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo[]"},
+                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
+                new String[]{"node","add","jq","mem","{foo}:.mem"},
+                new String[]{"node","add","fingerprint","{mem,cpu}:."},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 8"),"expect to find 8 values\n"+output);
     }
 
@@ -602,18 +628,20 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
-                new String[]{"node","add","jq","--to",testName,"cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","--to",testName,"mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","--to",testName,"{mem,cpu}:."},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"folder","recalculate",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo[]"},
+                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
+                new String[]{"node","add","jq","mem","{foo}:.mem"},
+                new String[]{"node","add","fingerprint","{mem,cpu}:."},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values"},
+                new String[]{"folder","recalculate"},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
 
         );
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 8"));
     }
     @Test
@@ -649,16 +677,18 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", ".y"},
-                new String[]{"node", "add", "jq", "--to", testName, "fp1", ".fp1"},
-                new String[]{"node", "list", "--from", testName},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName, "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
-                new String[]{"node", "list", "--from", testName},
-                new String[]{"upload", folder.toString(), "--to", testName},
-                new String[]{"folder", "values", "--from", testName}
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "rangeNode", ".y"},
+                new String[]{"node", "add", "jq", "fp1", ".fp1"},
+                new String[]{"node", "list"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
+                new String[]{"node", "list"},
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         // 3 rangeNode values + 3 fp1 values + 3 _fp-ftNode values + 2 fixedthreshold violations = 11
         assertTrue(last.contains("Count: 11"), "expect 11 values from test\n" + last);
     }
@@ -684,18 +714,20 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"str",".string"},
-                new String[]{"node","add","jq","--to",testName,"version",".version"},
-                new String[]{"node","add","jq","--to",testName,"double",".double"},
-                new String[]{"node","add","jq","--to",testName,"integer",".integer"},
-                new String[]{"node","add","jq","--to",testName,"array",".array"},
-                new String[]{"node","add","jq","--to",testName,"obj",".object"},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName,"--as","table"}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","str",".string"},
+                new String[]{"node","add","jq","version",".version"},
+                new String[]{"node","add","jq","double",".double"},
+                new String[]{"node","add","jq","integer",".integer"},
+                new String[]{"node","add","jq","array",".array"},
+                new String[]{"node","add","jq","obj",".object"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values","--as","table"},
+                new String[]{"cd",".."}
 
         );
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 6"),"expect to extract 6 values");
         assertTrue(output.contains("│ 1.33"),"double should be truncated\n"+output);
         assertFalse(output.contains("│ 1.333"),"double should be truncated\n"+output);
@@ -724,20 +756,22 @@ public class H5mTest {
         );
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo[]"},
-                new String[]{"node","add","jq","--to",testName,"str","{foo}:.string"},
-                new String[]{"node","add","jq","--to",testName,"version","{foo}:.version"},
-                new String[]{"node","add","jq","--to",testName,"double","{foo}:.double"},
-                new String[]{"node","add","jq","--to",testName,"integer","{foo}:.integer"},
-                new String[]{"node","add","jq","--to",testName,"array","{foo}:.array"},
-                new String[]{"node","add","jq","--to",testName,"obj","{foo}:.object"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName,"--by","foo","--as","table"}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","foo",".foo[]"},
+                new String[]{"node","add","jq","str","{foo}:.string"},
+                new String[]{"node","add","jq","version","{foo}:.version"},
+                new String[]{"node","add","jq","double","{foo}:.double"},
+                new String[]{"node","add","jq","integer","{foo}:.integer"},
+                new String[]{"node","add","jq","array","{foo}:.array"},
+                new String[]{"node","add","jq","obj","{foo}:.object"},
+                new String[]{"node","list"},
+                new String[]{"upload",folder.toString()},
+                new String[]{"folder","values","--by","foo","--as","table"},
+                new String[]{"cd",".."}
 
         );
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 1"),"expect one entry in the table");
         assertFalse(output.contains("1.333"),"double should be truncated");
         assertFalse(output.contains("\"example\""),"strings should not be quoted");
@@ -785,17 +819,19 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "itemSplit", ".items[]"},
-                new String[]{"node", "add", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "add", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "itemSplit", ".items[]"},
+                new String[]{"node", "add", "jq", "itemName", "{itemSplit}:.x"},
+                new String[]{"node", "add", "jq", "rangeNode", "{itemSplit}:.y"},
+                new String[]{"node", "add", "jq", "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode",
                         "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
-                new String[]{"upload", folder.toString(), "--to", testName},
-                new String[]{"folder", "values", "--from", testName}
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         String output = last;
 
         assertTrue(output.contains("Count: 33"), "Expected 33 total values\n" + output);
@@ -818,17 +854,19 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "itemSplit", ".items[]"},
-                new String[]{"node", "add", "jq", "--to", testName, "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "add", "jq", "--to", testName, "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "add", "jq", "--to", testName, "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "itemSplit", ".items[]"},
+                new String[]{"node", "add", "jq", "itemName", "{itemSplit}:.x"},
+                new String[]{"node", "add", "jq", "rangeNode", "{itemSplit}:.y"},
+                new String[]{"node", "add", "jq", "categoryFp", "{itemSplit}:.fp1"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode",
                         "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
-                new String[]{"upload", folder.toString(), "--to", testName},
-                new String[]{"folder", "values", "--from", testName, "--by", "itemSplit"}
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values", "--by", "itemSplit"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         String output = last;
 
         // With 'by itemSplit', violations are parented under itemSplit values.
@@ -856,27 +894,29 @@ public class H5mTest {
         // Threshold: min=10000, max=35000
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "add", "jq", "--to", testName, "version", ".config.QUARKUS_VERSION"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"node", "add", "jq", "version", ".config.QUARKUS_VERSION"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode",
                         "--range", "throughput",
                         "--fingerprint", "version",
                         "--min", "10000",
                         "--max", "35000"},
-                new String[]{"node", "list", "--from", testName},
-                new String[]{"upload", qvssPath("27405.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27406.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27271.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27272.json"), "--to", testName},
-                new String[]{"upload", qvssPath("26594.json"), "--to", testName},
-                new String[]{"upload", qvssPath("26598.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27279.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27897.json"), "--to", testName},
-                new String[]{"upload", qvssPath("84315.json"), "--to", testName},
-                new String[]{"folder", "values", "--from", testName}
+                new String[]{"node", "list"},
+                new String[]{"upload", qvssPath("27405.json")},
+                new String[]{"upload", qvssPath("27406.json")},
+                new String[]{"upload", qvssPath("27271.json")},
+                new String[]{"upload", qvssPath("27272.json")},
+                new String[]{"upload", qvssPath("26594.json")},
+                new String[]{"upload", qvssPath("26598.json")},
+                new String[]{"upload", qvssPath("27279.json")},
+                new String[]{"upload", qvssPath("27897.json")},
+                new String[]{"upload", qvssPath("84315.json")},
+                new String[]{"folder", "values"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         String output = last;
 
         // 4 below (2203, 2206, 8778, 9223) + 1 above (88777) = 5 violations
@@ -901,30 +941,32 @@ public class H5mTest {
         // Fingerprint: major.minor version extracted via split/join → "3.7"
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "add", "jq", "--to", testName, "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
-                new String[]{"node", "add", "jq", "--to", testName, "startTime", ".timing.start"},
-                new String[]{"node", "add", "relativedifference", "rdNode", "--to", testName,
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
+                new String[]{"node", "add", "jq", "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
+                new String[]{"node", "add", "jq", "startTime", ".timing.start"},
+                new String[]{"node", "add", "relativedifference", "rdNode",
                         "--range", "throughput",
                         "--domain", "startTime",
                         "--fingerprint", "majorMinor",
                         "--window", "1",
                         "--minPrevious", "3",
                         "--threshold", "0.2"},
-                new String[]{"node", "list", "--from", testName},
-                new String[]{"upload", qvssPath("26594.json"), "--to", testName},
-                new String[]{"upload", qvssPath("26598.json"), "--to", testName},
-                new String[]{"upload", qvssPath("26599.json"), "--to", testName},
-                new String[]{"upload", qvssPath("26776.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27271.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27272.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27279.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27405.json"), "--to", testName},
-                new String[]{"upload", qvssPath("27406.json"), "--to", testName},
-                new String[]{"folder", "values", "--from", testName}
+                new String[]{"node", "list"},
+                new String[]{"upload", qvssPath("26594.json")},
+                new String[]{"upload", qvssPath("26598.json")},
+                new String[]{"upload", qvssPath("26599.json")},
+                new String[]{"upload", qvssPath("26776.json")},
+                new String[]{"upload", qvssPath("27271.json")},
+                new String[]{"upload", qvssPath("27272.json")},
+                new String[]{"upload", qvssPath("27279.json")},
+                new String[]{"upload", qvssPath("27405.json")},
+                new String[]{"upload", qvssPath("27406.json")},
+                new String[]{"folder", "values"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         String output = last;
 
         // Detections expected when enough history builds up:
@@ -947,25 +989,27 @@ public class H5mTest {
         // Threshold min=15000: all spring-jvm values violate, no quarkus-jvm values violate
         List<String> results = run(aeshLauncher,
                 new String[]{"folder", "add", testName},
-                new String[]{"node", "add", "jq", "--to", testName, "framework", ".results | to_entries[]"},
-                new String[]{"node", "add", "jq", "--to", testName, "throughput", "{framework}:.value.load.avThroughput"},
-                new String[]{"node", "add", "jq", "--to", testName, "fwName", "{framework}:.key"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--to", testName,
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "framework", ".results | to_entries[]"},
+                new String[]{"node", "add", "jq", "throughput", "{framework}:.value.load.avThroughput"},
+                new String[]{"node", "add", "jq", "fwName", "{framework}:.key"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode",
                         "--range", "throughput",
                         "--by", "framework",
                         "--fingerprint", "fwName",
                         "--min", "15000"},
-                new String[]{"node", "list", "--from", testName},
-                new String[]{"upload", qvssPath("7691.json"), "--to", testName},
-                new String[]{"upload", qvssPath("7750.json"), "--to", testName},
-                new String[]{"upload", qvssPath("6313.json"), "--to", testName},
-                new String[]{"upload", qvssPath("6314.json"), "--to", testName},
-                new String[]{"upload", qvssPath("16328.json"), "--to", testName},
-                new String[]{"upload", qvssPath("17333.json"), "--to", testName},
-                new String[]{"folder", "values", "--from", testName, "--limit", "200"}
+                new String[]{"node", "list"},
+                new String[]{"upload", qvssPath("7691.json")},
+                new String[]{"upload", qvssPath("7750.json")},
+                new String[]{"upload", qvssPath("6313.json")},
+                new String[]{"upload", qvssPath("6314.json")},
+                new String[]{"upload", qvssPath("16328.json")},
+                new String[]{"upload", qvssPath("17333.json")},
+                new String[]{"folder", "values", "--limit", "200"},
+                new String[]{"cd", ".."}
         );
 
-        String last = results.getLast();
+        String last = results.get(results.size() - 2);
         String output = last;
 
         // All spring-jvm values (~9400-12200) are below min=15000
@@ -1019,20 +1063,22 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"split",".Item[]"},
-                new String[]{"node","add","jq","--to",testName,"domainNode","{split}:.x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","--to",testName,"fp","{split}:.fp"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","add","relativedifference","relativediff","--to",testName,"--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
-                new String[]{"upload",filePath01.toString(),"--to",testName},
-                new String[]{"upload",filePath02.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath03.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","split",".Item[]"},
+                new String[]{"node","add","jq","domainNode","{split}:.x"},
+                new String[]{"node","add","jq","rangeNode","{split}:.y"},
+                new String[]{"node","add","jq","fp","{split}:.fp"},
+                new String[]{"node","list"},
+                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
+                new String[]{"upload",filePath01.toString()},
+                new String[]{"upload",filePath02.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath03.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String afterUpload2 = results.get(results.size() - 3);
+        String afterUpload2 = results.get(results.size() - 4);
         String output2 = afterUpload2;
         assertTrue(afterUpload2.contains("Count: 11"),
                 "After upload 2, expect 11 values from test (1 changes total)\n" + afterUpload2);
@@ -1046,7 +1092,7 @@ public class H5mTest {
         assertTrue(output2.contains("\"ratio\":-47.61904761904761"),
                 "Should contain calculated ratio -47.61904761904761\n" + output2);
 
-        String output3 = results.getLast();
+        String output3 = results.get(results.size() - 2);
         assertTrue(output3.contains("Count: 17"),
             "After upload 3, expect 17 values from test (2 changes total)\n" + output3);
         assertTrue(output3.contains("\"domainvalue\":2"),
@@ -1111,22 +1157,24 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"split",".Item[]"},
-                new String[]{"node","add","jq","--to",testName,"domainNode","{split}:.x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","--to",testName,"fp","{split}:.fp"},
-                new String[]{"node","add","relativedifference","relativediff","--to",testName,"--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","2"},
-                new String[]{"upload",filePath01.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath02.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath03.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath04.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","split",".Item[]"},
+                new String[]{"node","add","jq","domainNode","{split}:.x"},
+                new String[]{"node","add","jq","rangeNode","{split}:.y"},
+                new String[]{"node","add","jq","fp","{split}:.fp"},
+                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","2"},
+                new String[]{"upload",filePath01.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath02.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath03.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath04.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String output1 = results.get(results.size() - 7);
+        String output1 = results.get(results.size() - 8);
         assertTrue(output1.contains("Count: 5"),
             "After upload 1, expect 5 values\n" + output1);
         int changeCount1 = output1.split("\"ratio\":", -1).length - 1;
@@ -1134,7 +1182,7 @@ public class H5mTest {
                 "Upload 1: x=4 with only 1 sample should produce 0 changes (need minPrevious=2)");
 
 
-        String output2 = results.get(results.size() - 5);
+        String output2 = results.get(results.size() - 6);
         assertTrue(output2.contains("Count: 10"),
             "After upload 2, expect 10 values\n" + output2);
 
@@ -1142,7 +1190,7 @@ public class H5mTest {
         assertEquals(0, changeCount2,
                 "Upload 1: x=3 with only 1 sample should produce 0 changes (need minPrevious=2)");
 
-        String output3 = results.get(results.size() - 3);
+        String output3 = results.get(results.size() - 4);
         int changeCount3 = output3.split("\"ratio\":", -1).length - 1;
         assertEquals(1, changeCount3,
                 "Upload 1: x=2 with only 1 sample should produce 0 changes (need minPrevious=2)");
@@ -1159,7 +1207,7 @@ public class H5mTest {
                 "Should contain calculated ratio -42.85714285714286\n" + output3);
 
 
-        String output4 = results.getLast();
+        String output4 = results.get(results.size() - 2);
         int changeCount4 = output4.split("\"ratio\":", -1).length - 1;
         assertEquals(2, changeCount4,
                 "Upload 1: x=1 should have 2 changes\n" + output4);
@@ -1227,28 +1275,30 @@ public class H5mTest {
 
         List<String> results = run(aeshLauncher,
                 new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"split",".Item[]"},
-                new String[]{"node","add","jq","--to",testName,"domainNode","{split}:.x"},
-                new String[]{"node","add","jq","--to",testName,"rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","--to",testName,"fp","{split}:.fp"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","add","relativedifference","relativediff","--to",testName,"--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
-                new String[]{"upload",filePath01.toString(),"--to",testName},
-                new String[]{"upload",filePath02.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath03.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"upload",filePath04.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName}
+                new String[]{"cd",testName},
+                new String[]{"node","add","jq","split",".Item[]"},
+                new String[]{"node","add","jq","domainNode","{split}:.x"},
+                new String[]{"node","add","jq","rangeNode","{split}:.y"},
+                new String[]{"node","add","jq","fp","{split}:.fp"},
+                new String[]{"node","list"},
+                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
+                new String[]{"upload",filePath01.toString()},
+                new String[]{"upload",filePath02.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath03.toString()},
+                new String[]{"folder","values"},
+                new String[]{"upload",filePath04.toString()},
+                new String[]{"folder","values"},
+                new String[]{"cd",".."}
         );
 
-        String output1 = results.get(results.size() - 7);
+        String output1 = results.get(results.size() - 8);
         int changeCount1 = output1.split("\"ratio\":", -1).length - 1;
         assertEquals(0, changeCount1,
                 "Upload 1: x=4 with only 1 sample should produce 0 changes (need minPrevious=2)");
 
 
-        String output2 = results.get(results.size() - 5);
+        String output2 = results.get(results.size() - 6);
         assertTrue(output2.contains("Count: 11"),
                 "After upload 2, expect 11 values (1 change detected for x=4)\n" + output2);
 
@@ -1262,7 +1312,7 @@ public class H5mTest {
         assertTrue(output2.contains("\"ratio\":-47.61904761904761"),
                 "Should contain calculated ratio -47.61904761904761\n" + output2);
 
-        String output3 = results.get(results.size() - 3);
+        String output3 = results.get(results.size() - 4);
         assertTrue(output3.contains("Count: 16"),
                 "After upload 3, expect 16 values (1 changes total)\n" + output3);
 
@@ -1275,7 +1325,7 @@ public class H5mTest {
         assertTrue(output3.contains("\"ratio\":47.61904761904763"),
                 "Should contain calculated ratio 47.61904761904763\n" + output3);
 
-        String output4 = results.getLast();
+        String output4 = results.get(results.size() - 2);
         assertTrue(output4.contains("Count: 22"),
                 "After upload 4, expect 22 values (2 changes total)\n" + output4);
 
@@ -1320,27 +1370,29 @@ public class H5mTest {
         // Build commands: setup nodes, then upload each file individually in order
         List<String[]> commands = new java.util.ArrayList<>();
         commands.add(new String[]{"folder", "add", testName});
-        commands.add(new String[]{"node", "add", "jq", "to", testName, "domainNode", ".x"});
-        commands.add(new String[]{"node", "add", "jq", "to", testName, "rangeNode", ".y"});
-        commands.add(new String[]{"node", "add", "jq", "to", testName, "fp1", ".fp1"});
-        commands.add(new String[]{"node", "list", "--from", testName});
-        commands.add(new String[]{"node", "add", "stddev", "sdNode", "to", testName,
+        commands.add(new String[]{"cd", testName});
+        commands.add(new String[]{"node", "add", "jq", "domainNode", ".x"});
+        commands.add(new String[]{"node", "add", "jq", "rangeNode", ".y"});
+        commands.add(new String[]{"node", "add", "jq", "fp1", ".fp1"});
+        commands.add(new String[]{"node", "list"});
+        commands.add(new String[]{"node", "add", "stddev", "sdNode",
                 "range", "rangeNode", "domain", "domainNode",
-                "fingerprint", "fp1",
+                "--fingerprint", "fp1",
                 "windowSize", "5", "deviations", "3", "minDataPoints", "3",
                 "direction", "BOTH"});
-        commands.add(new String[]{"node", "list", "--from", testName});
+        commands.add(new String[]{"node", "list"});
         for (Path f : uploadFiles) {
-            commands.add(new String[]{"upload", f.toString(), "to", testName});
+            commands.add(new String[]{"upload", f.toString()});
         }
-        commands.add(new String[]{"folder", "values", "from", testName});
+        commands.add(new String[]{"folder", "values"});
+        commands.add(new String[]{"cd", ".."});
 
         List<String> results = run(aeshLauncher, commands.toArray(new String[0][]));
 
-        String output = results.getLast();
+        String output = results.get(results.size() - 2);
 
-        // The node list is the second "list nodes" command (index 6, after add stddev)
-        String nodeList = results.get(6);
+        // The node list is the second "list nodes" command (index 7, after add stddev)
+        String nodeList = results.get(7);
         assertTrue(nodeList.contains("sdNode"), "Node list should contain sdNode\n" + nodeList);
 
         // After uploading 5 stable + 1 anomaly, the anomaly should be detected

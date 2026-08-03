@@ -53,8 +53,6 @@
         <h5m.benchmark.warmup>5</h5m.benchmark.warmup>
 
         <h5m.cli.native>true</h5m.cli.native>
-        <lib.aesh>3.7-dev</lib.aesh>
-
         <!-- dependencies -->
         <lib.jdbi>3.41.3</lib.jdbi>
         <lib.jhunter>0.1.0</lib.jhunter>
@@ -345,7 +343,6 @@
                         <path>
                             <groupId>org.aesh</groupId>
                             <artifactId>aesh-processor</artifactId>
-                            <version>${lib.aesh}</version>
                         </path>
                         <path>
                             <groupId>org.openjdk.jmh</groupId>

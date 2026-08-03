@@ -65,7 +65,7 @@ public class UploadCmd implements Command<H5mCommandInvocation> {
                 JqValue read = JqValues.parse(new String(java.nio.file.Files.readAllBytes(f.toPath())));
                 if (read != null) {
                     try {
-                        futures.add(folderService.upload(folderName, f.getPath(), read).future);
+                        futures.add(folderService.upload(folderName, read).future);
                     } catch (NoResultException e) {
                         invocation.println("could not find folder " + folderName);
                         return CommandResult.FAILURE;
