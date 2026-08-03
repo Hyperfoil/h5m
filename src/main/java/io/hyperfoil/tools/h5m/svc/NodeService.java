@@ -1542,7 +1542,7 @@ public class NodeService implements NodeServiceInterface {
                     + "\n  values: " + sourceValues.entrySet().stream()
                     .map(entry -> entry.getKey() + "=" + entry.getValue().id)
                     .collect(Collectors.joining(", "))
-                    + "\n" + e.getMessage());
+                    + "\n  " + e.getMessage().replaceAll("\n","\n  "));
         }
 
         return rtrn;
