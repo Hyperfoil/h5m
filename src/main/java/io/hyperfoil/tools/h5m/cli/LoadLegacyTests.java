@@ -150,10 +150,6 @@ public class LoadLegacyTests implements Callable<Integer> {
 
     }
 
-    static String jsonpathToJq(String jsonpath) {
-        return NodeService.jsonpathToJq(jsonpath);
-    }
-
     @Inject
     FolderService folderService;
 
@@ -245,6 +241,7 @@ public class LoadLegacyTests implements Callable<Integer> {
             return Objects.hash(name,JsNode.isNullEmptyOrIdentityFunction(function) ? null : function,extractors);
         }
     };
+
     //id,name,labels,calculation
     public record Variable(long id,String name,List<String> labels,String calculation){};
 
@@ -262,8 +259,8 @@ public class LoadLegacyTests implements Callable<Integer> {
 
             // Convert jsonpath to jq — sqlall (isArray) wraps in [...] to collect all matches
             String jqOperation = extractor.isArray
-                    ? NodeService.jsonpathToJqArray(extractor.jsonpath())
-                    : NodeService.jsonpathToJq(extractor.jsonpath());
+                    ? NodeService.jsonpathToLaxJqArray(extractor.jsonpath())
+                    : NodeService.jsonpathToLaxJq(extractor.jsonpath());
             NodeEntity node = JqNode.parse(extractorName, jqOperation, nodeTracking::getNodes);
             if (node == null) {
                 System.err.println("failed to create node for extractor " + extractor);

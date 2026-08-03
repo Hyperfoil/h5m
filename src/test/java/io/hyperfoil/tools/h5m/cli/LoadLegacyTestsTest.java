@@ -1,6 +1,14 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.Upload;
+import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.svc.ValueService;
+import io.hyperfoil.tools.jjq.JqProgram;
 import io.hyperfoil.tools.jjq.value.JqObject;
+import io.hyperfoil.tools.jjq.value.JqString;
+import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -14,22 +22,106 @@ import io.hyperfoil.tools.yaup.HashedSets;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
+import jakarta.transaction.*;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
-public class LoadLegacyTestsTest {
+public class LoadLegacyTestsTest extends FreshDb {
 
     @Inject
     LoadLegacyTests loadLegacyTests;
+
+    @Inject
+    NodeService nodeService;
+
+    @Inject
+    FolderService folderService;
+    
+    @Test
+    @Transactional
+    public void extractor_lax_isArray_match_select() throws IOException {
+        LoadLegacyTests.Extractor extractor = new LoadLegacyTests.Extractor("biz","$.a.b ? (@.c.e==\"two\").c.d",true);
+        LoadLegacyTests.Label label = new LoadLegacyTests.Label(1,"foo",null, Arrays.asList(extractor));
+        HashedSets<String,LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"",label);
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),Collections.emptyList());
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+        folder.id = folderService.create(folder);
+        folder = folderService.read(folder.id);
+        assertNotNull(folder);
+        assertNotNull(folder.group);
+        assertNotNull(folder.group.sources);
+        assertEquals(1,folder.group.sources.size());
+        NodeEntity node = folder.group.sources.getFirst();
+        assertNotNull(node);
+        assertEquals("foo",node.name,"name should be changed to match label");
+        if(node instanceof JqNode jqNode){
+            ValueEntity value = new ValueEntity(null,node,JqValues.parse("""
+                { "a" : { "b" : [ { "c" : [{ "d" : "one", "e" : "two" }]} ] } }
+                """));
+            List<ValueEntity> calculated = nodeService.calculateJqValues(jqNode, Map.of(folder.group.root.id,value),1);
+            assertNotNull(calculated);
+            assertEquals(1,calculated.size());
+            ValueEntity found = calculated.getFirst();
+            assertNotNull(found,"entity should not be null");
+            assertNotNull(found.data,"value should have data");
+            assertTrue(found.data.isArray(),"data should be an array: "+found.data);
+            assertEquals(1,found.data.length(),"expect to find one entry: "+found.data);
+            assertEquals(JqString.of("one"),found.data.getElement(0));
+        }else{
+            fail("node should be jq");
+        }
+    }
+
+    @Test
+    @Transactional
+    public void extractor_lax_isArray_match() throws IOException {
+        LoadLegacyTests.Extractor extractor = new LoadLegacyTests.Extractor("biz","$.a.b.c",true);
+        LoadLegacyTests.Label label = new LoadLegacyTests.Label(1,"foo",null, Arrays.asList(extractor));
+        HashedSets<String,LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"",label);
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths, Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),Collections.emptyList());
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+        folder.id = folderService.create(folder);
+        folder = folderService.read(folder.id);
+        assertNotNull(folder);
+        assertNotNull(folder.group);
+        assertNotNull(folder.group.sources);
+        assertEquals(1,folder.group.sources.size());
+        NodeEntity node = folder.group.sources.getFirst();
+        assertNotNull(node);
+        assertEquals("foo",node.name,"name should be changed to match label");
+        if(node instanceof JqNode jqNode){
+            ValueEntity value = new ValueEntity(null,node,JqValues.parse("""
+                { "a" : { "b" : [{ "c" : "one" }] } }
+                """));
+            List<ValueEntity> calculated = nodeService.calculateJqValues(jqNode, Map.of(folder.group.root.id,value),1);
+            assertNotNull(calculated);
+            assertEquals(1,calculated.size());
+            ValueEntity found = calculated.getFirst();
+            assertNotNull(found,"entity should not be null");
+            assertNotNull(found.data,"value should have data");
+            assertTrue(found.data.isArray(),"data should be an array: "+found.data);
+            assertEquals(1,found.data.length(),"expect to find one entry: "+found.data);
+            assertEquals(JqString.of("one"),found.data.getElement(0));
+        }else{
+            fail("node should be jq");
+        }
+    }
 
     @Test
     public void extractor_equals(){

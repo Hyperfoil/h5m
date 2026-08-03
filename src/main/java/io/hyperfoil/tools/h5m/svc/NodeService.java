@@ -1141,8 +1141,14 @@ public class NodeService implements NodeServiceInterface {
      * when the path doesn't exist — matching jsonb_path_query_array's behavior
      * of returning {@code []} for missing paths.
      */
-    public static String jsonpathToJqArray(String jsonpath) {
-        String jq = jsonpathToJq(jsonpath);
+    public static String jsonpathToJqArray(String jsonpath){
+        return jsonpathToJqArray(jsonpath,false);
+    }
+    public static String jsonpathToLaxJqArray(String jsonpath){
+        return jsonpathToJqArray(jsonpath,true);
+    }
+    private static String jsonpathToJqArray(String jsonpath,boolean lax) {
+        String jq = jsonpathToJq(jsonpath,lax);
         if (jq.contains("[]?")) {
             // Has iterators — [...] naturally produces [] when no matches
             return "[" + jq + "]";
@@ -1152,8 +1158,13 @@ public class NodeService implements NodeServiceInterface {
             return "[" + jq + " // empty]";
         }
     }
-
-    public static String jsonpathToJq(String jsonpath) {
+    public static String jsonpathToJq(String jsonpath){
+        return jsonpathToJq(jsonpath,false);
+    }
+    public static String jsonpathToLaxJq(String jsonpath){
+        return jsonpathToJq(jsonpath,true);
+    }
+    private static String jsonpathToJq(String jsonpath,boolean lax) {
         if (jsonpath == null || jsonpath.isEmpty()) return ".";
         String jq = jsonpath;
         if(jq.equals("$")){
@@ -1175,7 +1186,135 @@ public class NodeService implements NodeServiceInterface {
         if (jq.contains("?")) {
             jq = convertJsonpathFilters(jq);
         }
+        if(lax){
+            jq = convertToLaxJqChains(jq);
+        }
         return jq;
+    }
+
+    public record Range(int start,int stop){};
+    public static List<Range> findJqKeyChain(String input){
+        return NodeService.findJqKeyChain(input,0);
+    }
+    //chains have 2 or more keys, otherwise it's just a key access
+    public static List<Range> findJqKeyChain(String input,int start){
+        if(input == null || start > input.length()){
+            return Collections.emptyList();
+        }
+        //deal with negative numbers
+        start = Math.max(0,start);
+        List<Range> rtrn = new  ArrayList<>();
+        boolean inQuote = false;
+        boolean inChain = false;
+        int keyCount = 0;
+        int chainStart = -1;
+        char quoteChar = ' ';
+
+        for(int i=start; i<input.length(); i++){
+            char  c = input.charAt(i);
+            if(inQuote){
+                if (quoteChar == c && (i==start || input.charAt(i-1) != '\\')){
+                    inQuote = false;
+                }
+            }else{
+                if((c == '"' || c == '\'') && (i==start || input.charAt(i-1) != '\\')){
+                    inQuote = true;
+                    quoteChar = c;
+                }else if(c == '.'){//a new key
+                    if(!inChain){
+                        chainStart = i;
+                        inChain = true;
+                        keyCount = 1;
+                    }else{
+                        if(i == input.length()-1 || !"[".contains(""+input.charAt(i+1))){
+                            keyCount++;
+                        }
+                    }
+                } else if (" \t|?[=!><".contains(""+c)){//terminating characters
+                    if(inChain ){
+                        if(keyCount > 1) {
+                            rtrn.add(new Range(chainStart, i));
+                        }
+                        inChain = false;
+                        keyCount=0;
+                    }
+                }
+            }
+        }
+        if(inChain && keyCount > 1){
+            rtrn.add(new Range(chainStart,input.length()));
+        }
+        return rtrn;
+    }
+
+    public static List<String> splitNotInQuotes(String input,String split){
+        boolean inQuote = false;
+        char quoteChar = ' ';
+        List<String> rtrn = new ArrayList<>();
+        int startIdx = 0;
+        for(int i=0; i<input.length(); i++){
+            char  c = input.charAt(i);
+            if(inQuote){
+                if (quoteChar == c && (i==0 || input.charAt(i-1) != '\\')){
+                    inQuote = false;
+                }
+            }else {
+                if ((c == '"' || c == '\'') && (i == 0 || input.charAt(i - 1) != '\\')) {
+                    inQuote = true;
+                    quoteChar = c;
+
+                }else if( input.startsWith(split,i) ){
+                    if( startIdx > 0){
+                        rtrn.add(input.substring(startIdx,i));
+                    }
+                    i+=split.length()-1;//-1 because of the increment in the for loop
+                    startIdx = i+1;//+1 to set to next index
+                }
+            }
+        }
+        if(startIdx > 0 && startIdx < input.length()){
+            rtrn.add(input.substring(startIdx));
+        }
+        return rtrn;
+    }
+
+    public static String convertToLaxJqChains(String input){
+        if(input==null || input.isEmpty()){
+            return input;
+        }
+        List<Range> ranges = findJqKeyChain(input);
+        if(ranges.isEmpty()){
+            return input;
+        }
+        StringBuilder sb = new StringBuilder();
+        int prevIdx = 0;
+        for(Range r : ranges){
+            if(r.start() > prevIdx){
+                sb.append(input, prevIdx, r.start());
+            }
+            List<String> keys = splitNotInQuotes(input.substring(r.start(),r.stop()),".");
+            if(sb.length()>0){
+                if(sb.charAt(sb.length()-1)!=' ') {
+                    sb.append(" ");
+                }
+                int i=sb.length()-1;
+                while(i > 0 && sb.charAt(i) == ' '){
+                    i--;
+                }
+                if(!"|(".contains(""+sb.charAt(i))) {
+                    sb.append(" | ");
+                }
+            }
+            for(int idx = 0; idx< keys.size()-1; idx++){
+                sb.append("if (.KEY | type) == \"array\" then .KEY[] else .KEY end | ".replaceAll("KEY",keys.get(idx)));
+            }
+            sb.append("."+keys.get(keys.size()-1));
+            prevIdx = r.stop();
+        }
+        if(prevIdx < input.length()){
+            sb.append(input, prevIdx, input.length());
+        }
+        return sb.toString();
     }
 
     /**
@@ -1268,7 +1407,7 @@ public class NodeService implements NodeServiceInterface {
         }
         // Convert remaining ."text()" style field access to ["text()"]
         String output = result.toString();
-        output = output.replaceAll("\\.\"([^\"]+)\"", ".[\"$1\"]");
+                output = output.replaceAll("\\.\"([^\"]+)\"", ".[\"$1\"]");
         return output;
     }
 
@@ -1380,7 +1519,7 @@ public class NodeService implements NodeServiceInterface {
                             newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
                             rtrn.add(newValue);
                         }else{
-                            System.err.println("null data from value "+resolvedValue);
+                            System.err.println("null data from value "+resolvedValue+" from node="+node.name);
                         }
                     }catch (PolyglotException pe){
                         System.err.println("exception jsNode "+node.name+" sourceValues="+sourceValues+"\n"+pe.getMessage());
