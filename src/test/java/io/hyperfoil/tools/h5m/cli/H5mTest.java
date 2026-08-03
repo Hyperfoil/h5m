@@ -1349,7 +1349,149 @@ public class H5mTest {
         assertTrue(output.contains("\"stddev\""), "Detection should contain stddev\n" + output);
         assertTrue(output.contains("\"deviations\""), "Detection should contain deviations\n" + output);
         assertTrue(output.contains("\"direction\""), "Detection should contain direction\n" + output);
-        assertTrue(output.contains("above"), "200 should be detected as above the threshold\n" + output);
+         assertTrue(output.contains("above"), "200 should be detected as above the threshold\n" + output);
+    }
+
+    // --- Folder context (cd) tests ---
+    // These tests simulate how a user would actually use the CLI:
+    // cd into a folder, then operate without specifying --to/--from explicitly.
+
+    @Test
+    public void cd_add_nodes_upload_list_values() throws IOException {
+        String testName = "cd_add_nodes_upload_list_values";
+        Path folder = Files.createTempDirectory("h5m");
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                { "cpu": 42, "mem": "8gb" }
+                """
+        );
+        // Create folder, cd into it, then add nodes and upload without --to/--from
+        List<String> results = run(aeshLauncher,
+                new String[]{"folder", "add", testName},
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "cpu", ".cpu"},
+                new String[]{"node", "add", "jq", "mem", ".mem"},
+                new String[]{"node", "list"},
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values"}
+        );
+
+        String nodeList = results.get(4);
+        assertTrue(nodeList.contains("cpu"), "node list should show cpu node\n" + nodeList);
+        assertTrue(nodeList.contains("mem"), "node list should show mem node\n" + nodeList);
+
+        String values = results.getLast();
+        assertTrue(values.contains("Count: 2"), "expect 2 values after upload\n" + values);
+    }
+
+    @Test
+    public void cd_add_nodes_remove_node() {
+        String testName = "cd_add_nodes_remove_node";
+        List<String> results = run(aeshLauncher,
+                new String[]{"folder", "add", testName},
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "foo", ".foo"},
+                new String[]{"node", "add", "jq", "bar", ".bar"},
+                new String[]{"node", "list"},
+                new String[]{"node", "remove", "bar"},
+                new String[]{"node", "list"}
+        );
+
+        String beforeRemove = results.get(4);
+        assertTrue(beforeRemove.contains("bar"), "node list should show bar before remove\n" + beforeRemove);
+
+        String afterRemove = results.getLast();
+        assertTrue(afterRemove.contains("foo"), "node list should still show foo\n" + afterRemove);
+        assertFalse(afterRemove.contains("bar"), "node list should not show bar after remove\n" + afterRemove);
+    }
+
+    @Test
+    public void cd_fixedthreshold_with_upload() throws IOException {
+        String testName = "cd_fixedthreshold_with_upload";
+        Path folder = Files.createTempDirectory("h5m");
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                { "y": 5.0, "fp1": "alpha" }
+                """
+        );
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                { "y": 50.0, "fp1": "alpha" }
+                """
+        );
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                { "y": 150.0, "fp1": "alpha" }
+                """
+        );
+
+        // cd into folder, set up nodes and detection, upload — all without --to/--from
+        List<String> results = run(aeshLauncher,
+                new String[]{"folder", "add", testName},
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "rangeNode", ".y"},
+                new String[]{"node", "add", "jq", "fp1", ".fp1"},
+                new String[]{"node", "add", "fixedthreshold", "ftNode", "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values"}
+        );
+
+        String values = results.getLast();
+        // 3 rangeNode + 3 fp1 + 3 _fp-ftNode + 2 violations = 11
+        assertTrue(values.contains("Count: 11"), "expect 11 values\n" + values);
+    }
+
+    @Test
+    public void cd_then_cd_back() {
+        // Verify cd .. clears the folder context
+        List<String> results = run(aeshLauncher,
+                new String[]{"folder", "add", "myFolder"},
+                new String[]{"cd", "myFolder"},
+                new String[]{"node", "add", "jq", "foo", ".foo"},
+                new String[]{"node", "list"},
+                new String[]{"cd", ".."},
+                new String[]{"node", "list"}
+        );
+
+        String inFolder = results.get(3);
+        assertTrue(inFolder.contains("foo"), "node list in folder should show foo\n" + inFolder);
+
+        String outOfFolder = results.getLast();
+        // After cd .., node list without --from should fail or show error
+        assertTrue(outOfFolder.contains("group name is required") || outOfFolder.contains("not found"),
+                "node list without context should require --from\n" + outOfFolder);
+    }
+
+    @Test
+    public void cd_structure_and_recalculate() throws IOException {
+        String testName = "cd_structure_and_recalculate";
+        Path folder = Files.createTempDirectory("h5m");
+        Files.writeString(Files.createTempFile(folder, "h5m", ".json").toAbsolutePath(),
+                """
+                { "cpu": 4, "mem": "16gb" }
+                """
+        );
+
+        List<String> results = run(aeshLauncher,
+                new String[]{"folder", "add", testName},
+                new String[]{"cd", testName},
+                new String[]{"node", "add", "jq", "cpu", ".cpu"},
+                new String[]{"node", "add", "jq", "mem", ".mem"},
+                new String[]{"upload", folder.toString()},
+                new String[]{"folder", "values"},
+                new String[]{"folder", "structure"},
+                new String[]{"folder", "recalculate"},
+                new String[]{"folder", "values"}
+        );
+
+        String values1 = results.get(5);
+        assertTrue(values1.contains("Count: 2"), "expect 2 values after upload\n" + values1);
+
+        String structure = results.get(6);
+        assertTrue(structure.contains("cpu"), "structure should show cpu node\n" + structure);
+
+        String values2 = results.getLast();
+        assertTrue(values2.contains("Count: 2"), "expect 2 values after recalculate\n" + values2);
     }
 
 }

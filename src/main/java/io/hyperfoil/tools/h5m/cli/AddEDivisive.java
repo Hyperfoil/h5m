@@ -68,6 +68,7 @@ public class AddEDivisive implements Command<H5mCommandInvocation> {
 
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
         if (name == null || name.isEmpty()) {
             invocation.println("missing node name");
             return CommandResult.FAILURE;

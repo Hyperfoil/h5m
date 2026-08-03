@@ -22,7 +22,7 @@ public class AddNotification implements Command<H5mCommandInvocation> {
     @Argument(description = "notification method (WEBHOOK, EMAIL, SLACK, GITHUB_ISSUE)", required = true)
     String method;
 
-    @Option(name = "to", acceptNameWithoutDashes = true, description = "target folder name", required = true, completer = FolderCompleter.class)
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target folder name", completer = FolderCompleter.class)
     String folderName;
 
     @Option(name = "data", acceptNameWithoutDashes = true, description = "configuration data (URL, email, JSON, etc.)", required = true)
