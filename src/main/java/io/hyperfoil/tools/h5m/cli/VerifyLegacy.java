@@ -5,6 +5,7 @@ import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
+import io.hyperfoil.tools.h5m.provided.DatabaseEngine;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.h5m.svc.ValueService;
@@ -37,6 +38,9 @@ public class VerifyLegacy implements Callable<Integer> {
 
     @Inject
     EntityManager em;
+
+    @Inject
+    DatabaseEngine db;
 
     @Inject
     FolderService folderService;
@@ -603,7 +607,13 @@ public class VerifyLegacy implements Callable<Integer> {
         }
 
         // Get h5m values for this specific upload (descendants of rootValueId),
-        // scoped to avoid mixing values from different uploads
+        // scoped to avoid mixing values from different uploads.
+        // PostgreSQL stores value data as BYTEA (needs convert_from),
+        // SQLite stores as BLOB (needs CAST to TEXT).
+        String dataExpr = switch (db.kind()) {
+            case POSTGRESQL -> "convert_from(v.data, 'UTF-8')";
+            case SQLITE -> "CAST(v.data AS TEXT)";
+        };
         @SuppressWarnings("unchecked")
         List<Object[]> h5mValues = em.createNativeQuery("""
                 WITH RECURSIVE descendants(vid) AS (
@@ -611,13 +621,13 @@ public class VerifyLegacy implements Callable<Integer> {
                     UNION ALL
                     SELECT ve.child_id FROM value_edge ve JOIN descendants d ON ve.parent_id = d.vid
                 )
-                SELECT n.name, v.idx, convert_from(v.data, 'UTF-8')
+                SELECT n.name, v.idx, %s
                 FROM value v
                 JOIN node n ON v.node_id = n.id
                 JOIN descendants d ON v.id = d.vid
                 WHERE n.type NOT IN ('root')
                 ORDER BY n.name, v.idx
-                """)
+                """.formatted(dataExpr))
                 .setParameter(1, rootValueId)
                 .getResultList();
 
