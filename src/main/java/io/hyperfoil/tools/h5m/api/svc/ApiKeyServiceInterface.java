@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface ApiKeyServiceInterface {
 
-    String create(String username, String description);
+    ApiKey create(String username, String description);
 
     ApiKey getById(long keyId);
 

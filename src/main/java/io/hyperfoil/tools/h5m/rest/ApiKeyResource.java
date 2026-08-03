@@ -8,7 +8,6 @@ import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -33,13 +32,11 @@ public class ApiKeyResource {
     @Authenticated
     @Operation(description = "Create a new API key for the authenticated user. " +
             "The response includes the raw key in the 'rawKey' field — this is the only time it is displayed.")
-    @APIResponse(responseCode = "201", description = "API key created",
+    @APIResponse(responseCode = "200", description = "API key created",
             content = @Content(schema = @Schema(implementation = ApiKey.class)))
-    public Response create(
+    public ApiKey create(
             @QueryParam("description") @NotEmpty @Parameter(description = "Human-readable label for the key") String description) {
-        String username = identity.getPrincipal().getName();
-        ApiKeyService.CreateResult result = apiKeyService.createAndReturn(username, description);
-        return Response.status(Response.Status.CREATED).entity(result.apiKey()).build();
+        return apiKeyService.create(identity.getPrincipal().getName(), description);
     }
 
     @GET

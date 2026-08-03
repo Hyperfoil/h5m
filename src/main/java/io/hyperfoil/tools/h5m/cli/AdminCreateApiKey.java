@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.ApiKey;
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
@@ -20,9 +21,9 @@ public class AdminCreateApiKey implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        String rawKey = apiKeyService.create(username, description);
+        ApiKey key = apiKeyService.create(username, description);
         System.out.println("API key created for user: " + username);
-        System.out.println("Key: " + rawKey);
+        System.out.println("Key: " + key.rawKey());
         System.out.println("WARNING: This key cannot be retrieved again. Store it securely.");
         return 0;
     }

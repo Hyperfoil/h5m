@@ -41,22 +41,10 @@ public class ApiKeyService implements ApiKeyServiceInterface {
     @Inject
     ApiMapper apiMapper;
 
-    /** Result of creating an API key — holds the DTO (with rawKey populated) for the REST response. */
-    public record CreateResult(ApiKey apiKey, String rawKey) {}
-
     @Override
     @Transactional
-    public String create(String username, String description) {
-        return createKey(username, description, null).rawKey();
-    }
-
-    /**
-     * Creates an API key and returns the DTO with rawKey populated.
-     * Used by the REST endpoint to return full metadata without re-querying.
-     */
-    @Transactional
-    public CreateResult createAndReturn(String username, String description) {
-        return createKey(username, description, null);
+    public ApiKey create(String username, String description) {
+        return create(username, description, null);
     }
 
     /**
@@ -64,11 +52,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
      * Used for bootstrap where the key is provided via environment variable.
      */
     @Transactional
-    public void createWithKey(String username, String description, String rawKey) {
-        createKey(username, description, rawKey);
-    }
-
-    private CreateResult createKey(String username, String description, String rawKey) {
+    public ApiKey create(String username, String description, String rawKey) {
         User user = userService.byUsername(username);
         if (user == null) {
             throw new IllegalArgumentException("User not found: " + username);
@@ -84,7 +68,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
         apiKey.activeDays = expirationDays;
         apiKey.revoked = false;
         apiKey.persist();
-        return new CreateResult(apiMapper.toApiKey(apiKey, rawKey), rawKey);
+        return apiMapper.toApiKey(apiKey, rawKey);
     }
 
     @Override
@@ -149,7 +133,7 @@ public class ApiKeyService implements ApiKeyServiceInterface {
             return;
         }
         userService.create(BOOTSTRAP_USERNAME, Role.ADMIN);
-        createWithKey(BOOTSTRAP_USERNAME, "bootstrap", rawKey);
+        create(BOOTSTRAP_USERNAME, "bootstrap", rawKey);
         Log.infof("Bootstrap: created admin user '%s' with the configured API key", BOOTSTRAP_USERNAME);
     }
 }

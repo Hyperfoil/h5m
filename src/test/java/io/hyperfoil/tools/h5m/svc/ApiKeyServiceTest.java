@@ -26,9 +26,10 @@ public class ApiKeyServiceTest extends FreshDb {
     @Test
     void create_key_returns_prefixed_string() {
         userService.create("alice", Role.USER);
-        String key = apiKeyService.create("alice", "test key");
+        ApiKey key = apiKeyService.create("alice", "test key");
         assertNotNull(key);
-        assertTrue(key.startsWith("H5M_"));
+        assertNotNull(key.rawKey());
+        assertTrue(key.rawKey().startsWith("H5M_"));
     }
 
     @Test
@@ -44,7 +45,7 @@ public class ApiKeyServiceTest extends FreshDb {
     @Test
     void validate_key_returns_user() {
         userService.create("carol", Role.USER);
-        String rawKey = apiKeyService.create("carol", "valid key");
+        String rawKey = apiKeyService.create("carol", "valid key").rawKey();
         User user = apiKeyService.validateKey(rawKey);
         assertNotNull(user);
         assertEquals("carol", user.username);
@@ -63,7 +64,7 @@ public class ApiKeyServiceTest extends FreshDb {
     @Test
     void validate_key_returns_null_for_revoked() {
         userService.create("dave", Role.USER);
-        String rawKey = apiKeyService.create("dave", "revoke me");
+        String rawKey = apiKeyService.create("dave", "revoke me").rawKey();
         List<ApiKey> keys = apiKeyService.listByUser("dave");
         apiKeyService.revoke(keys.get(0).id());
         assertNull(apiKeyService.validateKey(rawKey));
@@ -72,7 +73,7 @@ public class ApiKeyServiceTest extends FreshDb {
     @Test
     void validate_key_updates_lastUsedAt() {
         userService.create("eve", Role.USER);
-        String rawKey = apiKeyService.create("eve", "track access");
+        String rawKey = apiKeyService.create("eve", "track access").rawKey();
         List<ApiKey> before = apiKeyService.listByUser("eve");
         assertNull(before.get(0).lastUsedAt());
 

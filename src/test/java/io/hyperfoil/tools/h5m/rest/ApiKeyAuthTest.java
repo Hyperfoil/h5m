@@ -43,7 +43,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void write_endpoint_succeeds_with_valid_api_key() {
         userService.create("writer", Role.USER);
-        String key = apiKeyService.create("writer", "write key");
+        String key = apiKeyService.create("writer", "write key").rawKey();
 
         given()
                 .contentType(MediaType.APPLICATION_JSON)
@@ -66,7 +66,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void write_endpoint_returns_401_with_revoked_key() {
         userService.create("revoked-user", Role.USER);
-        String key = apiKeyService.create("revoked-user", "revoked key");
+        String key = apiKeyService.create("revoked-user", "revoked key").rawKey();
         var keys = apiKeyService.listByUser("revoked-user");
         apiKeyService.revoke(keys.get(0).id());
 
@@ -81,7 +81,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void purge_endpoint_returns_403_for_non_admin() {
         userService.create("regular", Role.USER);
-        String key = apiKeyService.create("regular", "user key");
+        String key = apiKeyService.create("regular", "user key").rawKey();
 
         given()
                 .header("Authorization", "Bearer " + key)
@@ -93,7 +93,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void purge_endpoint_succeeds_for_admin() {
         userService.create("admin", Role.ADMIN);
-        String key = apiKeyService.create("admin", "admin key");
+        String key = apiKeyService.create("admin", "admin key").rawKey();
 
         given()
                 .header("Authorization", "Bearer " + key)
@@ -109,7 +109,7 @@ public class ApiKeyAuthTest extends FreshDb {
         // Simulate bootstrap: create admin user + key with known value
         String bootstrapKey = "H5M_TEST_BOOTSTRAP_KEY_12345678";
         userService.create("admin", Role.ADMIN);
-        apiKeyService.createWithKey("admin", "bootstrap", bootstrapKey);
+        apiKeyService.create("admin", "bootstrap", bootstrapKey);
 
         // The known key should work for authenticated endpoints
         given()
@@ -124,7 +124,7 @@ public class ApiKeyAuthTest extends FreshDb {
     void bootstrap_key_authenticates() {
         String bootstrapKey = "H5M_BOOTSTRAP_" + java.util.UUID.randomUUID().toString().replace("-", "_").toUpperCase();
         userService.create("bootstrap-admin", Role.ADMIN);
-        apiKeyService.createWithKey("bootstrap-admin", "bootstrap", bootstrapKey);
+        apiKeyService.create("bootstrap-admin", "bootstrap", bootstrapKey);
 
         // The bootstrap key should work for authenticated endpoints
         given()
@@ -140,7 +140,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void apikey_create_and_list() {
         userService.create("keyuser", Role.USER);
-        String authKey = apiKeyService.create("keyuser", "auth key");
+        String authKey = apiKeyService.create("keyuser", "auth key").rawKey();
 
         // Create a new key via REST — returns ApiKey DTO with rawKey populated
         String newKey = given()
@@ -148,7 +148,7 @@ public class ApiKeyAuthTest extends FreshDb {
                 .queryParam("description", "test key")
                 .when().post("/api/apikey")
                 .then()
-                .statusCode(201)
+                .statusCode(200)
                 .body("rawKey", org.hamcrest.Matchers.startsWith("H5M_"))
                 .body("description", org.hamcrest.Matchers.equalTo("test key"))
                 .body("id", org.hamcrest.Matchers.notNullValue())
@@ -169,10 +169,10 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void apikey_revoke() {
         userService.create("revokeuser", Role.USER);
-        String authKey = apiKeyService.create("revokeuser", "auth key");
+        String authKey = apiKeyService.create("revokeuser", "auth key").rawKey();
 
         // Create a key to revoke
-        String keyToRevoke = apiKeyService.create("revokeuser", "will be revoked");
+        String keyToRevoke = apiKeyService.create("revokeuser", "will be revoked").rawKey();
         var keys = apiKeyService.listByUser("revokeuser");
         long revokeId = keys.stream()
                 .filter(k -> "will be revoked".equals(k.description()))
@@ -198,7 +198,7 @@ public class ApiKeyAuthTest extends FreshDb {
     void apikey_revoke_other_user_forbidden() {
         userService.create("user1", Role.USER);
         userService.create("user2", Role.USER);
-        String key1 = apiKeyService.create("user1", "user1 key");
+        String key1 = apiKeyService.create("user1", "user1 key").rawKey();
         apiKeyService.create("user2", "user2 key");
         var user2Keys = apiKeyService.listByUser("user2");
         long user2KeyId = user2Keys.get(0).id();
@@ -214,7 +214,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void apikey_revoke_nonexistent_returns_404() {
         userService.create("user404", Role.USER);
-        String key = apiKeyService.create("user404", "auth key");
+        String key = apiKeyService.create("user404", "auth key").rawKey();
 
         given()
                 .header("Authorization", "Bearer " + key)
@@ -226,7 +226,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void apikey_list_does_not_expose_raw_key() {
         userService.create("listuser", Role.USER);
-        String key = apiKeyService.create("listuser", "auth key");
+        String key = apiKeyService.create("listuser", "auth key").rawKey();
         apiKeyService.create("listuser", "another key");
 
         given()
@@ -243,7 +243,7 @@ public class ApiKeyAuthTest extends FreshDb {
     void apikey_admin_can_revoke_other_user_key() {
         userService.create("adminuser", Role.ADMIN);
         userService.create("targetuser", Role.USER);
-        String adminKey = apiKeyService.create("adminuser", "admin key");
+        String adminKey = apiKeyService.create("adminuser", "admin key").rawKey();
         apiKeyService.create("targetuser", "target key");
         var targetKeys = apiKeyService.listByUser("targetuser");
         long targetKeyId = targetKeys.get(0).id();
@@ -259,7 +259,7 @@ public class ApiKeyAuthTest extends FreshDb {
     @Test
     void apikey_create_empty_description_returns_400() {
         userService.create("emptyuser", Role.USER);
-        String key = apiKeyService.create("emptyuser", "auth key");
+        String key = apiKeyService.create("emptyuser", "auth key").rawKey();
 
         given()
                 .header("Authorization", "Bearer " + key)
