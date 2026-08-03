@@ -38,8 +38,8 @@ public class AddRelativeDifference implements Command<H5mCommandInvocation> {
     int minPrevious;
     @Option(name = "filter", acceptNameWithoutDashes = true, description = "Function used to aggregate datapoints from the floating window.", defaultValue = {RelativeDifference.DEFAULT_FILTER})
     String filter;
-    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "node names to use as fingerprint")
-    List<String> fingerprints;
+    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "comma-separated node names to use as fingerprint")
+    String fingerprints;
     @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, shortName = 'f', description = "jq filter expression for fingerprints")
     String fingerprintFilter;
 
@@ -121,7 +121,7 @@ public class AddRelativeDifference implements Command<H5mCommandInvocation> {
 
         List<Long> fingerprintNodes = new ArrayList<>();
         if(fingerprints!=null && !fingerprints.isEmpty()){
-            List<String> fingerprintNames = fingerprints.stream().flatMap(fp->Arrays.stream(fp.split(","))).map(String::trim).filter(v->!v.isBlank()).toList();
+            List<String> fingerprintNames = Arrays.stream(fingerprints.split(",")).map(String::trim).filter(v->!v.isBlank()).toList();
             for(String fingeprintName : fingerprintNames){
                 foundNodes = nodeService.findNodeByFqdn(fingeprintName,foundGroup.id());
                 if(foundNodes.isEmpty()){

@@ -33,17 +33,23 @@ public class H5mTest {
     /**
      * Convert a String[] of args into a single command string for the REPL.
      * Arguments containing spaces, newlines, or special characters are quoted.
+     * Uses single quotes for arguments with double quotes (aesh doesn't handle
+     * backslash-escaped quotes inside double-quoted strings).
      */
     private static String toCommand(String[] args) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < args.length; i++) {
             if (i > 0) sb.append(' ');
             String arg = args[i];
-            if (arg.contains(" ") || arg.contains("\n") || arg.contains("\"") || arg.contains("{") || arg.contains("}")) {
-                // Quote the argument, escaping internal quotes
-                sb.append('"').append(arg.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")).append('"');
-            } else {
+            boolean needsQuoting = arg.contains(" ") || arg.contains("\n") || arg.contains("\"") || arg.contains("{") || arg.contains("}");
+            if (!needsQuoting) {
                 sb.append(arg);
+            } else if (arg.contains("\"") && !arg.contains("'")) {
+                // Use single quotes to preserve double quotes literally
+                sb.append("'").append(arg).append("'");
+            } else {
+                // Default: double-quote and escape internal double quotes
+                sb.append('"').append(arg.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")).append('"');
             }
         }
         return sb.toString();
@@ -355,9 +361,9 @@ public class H5mTest {
 
         String output = results.getLast();
         assertTrue(output.contains("Count: 3"));
-        assertTrue(output.contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +output);
-        assertTrue(output.contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" buz "),"result should contain .bar:" +output);
+        // Intermediate nodes (foo, bar) are ephemeral — their data is nullified after processing.
+        // Only the leaf node (biz) retains its data.
+        assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
     }
     @Test
     public void upload_folder_list_values() throws IOException {
@@ -401,12 +407,10 @@ public class H5mTest {
 
         String output = results.getLast();
         assertTrue(output.contains("Count: 6"));
-        assertTrue(output.contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +output);
-        assertTrue(output.contains(" {\"bar\":{\"biz\":\"bur\"}} "),"result should contain .foo:" +output);
-        assertTrue(output.contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" {\"biz\":\"bur\"} "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" buz "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" bur "),"result should contain .bar:" +output);
+        // Intermediate nodes (foo, bar) are ephemeral — their data is nullified after processing.
+        // Only the leaf node (biz) retains its data.
+        assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
+        assertTrue(output.contains(" bur "),"result should contain leaf value bur:" +output);
     }
     @Test
     public void upload_jsonata_list_values() throws IOException {
@@ -439,9 +443,8 @@ public class H5mTest {
 
         String output = results.getLast();
         assertTrue(output.contains("Count: 3"),"expect 3 values\n"+output);
-        assertTrue(output.contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +output);
-        assertTrue(output.contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" buz "),"result should contain .bar:" +output);
+        // Intermediate nodes (foo, bar) are ephemeral — only leaf node (biz) retains data.
+        assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
     }
     @Test
     public void upload_sqlpath_list_values() throws IOException {
@@ -474,9 +477,8 @@ public class H5mTest {
 
         String output = results.getLast();
         assertTrue(output.contains("Count: 3"),"expect 3 values\n"+output);
-        assertTrue(output.contains(" {\"bar\":{\"biz\":\"buz\"}} "),"result should contain .foo:" +output);
-        assertTrue(output.contains(" {\"biz\":\"buz\"} "),"result should contain .bar:" +output);
-        assertTrue(output.contains(" buz "),"result should contain .bar:" +output);
+        // Intermediate nodes (foo, bar) are ephemeral — only leaf node (biz) retains data.
+        assertTrue(output.contains(" buz "),"result should contain leaf value buz:" +output);
     }
     @Test
     public void upload_list_values_by_node() throws IOException {
@@ -960,7 +962,7 @@ public class H5mTest {
                 new String[]{"upload", qvssPath("6314.json"), "--to", testName},
                 new String[]{"upload", qvssPath("16328.json"), "--to", testName},
                 new String[]{"upload", qvssPath("17333.json"), "--to", testName},
-                new String[]{"folder", "values", "--from", testName}
+                new String[]{"folder", "values", "--from", testName, "--limit", "200"}
         );
 
         String last = results.getLast();

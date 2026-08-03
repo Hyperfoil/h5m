@@ -31,8 +31,8 @@ public class AddFixedThreshold implements Command<H5mCommandInvocation> {
     @Option(name = "by", acceptNameWithoutDashes = true, description = "grouping node")
     public String groupBy;
 
-    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "node names to use as fingerprint")
-    List<String> fingerprints;
+    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "comma-separated node names to use as fingerprint")
+    String fingerprints;
 
     @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, shortName = 'f', description = "jq filter expression for fingerprints")
     String fingerprintFilter;
@@ -111,7 +111,7 @@ public class AddFixedThreshold implements Command<H5mCommandInvocation> {
 
         List<Long> fingerprintNodes = new ArrayList<>();
         if (fingerprints != null && !fingerprints.isEmpty()) {
-            List<String> fingerprintNames = fingerprints.stream().flatMap(fp -> Arrays.stream(fp.split(","))).map(String::trim).filter(v -> !v.isBlank()).toList();
+            List<String> fingerprintNames = Arrays.stream(fingerprints.split(",")).map(String::trim).filter(v -> !v.isBlank()).toList();
             for (String fingerprintName : fingerprintNames) {
                 foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id());
                 if (foundNodes.isEmpty()) {
