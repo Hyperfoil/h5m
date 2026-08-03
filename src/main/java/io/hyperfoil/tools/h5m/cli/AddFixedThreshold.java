@@ -13,10 +13,9 @@ import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
-
+import org.aesh.command.option.OptionList;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,8 +30,8 @@ public class AddFixedThreshold implements Command<H5mCommandInvocation> {
     @Option(name = "by", acceptNameWithoutDashes = true, description = "grouping node")
     public String groupBy;
 
-    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "comma-separated node names to use as fingerprint")
-    String fingerprints;
+    @OptionList(name = "fingerprint", description = "node names to use as fingerprint")
+    List<String> fingerprints;
 
     @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, shortName = 'f', description = "jq filter expression for fingerprints")
     String fingerprintFilter;
@@ -111,8 +110,7 @@ public class AddFixedThreshold implements Command<H5mCommandInvocation> {
 
         List<Long> fingerprintNodes = new ArrayList<>();
         if (fingerprints != null && !fingerprints.isEmpty()) {
-            List<String> fingerprintNames = Arrays.stream(fingerprints.split(",")).map(String::trim).filter(v -> !v.isBlank()).toList();
-            for (String fingerprintName : fingerprintNames) {
+            for (String fingerprintName : fingerprints) {
                 foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id());
                 if (foundNodes.isEmpty()) {
                     invocation.println("could not find matching fingerprint node by name " + fingerprintName);

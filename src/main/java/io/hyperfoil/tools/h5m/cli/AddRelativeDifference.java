@@ -14,10 +14,9 @@ import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
-
+import org.aesh.command.option.OptionList;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,8 +37,8 @@ public class AddRelativeDifference implements Command<H5mCommandInvocation> {
     int minPrevious;
     @Option(name = "filter", acceptNameWithoutDashes = true, description = "Function used to aggregate datapoints from the floating window.", defaultValue = {RelativeDifference.DEFAULT_FILTER})
     String filter;
-    @Option(name = "fingerprint", acceptNameWithoutDashes = true, description = "comma-separated node names to use as fingerprint")
-    String fingerprints;
+    @OptionList(name = "fingerprint", description = "node names to use as fingerprint")
+    List<String> fingerprints;
     @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, shortName = 'f', description = "jq filter expression for fingerprints")
     String fingerprintFilter;
 
@@ -121,8 +120,7 @@ public class AddRelativeDifference implements Command<H5mCommandInvocation> {
 
         List<Long> fingerprintNodes = new ArrayList<>();
         if(fingerprints!=null && !fingerprints.isEmpty()){
-            List<String> fingerprintNames = Arrays.stream(fingerprints.split(",")).map(String::trim).filter(v->!v.isBlank()).toList();
-            for(String fingeprintName : fingerprintNames){
+            for(String fingeprintName : fingerprints){
                 foundNodes = nodeService.findNodeByFqdn(fingeprintName,foundGroup.id());
                 if(foundNodes.isEmpty()){
                     invocation.println("could not find matching fingerprint node by name "+fingeprintName);
