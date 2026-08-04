@@ -417,28 +417,29 @@ public class ProcessingService {
      * <ul>
      *   <li>KEEP — never ephemeral</li>
      *   <li>DISCARD — always ephemeral</li>
-     *   <li>AUTO — ephemeral only if the node has non-detection children
-     *       and is not itself a direct source of a detection node</li>
+      *   <li>AUTO — ephemeral only if the node has non-analysis children
+     *       and is not itself a direct source of an analysis node</li>
      * </ul>
      * Uses the already-loaded group nodes to check graph structure in-memory.
+     * Must match the logic in {@link ValueService#nullifyEphemeralData(long)}.
      */
     private boolean isEphemeral(NodeEntity node, List<NodeEntity> allGroupNodes) {
         if (node.ephemeral == EphemeralMode.KEEP) return false;
         if (node.ephemeral == EphemeralMode.DISCARD) return true;
         // AUTO: check graph structure to determine if data was nullified
-        boolean hasNonDetectionChild = false;
-        boolean isDetectionSource = false;
+        boolean hasNonAnalysisChild = false;
+        boolean isAnalysisSource = false;
         for (NodeEntity other : allGroupNodes) {
             if (other.sources != null && other.sources.stream()
                     .anyMatch(s -> s.getId().equals(node.getId()))) {
-                if (other.type().isDetection()) {
-                    isDetectionSource = true;
+                if (other.type().isAnalysis()) {
+                    isAnalysisSource = true;
                 } else {
-                    hasNonDetectionChild = true;
+                    hasNonAnalysisChild = true;
                 }
             }
         }
-        return hasNonDetectionChild && !isDetectionSource;
+        return hasNonAnalysisChild && !isAnalysisSource;
     }
 
     public void deleteForFolder(long folderId) {

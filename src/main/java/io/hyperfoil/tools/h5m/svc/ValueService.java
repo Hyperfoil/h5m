@@ -844,22 +844,22 @@ public class ValueService implements ValueServiceInterface {
             WHERE id IN (SELECT v_id FROM descendants)
               AND node_id IN (
                 SELECT id FROM node WHERE
-                  (ephemeral = 'DISCARD'
-                   OR (ephemeral = 'AUTO' AND EXISTS (
-                     SELECT 1 FROM node_edge ne
-                     JOIN node child ON child.id = ne.child_id
-                     WHERE ne.parent_id = node.id
-                       AND child.type NOT IN ('ft', 'rd', 'sd', 'ed')
-                   )))
-                  AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
-                  -- Protect nodes that are sources of detection nodes.
-                  -- Range, domain, and fingerprint nodes need their data
-                  -- for historical change detection queries.
+                   (ephemeral = 'DISCARD'
+                    OR (ephemeral = 'AUTO' AND EXISTS (
+                      SELECT 1 FROM node_edge ne
+                      JOIN node child ON child.id = ne.child_id
+                      WHERE ne.parent_id = node.id
+                        AND child.type NOT IN ('ft', 'rd', 'sd', 'ed', 'fp')
+                    )))
+                  AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed', 'fp')
+                  -- Protect nodes that are sources of analysis nodes.
+                  -- Range, domain, and fingerprint source nodes need their
+                  -- data for historical change detection queries.
                   AND NOT EXISTS (
                     SELECT 1 FROM node_edge ne2
                     JOIN node det ON det.id = ne2.child_id
                     WHERE ne2.parent_id = node.id
-                      AND det.type IN ('ft', 'rd', 'sd', 'ed')
+                      AND det.type IN ('ft', 'rd', 'sd', 'ed', 'fp')
                   )
               )
               AND data IS NOT NULL
@@ -884,12 +884,12 @@ public class ValueService implements ValueServiceInterface {
             UPDATE node SET ephemeral = 'DISCARD'
             WHERE group_id = :groupId
               AND ephemeral = 'AUTO'
-              AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed')
+              AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed', 'fp')
               AND EXISTS (
                 SELECT 1 FROM node_edge ne
                 JOIN node child ON child.id = ne.child_id
                 WHERE ne.parent_id = node.id
-                  AND child.type NOT IN ('ft', 'rd', 'sd', 'ed')
+                  AND child.type NOT IN ('ft', 'rd', 'sd', 'ed', 'fp')
               )
             """)
             .setParameter("groupId", groupId)
