@@ -1,8 +1,12 @@
 package io.hyperfoil.tools.h5m.rest;
 
 import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.jjq.value.JqValues;
+import jakarta.json.Json;
+import jakarta.json.JsonException;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
+import io.hyperfoil.tools.h5m.api.UploadRequest;
 import io.hyperfoil.tools.h5m.api.RecalculationStatus;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
@@ -13,11 +17,16 @@ import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
+import java.io.IOException;
+import java.io.StringReader;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -87,9 +96,29 @@ public class FolderResource {
     @Operation(description = "Upload JSON data to a folder. Returns immediately with an uploadId.")
     public long upload(
             @PathParam("id") long id,
-            JqValue data) {
+            UploadRequest body) {
+        String url = body != null ? body.url() : null;
+        JqValue data = null;
+        if (url != null && !url.isEmpty()) {
+            try (var inputStream = URI.create(url).toURL().openStream()) {
+                String raw = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+                try (var reader = Json.createReader(new StringReader(raw))) {
+                    reader.readValue();
+                } catch (JsonException e) {
+                    throw new WebApplicationException(Response.status(400).entity("Invalid JSON from URL '" + url + "': " + e.getMessage()).type(MediaType.TEXT_PLAIN).build());
+                }
+                data = JqValues.parse(raw);
+            } catch (IOException e) {
+                throw new WebApplicationException(Response.status(400).entity("Failed to fetch URL '" + url + "': " + e.getMessage()).type(MediaType.TEXT_PLAIN).build());
+            } catch (Exception e) {
+                throw new WebApplicationException(Response.status(400).entity("Invalid JSON from URL '" + url + "': " + e.getMessage()).type(MediaType.TEXT_PLAIN).build());
+            }
+        } else if (body != null && body.file() != null) {
+            data = body.file();
+        }
+
         if (data == null) {
-            throw new BadRequestException("Missing request body");
+            throw new BadRequestException("Provide either 'file', raw data, (JSON data) or 'url' in the request body");
         }
         return folderService.upload(id, data).uploadId;
     }
