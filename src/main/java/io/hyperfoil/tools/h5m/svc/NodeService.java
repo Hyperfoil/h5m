@@ -47,7 +47,10 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class NodeService implements NodeServiceInterface {
 
-    private static final String ANALYSIS_NODES = "("+Arrays.stream(NodeType.values()).filter(NodeType::isAnalysis).map(t->"'"+t.display()+"'").collect(Collectors.joining(","))+")";
+    public static final String DETECTION_NODES ="("+Arrays.stream(NodeType.values()).filter(NodeType::isDetection).map(t->"'"+t.display()+"'").collect(Collectors.joining(","))+")";
+    public static final String ANALYSIS_NODES = "("+Arrays.stream(NodeType.values()).filter(NodeType::isAnalysis).map(t->"'"+t.display()+"'").collect(Collectors.joining(","))+")";
+    public static final String ROOT_OR_ANALYSIS_NODES = "('root',"+Arrays.stream(NodeType.values()).filter(NodeType::isAnalysis).map(t->"'"+t.display()+"'").collect(Collectors.joining(","))+")";
+
 
     private static final ConcurrentHashMap<String, JqProgram> JQ_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, JqProgram> JSONATA_CACHE = new ConcurrentHashMap<>();
@@ -276,7 +279,7 @@ public class NodeService implements NodeServiceInterface {
             select exists(
                 select 1
                     from node n
-                    where n.id = :node_id and n.type != 'root' and n.type NOT IN ANALYSIS_NODES and (n.ephemeral = 'DISCARD' OR (
+                    where n.id = :node_id and n.type NOT IN ROOT_OR_ANALYSIS_NODES and (n.ephemeral = 'DISCARD' OR (
                         n.ephemeral = 'AUTO' and
                         EXISTS (
                             select 1
@@ -285,7 +288,11 @@ public class NodeService implements NodeServiceInterface {
                         )
                     ))
              )
-            """.replaceAll("ANALYSIS_NODES",ANALYSIS_NODES),Boolean.class).setParameter("node_id",node.id).getSingleResult();
+            """.replaceAll("ROOT_OR_ANALYSIS_NODES",ROOT_OR_ANALYSIS_NODES)
+                .replaceAll("ANALYSIS_NODES",ANALYSIS_NODES
+        ),Boolean.class)
+            .setParameter("node_id",node.id)
+            .getSingleResult();
         return result !=null && result;
     }
 

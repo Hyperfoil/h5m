@@ -849,9 +849,9 @@ public class ValueService implements ValueServiceInterface {
                       SELECT 1 FROM node_edge ne
                       JOIN node child ON child.id = ne.child_id
                       WHERE ne.parent_id = node.id
-                        AND child.type NOT IN ('ft', 'rd', 'sd', 'ed', 'fp')
+                        AND child.type NOT IN ANALYSIS_NODES
                     )))
-                  AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed', 'fp')
+                  AND type NOT IN ROOT_OR_ANALYSIS_NODES
                   -- Protect nodes that are sources of analysis nodes.
                   -- Range, domain, and fingerprint source nodes need their
                   -- data for historical change detection queries.
@@ -859,11 +859,13 @@ public class ValueService implements ValueServiceInterface {
                     SELECT 1 FROM node_edge ne2
                     JOIN node det ON det.id = ne2.child_id
                     WHERE ne2.parent_id = node.id
-                      AND det.type IN ('ft', 'rd', 'sd', 'ed', 'fp')
+                      AND det.type IN ANALYSIS_NODES
                   )
               )
               AND data IS NOT NULL
-            """)
+            """.replaceAll("ROOT_OR_ANALYSIS_NODES",NodeService.ROOT_OR_ANALYSIS_NODES)
+                .replaceAll("ANALYSIS_NODES",NodeService.ANALYSIS_NODES)
+            )
             .setParameter("rootId", rootValueId)
             .executeUpdate();
     }
@@ -884,14 +886,15 @@ public class ValueService implements ValueServiceInterface {
             UPDATE node SET ephemeral = 'DISCARD'
             WHERE group_id = :groupId
               AND ephemeral = 'AUTO'
-              AND type NOT IN ('root', 'ft', 'rd', 'sd', 'ed', 'fp')
+              AND type NOT IN ROOT_OR_ANALYSIS_NODES
               AND EXISTS (
                 SELECT 1 FROM node_edge ne
                 JOIN node child ON child.id = ne.child_id
                 WHERE ne.parent_id = node.id
-                  AND child.type NOT IN ('ft', 'rd', 'sd', 'ed', 'fp')
+                  AND child.type NOT IN ANALYSIS_NODES
               )
-            """)
+            """.replaceAll("ROOT_OR_ANALYSIS_NODES",NodeService.ROOT_OR_ANALYSIS_NODES)
+                        .replaceAll("ANALYSIS_NODES",NodeService.ANALYSIS_NODES))
             .setParameter("groupId", groupId)
             .executeUpdate();
     }
