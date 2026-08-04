@@ -74,7 +74,7 @@ public class ClosureBenchmarkTest extends FreshDb {
             int fileIndex = i % RHIVOS_FILES.length;
             long uploadStart = System.currentTimeMillis();
 
-            folderService.upload("rhivos-perf-comprehensive", "$", runData[fileIndex])
+            folderService.upload("rhivos-perf-comprehensive", runData[fileIndex])
                     .future.orTimeout(120, TimeUnit.SECONDS).join();
 
             long uploadEnd = System.currentTimeMillis();

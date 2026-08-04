@@ -89,12 +89,11 @@ public class FolderResource {
     @Operation(description = "Upload JSON data to a folder. Returns immediately with an uploadId.")
     public long upload(
             @PathParam("name") String name,
-            @QueryParam("path") @Parameter(description = "Path within the folder") String path,
             JqValue data) {
         if (data == null) {
             throw new BadRequestException("Missing request body");
         }
-        return folderService.upload(name, path, data).uploadId;
+        return folderService.upload(name, data).uploadId;
     }
 
     @GET

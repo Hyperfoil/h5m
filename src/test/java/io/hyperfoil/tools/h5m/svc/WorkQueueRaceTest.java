@@ -69,7 +69,7 @@ public class WorkQueueRaceTest extends FreshDb {
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload("rapid_test", "$", data);
+                folderService.upload("rapid_test",  data);
             }
         } finally {
             awaitWorkQueue(30_000);
@@ -90,7 +90,7 @@ public class WorkQueueRaceTest extends FreshDb {
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload("sequential_test", "$", data);
+                folderService.upload("sequential_test", data);
                 awaitWorkQueue(30_000);
             }
         } finally {

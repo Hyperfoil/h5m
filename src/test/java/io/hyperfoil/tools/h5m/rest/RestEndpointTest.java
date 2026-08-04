@@ -470,7 +470,7 @@ public class RestEndpointTest extends FreshDb {
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", "$", runData)
+            folderService.upload("rhivos-perf-comprehensive", runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -493,7 +493,7 @@ public class RestEndpointTest extends FreshDb {
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload("rhivos-perf-comprehensive", "$", runData)
+                folderService.upload("rhivos-perf-comprehensive", runData)
                         .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }
@@ -514,7 +514,7 @@ public class RestEndpointTest extends FreshDb {
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", "$", runData)
+            folderService.upload("rhivos-perf-comprehensive", runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -817,7 +817,7 @@ public class RestEndpointTest extends FreshDb {
         // because they are referenced by the view
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", "$", runData)
+            folderService.upload("rhivos-perf-comprehensive", runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -861,7 +861,7 @@ public class RestEndpointTest extends FreshDb {
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload("rhivos-perf-comprehensive", "$", runData)
+                folderService.upload("rhivos-perf-comprehensive", runData)
                         .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }

@@ -62,7 +62,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -155,7 +155,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
             """
             { "a" : 1  }
             """
@@ -215,7 +215,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -280,7 +280,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -365,7 +365,7 @@ public class RecalculateWorkQueueTest {
 
         assertTrue(nodeService.isEphemeral(a),"a should be ephemeral");
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -480,7 +480,7 @@ public class RecalculateWorkQueueTest {
         t.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(testName,"",JqValues.parse(
+        Upload uploaded = folderService.upload(testName,JqValues.parse(
                 """
                 { "a" : 1 }
                 """

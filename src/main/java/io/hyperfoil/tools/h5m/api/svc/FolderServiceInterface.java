@@ -60,12 +60,11 @@ public interface FolderServiceInterface {
      * that completes when all processing finishes.
      *
      * @param name The name of the folder.
-     * @param path The path within the folder.
      * @param data The JSON data to upload.
      * @return an Upload with the upload ID (safe to return to callers) and
      *         a future (for callers that need to await completion).
      */
-    Upload upload(String name, String path, JqValue data);
+    Upload upload(String name, JqValue data);
 
     /**
      * Selectively recalculates values for a specific node and its dependents.

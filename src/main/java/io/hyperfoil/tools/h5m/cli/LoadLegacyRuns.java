@@ -134,7 +134,7 @@ public class LoadLegacyRuns implements Callable<Integer> {
                                 // getCharacterStream() path required.
                                 byte[] bytes = rs.getBytes("data");
                                 JqValue data = JqValues.parse(bytes);
-                                batchFutures.add(folderService.upload(folder.name(), null, data).future);
+                                batchFutures.add(folderService.upload(folder.name(), data).future);
                                 count++;
                             }
                         }

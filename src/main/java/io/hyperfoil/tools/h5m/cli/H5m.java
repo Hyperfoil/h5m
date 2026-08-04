@@ -102,7 +102,7 @@ public class H5m implements QuarkusApplication {
                 JqValue read = JqValues.parse(Files.readString(f.toPath()));
                 if(read!=null){
                     try {
-                        Upload upload = folderService.upload(folderName, f.getPath(), read);
+                        Upload upload = folderService.upload(folderName, read);
                         upload.future.orTimeout(5, TimeUnit.MINUTES).join();
                     } catch (NoResultException e) {
                         System.err.println("could not find folder " + folderName);

@@ -2008,7 +2008,7 @@ public class ValueServiceTest extends FreshDb {
         for (String runFile : List.of("/qvss/15248.json", "/qvss/15769.json", "/qvss/16326.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 JqValue runData = JqValues.parse(is.readAllBytes());
-                folderService.upload("quarkus-spring-boot-comparison", "$", runData)
+                folderService.upload("quarkus-spring-boot-comparison",  runData)
                         .future.orTimeout(60, TimeUnit.SECONDS).join();
             }
         }

@@ -254,7 +254,7 @@ public class FolderService implements FolderServiceInterface {
      * callback is wired outside the transaction since it only needs the future.
      */
     @Override
-    public Upload upload(String name, String path, JqValue data) {
+    public Upload upload(String name, JqValue data) {
         Upload upload = workService.callInNewTransaction(() -> {
             FolderEntity folder = em.createQuery(
                     "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",

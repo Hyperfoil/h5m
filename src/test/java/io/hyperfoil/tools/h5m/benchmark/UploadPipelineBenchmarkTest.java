@@ -238,7 +238,7 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
 
     private void uploadAndWait(String folderName, JqValue[] data) throws Exception {
         for (int i = 0; i < data.length; i++) {
-            folderService.upload(folderName, "upload", data[i]);
+            folderService.upload(folderName, data[i]);
             // Drain work queue every 10 uploads to prevent connection pool exhaustion
             // when chained nodes create cascading work items
             if ((i + 1) % 10 == 0) {

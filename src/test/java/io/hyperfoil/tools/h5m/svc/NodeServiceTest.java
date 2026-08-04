@@ -2916,7 +2916,7 @@ public class NodeServiceTest extends FreshDb {
         // Upload data — this creates Work items via WorkService.create()
         // which calls em.merge(work) with activeNodes and sourceNodes
         
-        folderService.upload("cascade-test", "$", JqValues.parse("{\"key\": \"hello\"}"));
+        folderService.upload("cascade-test", JqValues.parse("{\"key\": \"hello\"}"));
 
         // Wait for the work queue to process
         long deadline = System.currentTimeMillis() + 10_000;

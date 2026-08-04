@@ -235,7 +235,7 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-discard-test", "$",
+        folderService.upload("ephemeral-discard-test",
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -260,7 +260,7 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-keep-test", "$",
+        folderService.upload("ephemeral-keep-test",
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -300,7 +300,7 @@ public class FolderServiceTest extends FreshDb {
         // No need to call markAutoEphemeral — the inlined AUTO logic in
         // nullifyEphemeralData resolves AUTO nodes based on graph structure
 
-        folderService.upload("ephemeral-auto-test", "$",
+        folderService.upload("ephemeral-auto-test",
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -332,7 +332,7 @@ public class FolderServiceTest extends FreshDb {
         long leafId = leaf.id;
         tm.commit();
 
-        folderService.upload("ephemeral-leaf-test", "$",
+        folderService.upload("ephemeral-leaf-test",
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -404,7 +404,7 @@ public class FolderServiceTest extends FreshDb {
         folderService.create("upload-root-match-test");
         tm.commit();
 
-        long uploadId = folderService.upload("upload-root-match-test", null,
+        long uploadId = folderService.upload("upload-root-match-test",
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
 
         tm.begin();
@@ -420,7 +420,7 @@ public class FolderServiceTest extends FreshDb {
         folderService.create("upload-tracker-svc-test");
         tm.commit();
 
-        long uploadId = folderService.upload("upload-tracker-svc-test", null,
+        long uploadId = folderService.upload("upload-tracker-svc-test",
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
 
         tm.begin();
@@ -437,9 +437,9 @@ public class FolderServiceTest extends FreshDb {
         folderService.create("upload-unique-svc-test");
         tm.commit();
 
-        long id1 = folderService.upload("upload-unique-svc-test", null,
+        long id1 = folderService.upload("upload-unique-svc-test",
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
-        long id2 = folderService.upload("upload-unique-svc-test", null,
+        long id2 = folderService.upload("upload-unique-svc-test",
                 JqValues.parse("{\"cpu\": 99}")).uploadId;
 
         assertNotEquals(id1, id2, "Each upload should return a unique ID");
@@ -477,7 +477,7 @@ public class FolderServiceTest extends FreshDb {
         long logId = log.id;
         tm.commit();
 
-        folderService.upload("delete-upload-test", null,
+        folderService.upload("delete-upload-test",
                 JqValues.parse("{\"cpu\": 95}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
