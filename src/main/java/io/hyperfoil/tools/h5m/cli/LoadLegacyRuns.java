@@ -84,7 +84,7 @@ public class LoadLegacyRuns implements Callable<Integer> {
             System.out.println("loaded "+tests.size()+" legacy tests");
             for(Long testId : tests.keySet()){
                 String name = tests.get(testId);
-                Folder folder = folderService.byName(name);
+                Folder folder = folderService.find(name);
                 if(folder == null){
                     System.out.println("Failed to find Folder for test "+name+" id="+testId);
                     continue;
@@ -134,7 +134,7 @@ public class LoadLegacyRuns implements Callable<Integer> {
                                 // getCharacterStream() path required.
                                 byte[] bytes = rs.getBytes("data");
                                 JqValue data = JqValues.parse(bytes);
-                                batchFutures.add(folderService.upload(folder.name(), data).future);
+                                batchFutures.add(folderService.upload(folder.id(), data).future);
                                 count++;
                             }
                         }

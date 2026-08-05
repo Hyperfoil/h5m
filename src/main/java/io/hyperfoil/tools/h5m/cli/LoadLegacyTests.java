@@ -968,7 +968,7 @@ public class LoadLegacyTests implements Callable<Integer> {
 
                     if ("Default".equals(viewName)) {
                         // Check if Default view already exists (created by folderService.create)
-                        List<View> existing = viewService.getViews(folderName);
+                        List<View> existing = viewService.getViews(folderId);
                         View defaultView = existing.stream()
                                 .filter(v -> "Default".equals(v.name()))
                                 .findFirst().orElse(null);
@@ -976,11 +976,11 @@ public class LoadLegacyTests implements Callable<Integer> {
                             viewService.updateView(defaultView.id(),
                                     new View(defaultView.id(), "Default", folderId, components));
                         } else {
-                            viewService.createView(folderName,
+                            viewService.createView(folderId,
                                     new View(null, "Default", null, components));
                         }
                     } else {
-                        viewService.createView(folderName,
+                        viewService.createView(folderId,
                                 new View(null, viewName, null, components));
                     }
                     System.out.println("  Imported view '" + viewName + "' with " + components.size() + " columns");

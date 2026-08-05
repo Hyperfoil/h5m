@@ -12,7 +12,6 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 @Path("/api/group")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "NodeGroup", description = "Manage node groups (transformation pipelines)")
 public class NodeGroupResource {
 
@@ -20,7 +19,7 @@ public class NodeGroupResource {
     NodeGroupServiceInterface nodeGroupService;
 
     @GET
-    @Path("id/{id}")
+    @Path("{id}")
     @PermitAll
     @Operation(description = "Retrieve a node group by its ID")
     public NodeGroup byId(@PathParam("id") Long groupId) {
@@ -28,11 +27,11 @@ public class NodeGroupResource {
     }
 
     @GET
-    @Path("{name}")
+    @Path("find")
     @PermitAll
     @Operation(description = "Retrieve a node group by its name")
-    public NodeGroup byGroupName(@PathParam("name") String groupName) {
-        return nodeGroupService.byName(groupName);
+    public NodeGroup findGroup(@QueryParam("name") String groupName) {
+        return nodeGroupService.find(groupName);
     }
 
     @DELETE

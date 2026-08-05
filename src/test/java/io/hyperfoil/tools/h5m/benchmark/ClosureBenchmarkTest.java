@@ -58,6 +58,7 @@ public class ClosureBenchmarkTest extends FreshDb {
     void upload_20_rhivos_runs() throws Exception {
         // Import the node graph
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long folderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Pre-load all run data into memory
         JqValue[] runData = new JqValue[RHIVOS_FILES.length];
@@ -74,7 +75,7 @@ public class ClosureBenchmarkTest extends FreshDb {
             int fileIndex = i % RHIVOS_FILES.length;
             long uploadStart = System.currentTimeMillis();
 
-            folderService.upload("rhivos-perf-comprehensive", runData[fileIndex])
+            folderService.upload(folderId, runData[fileIndex])
                     .future.orTimeout(120, TimeUnit.SECONDS).join();
 
             long uploadEnd = System.currentTimeMillis();

@@ -61,7 +61,7 @@ public class ListValue implements Callable<Integer> {
             cmd.usage(System.err);
             return 1;
         }
-        NodeGroup nodeGroup = nodeGroupService.byName(groupName);
+        NodeGroup nodeGroup = nodeGroupService.find(groupName);
         if(nodeGroup == null){
             System.err.println("NodeEntity group "+groupName+" not found");
             return 1;

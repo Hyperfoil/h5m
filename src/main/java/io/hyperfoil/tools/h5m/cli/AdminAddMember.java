@@ -31,7 +31,7 @@ public class AdminAddMember implements Callable<Integer> {
             System.err.println("User not found: " + username);
             return 1;
         }
-        Team team = teamService.byName(teamName);
+        Team team = teamService.find(teamName);
         if (team == null) {
             System.err.println("Team not found: " + teamName);
             return 1;

@@ -28,7 +28,12 @@ public class ExportFolder implements Callable<Integer> {
             : Path.of(folderName + ".json");
 
         try {
-            folderService.export(folderName, path);
+            var folder = folderService.find(folderName);
+            if (folder == null) {
+                System.err.println("Folder not found: " + folderName);
+                return 1;
+            }
+            folderService.export(folder.id(), path);
             System.out.println("Exported folder '" + folderName + "' to " + path);
             return 0;
         } catch (Exception e) {

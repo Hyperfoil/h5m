@@ -18,7 +18,7 @@ import { useCallback, useState } from 'react';
 interface ViewConfigModalProps {
   open: boolean;
   onClose: () => void;
-  folderName: string;
+  folderId: number;
   groupId: number;
   view?: View | null;
 }
@@ -29,7 +29,7 @@ interface NodeItem {
   nodeId: number;
 }
 
-export const ViewConfigModal = ({ open, onClose, folderName, groupId, view }: ViewConfigModalProps) => {
+export const ViewConfigModal = ({ open, onClose, folderId, groupId, view }: ViewConfigModalProps) => {
   const queryClient = useQueryClient();
   const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
   const isEditing = view != null && view.id != null;
@@ -94,7 +94,7 @@ export const ViewConfigModal = ({ open, onClose, folderName, groupId, view }: Vi
   const createMutation = useMutation({
     mutationFn: (data: View) =>
       ViewService.createView({
-        path: { name: folderName },
+        path: { folderId },
         body: data,
       }),
     onSuccess: () => {
@@ -114,7 +114,7 @@ export const ViewConfigModal = ({ open, onClose, folderName, groupId, view }: Vi
   const updateMutation = useMutation({
     mutationFn: (data: View) =>
       ViewService.updateView({
-        path: { name: folderName, viewId: view!.id! },
+        path: { folderId, viewId: view!.id! },
         body: data,
       }),
     onSuccess: () => {
@@ -134,7 +134,7 @@ export const ViewConfigModal = ({ open, onClose, folderName, groupId, view }: Vi
   const deleteMutation = useMutation({
     mutationFn: () =>
       ViewService.deleteView({
-        path: { name: folderName, viewId: view!.id! },
+        path: { folderId, viewId: view!.id! },
       }),
     onSuccess: () => {
       void queryClient.refetchQueries({ predicate: (q) => {

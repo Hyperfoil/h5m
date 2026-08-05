@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
+import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import jakarta.inject.Inject;
 import picocli.CommandLine;
@@ -17,8 +18,11 @@ public class RemoveFolder implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        if(folderService.delete(name) == 0){
-            System.err.println("FolderEntity "+name+" not found");
+        Folder folder = folderService.find(name);
+        if (folder == null) {
+            System.err.println("FolderEntity " + name + " not found");
+        } else {
+            folderService.delete(folder.id());
         }
         return 0;
     }

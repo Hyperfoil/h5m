@@ -10,7 +10,7 @@ public interface TeamServiceInterface {
 
     void delete(long teamId);
 
-    Team byName(String name);
+    Team find(String name);
 
     List<Team> list();
 

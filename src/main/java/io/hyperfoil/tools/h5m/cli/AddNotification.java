@@ -41,7 +41,7 @@ public class AddNotification implements Callable<Integer> {
     @Override
     @Transactional
     public Integer call() throws Exception {
-        Folder folder = folderService.byName(folderName);
+        Folder folder = folderService.find(folderName);
         if (folder == null) {
             System.err.println("Folder not found: " + folderName);
             return 1;

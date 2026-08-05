@@ -2003,12 +2003,13 @@ public class ValueServiceTest extends FreshDb {
         // 4, 21, and 62, then verifies getGroupedValues sorts by BUILD_ID numerically
         // (4, 21, 62) — not lexicographically ("21", "4", "62").
         folderService.importFolder(Path.of("src/test/resources/qvss/nodes.json"), false);
+        long qvssFolderId = folderService.find("quarkus-spring-boot-comparison").id();
 
         // Upload 3 runs with BUILD_IDs that differ in text vs numeric sort order
         for (String runFile : List.of("/qvss/15248.json", "/qvss/15769.json", "/qvss/16326.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 JqValue runData = JqValues.parse(is.readAllBytes());
-                folderService.upload("quarkus-spring-boot-comparison",  runData)
+                folderService.upload(qvssFolderId, runData)
                         .future.orTimeout(60, TimeUnit.SECONDS).join();
             }
         }

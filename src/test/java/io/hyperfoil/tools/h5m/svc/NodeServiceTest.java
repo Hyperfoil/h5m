@@ -2959,7 +2959,7 @@ public class NodeServiceTest extends FreshDb {
         tm.begin();
         FolderService folderService = jakarta.enterprise.inject.spi.CDI.current().select(FolderService.class).get();
         WorkService workService = jakarta.enterprise.inject.spi.CDI.current().select(WorkService.class).get();
-        long folderId = folderService.create("cascade-test");
+        long folderId = folderService.create("cascade-test").id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -2982,7 +2982,7 @@ public class NodeServiceTest extends FreshDb {
         // Upload data — this creates Work items via WorkService.create()
         // which calls em.merge(work) with activeNodes and sourceNodes
         
-        folderService.upload("cascade-test", JqValues.parse("{\"key\": \"hello\"}"));
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"));
 
         // Wait for the work queue to process
         long deadline = System.currentTimeMillis() + 10_000;

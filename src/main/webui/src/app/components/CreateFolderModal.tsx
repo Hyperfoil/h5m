@@ -43,7 +43,7 @@ export const CreateFolderModal = ({ open, onClose }: CreateFolderModalProps) => 
       setError('Folder name cannot be empty');
       return;
     }
-    createFolder.mutate({ path: { name: folderName.trim() } });
+    createFolder.mutate({ query: { name: folderName.trim() } });
   };
 
   return (

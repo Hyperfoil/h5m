@@ -75,7 +75,7 @@ public class FolderService implements FolderServiceInterface {
 
     @Override
     @Transactional
-    public long create(String name){
+    public Folder create(String name){
         if(FolderEntity.find("name",name).firstResult() !=null){
             throw new WebApplicationException("Folder already exists:" + name, 409);
         }
@@ -84,7 +84,7 @@ public class FolderService implements FolderServiceInterface {
         entity.group = new NodeGroupEntity(name); //TODO do we auto-create a nodeGroup?
         FolderEntity.persist(entity);
         createDefaultView(entity);
-        return entity.id;
+        return apiMapper.toFolder(entity);
     }
 
     @Transactional
@@ -98,15 +98,15 @@ public class FolderService implements FolderServiceInterface {
     }
 
     @Transactional
-    public long create(String name, String teamName) {
+    public Folder create(String name, String teamName) {
         TeamEntity team = TeamEntity.find("name", teamName).firstResult();
         if (team == null) {
             throw new IllegalArgumentException("Team not found: " + teamName);
         }
-        long id = create(name);
-        FolderEntity entity = FolderEntity.findById(id);
+        Folder folder = create(name);
+        FolderEntity entity = FolderEntity.findById(folder.id());
         entity.team = team;
-        return id;
+        return folder;
     }
 
     @Transactional
@@ -116,7 +116,7 @@ public class FolderService implements FolderServiceInterface {
 
     @Override
     @Transactional
-    public Folder byName(String name){
+    public Folder find(String name){
         FolderEntity entity = FolderEntity.find("name", name).firstResult();
         return entity != null ? apiMapper.toFolder(entity) : null;
     }
@@ -204,30 +204,30 @@ public class FolderService implements FolderServiceInterface {
 
     @Override
     @Transactional
-    public long delete(String name){
-        FolderEntity folder = FolderEntity.find("name", name).firstResult();
+    public void delete(long id){
+        FolderEntity folder = FolderEntity.findById(id);
         if (folder == null) {
-            throw new NotFoundException("Folder not found: " + name);
+            throw new NotFoundException("Folder not found: " + id);
         }
 
-        valueService.deleteForFolder(folder.id);
-        notificationService.deleteForFolder(folder.id);
-        processingService.deleteForFolder(folder.id);
+        valueService.deleteForFolder(id);
+        notificationService.deleteForFolder(id);
+        processingService.deleteForFolder(id);
 
         em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id = :fid)")
-                .setParameter("fid", folder.id).executeUpdate();
+                .setParameter("fid", id).executeUpdate();
         em.createNativeQuery("DELETE FROM folder_view WHERE folder_id = :fid")
-                .setParameter("fid", folder.id).executeUpdate();
-        return FolderEntity.delete("name", name);
+                .setParameter("fid", id).executeUpdate();
+        FolderEntity.delete("id", id);
     }
 
     @Override
     @Transactional
-    public JqValue structure(String name) {
+    public JqValue structure(long folderId) {
         FolderEntity folder = em.createQuery(
-                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+                "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :id",
                 FolderEntity.class
-        ).setParameter("name", name).getSingleResult();
+        ).setParameter("id", folderId).getSingleResult();
 
         NodeEntity root = folder.group.root;
         List<ValueEntity> uploads = valueService.getValues(root);
@@ -254,12 +254,12 @@ public class FolderService implements FolderServiceInterface {
      * callback is wired outside the transaction since it only needs the future.
      */
     @Override
-    public Upload upload(String name, JqValue data) {
+    public Upload upload(long folderId, JqValue data) {
         Upload upload = workService.callInNewTransaction(() -> {
             FolderEntity folder = em.createQuery(
-                    "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+                    "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :id",
                     FolderEntity.class
-            ).setParameter("name", name).getSingleResult();
+            ).setParameter("id", folderId).getSingleResult();
             ValueEntity newValue = valueService.create(new ValueEntity(folder, folder.group.root, data));
 
             // Track this upload for crash recovery — marked completed when all work finishes
@@ -317,11 +317,11 @@ public class FolderService implements FolderServiceInterface {
      * @param outputPath path to write the JSON file
      */
     @Transactional
-    public void export(String folderName, Path outputPath) throws IOException {
+    public void export(long folderId, Path outputPath) throws IOException {
         FolderEntity folder = em.createQuery(
-            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.name = :name",
+            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :id",
             FolderEntity.class
-        ).setParameter("name", folderName).getSingleResult();
+        ).setParameter("id", folderId).getSingleResult();
 
         // Root node first, then remaining nodes ordered by id.
         // Auto-increment ids ensure parents are always created before children,
@@ -336,11 +336,11 @@ public class FolderService implements FolderServiceInterface {
             .getResultList()
             .forEach(n -> nodeList.add(serializeNode(n)));
 
-        JqObject root = JqObject.of("folder", JqString.of(folderName),
+        JqObject root = JqObject.of("folder", JqString.of(folder.name),
             "nodes", JqArray.of(nodeList.toArray(new JqValue[0])));
 
         Files.writeString(outputPath, JqValues.toPrettyJsonString(root));
-        Log.infof("Exported folder '%s' with %d nodes to %s", folderName, nodeList.size(), outputPath);
+        Log.infof("Exported folder '%s' with %d nodes to %s", folder.name, nodeList.size(), outputPath);
     }
 
     /**
@@ -351,7 +351,7 @@ public class FolderService implements FolderServiceInterface {
      * @return the folder name that was imported
      */
     @Transactional
-    public String importFolder(Path inputPath, boolean overwrite) throws IOException {
+    public Folder importFolder(Path inputPath, boolean overwrite) throws IOException {
         JqValue root = JqValues.parse(Files.readString(inputPath));
         if (!(root instanceof JqObject rootObj)) {
             throw new IllegalArgumentException("Import file must contain a JSON object, got: " + root.getClass().getSimpleName());
@@ -372,15 +372,14 @@ public class FolderService implements FolderServiceInterface {
         if (existing != null) {
             if (!overwrite) {
                 Log.infof("Folder '%s' already exists, skipping (use --overwrite to replace)", folderName);
-                return folderName;
+                return apiMapper.toFolder(existing);
             }
-            delete(folderName);
+            delete(existing.id);
             em.flush();
             em.clear();
         }
 
-        long folderId = create(folderName);
-        FolderEntity folder = read(folderId);
+        FolderEntity folder = read(create(folderName).id());
         NodeGroupEntity group = folder.group;
 
         Map<Long, NodeEntity> idMap = new HashMap<>();
@@ -457,7 +456,7 @@ public class FolderService implements FolderServiceInterface {
         em.merge(group);
 
         Log.infof("Imported folder '%s' with %d nodes from %s", folderName, nodeArray.length(), inputPath);
-        return folderName;
+        return apiMapper.toFolder(folder);
     }
 
     /**

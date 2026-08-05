@@ -21,7 +21,7 @@ public interface NodeGroupServiceInterface {
      * @param groupName The name of the node group.
      * @return The node group with the given name.
      */
-    NodeGroup byName(String groupName);
+    NodeGroup find(String groupName);
 
     /**
      * Deletes a node group by its ID.

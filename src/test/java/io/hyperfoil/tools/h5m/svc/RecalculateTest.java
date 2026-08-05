@@ -99,7 +99,7 @@ public class RecalculateTest extends FreshDb {
     public void recalculate_produces_same_values_as_upload() throws Exception {
         // Set up folder with a chain: root -> extract (.key) -> transform (. + "_done")
         tm.begin();
-        long folderId = folderService.create("recalc-test");
+        long folderId = folderService.create("recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
@@ -118,7 +118,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("recalc-test",  JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Verify values exist
@@ -149,7 +149,7 @@ public class RecalculateTest extends FreshDb {
     public void recalculate_suppresses_notifications() throws Exception {
         // Set up folder with a fixed threshold that will detect a violation
         tm.begin();
-        long folderId = folderService.create("recalc-notify-test");
+        long folderId = folderService.create("recalc-notify-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode rangeNode = new JqNode("range", ".y", folder.group.root);
@@ -167,15 +167,15 @@ public class RecalculateTest extends FreshDb {
 
         // Create fingerprint + fixed threshold nodes
         Long fpNodeId = nodeService.createConfigured("_fp", groupId,
-                io.hyperfoil.tools.h5m.api.NodeType.FINGERPRINT, List.of(fpSourceId), null);
+                io.hyperfoil.tools.h5m.api.NodeType.FINGERPRINT, List.of(fpSourceId), null).id();
         Long ftNodeId = nodeService.createConfigured("ft", groupId,
                 io.hyperfoil.tools.h5m.api.NodeType.FIXED_THRESHOLD,
                 List.of(fpNodeId, folder.group.root.id, rangeId),
-                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null));
+                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null)).id();
 
         // Upload a value that exceeds the threshold
         eventObserver.clear();
-        folderService.upload("recalc-notify-test",  JqValues.parse("{\"y\": 100, \"fp\": \"default\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"y\": 100, \"fp\": \"default\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Upload should dispatch notifications
@@ -204,7 +204,7 @@ public class RecalculateTest extends FreshDb {
         // Set up: root -> a (.key) -> b (. + "_b") and root -> c (.other)
         // Recalculating 'a' should affect a and b, but not c
         tm.begin();
-        long folderId = folderService.create("selective-test");
+        long folderId = folderService.create("selective-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -229,7 +229,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload
-        folderService.upload("selective-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -260,7 +260,7 @@ public class RecalculateTest extends FreshDb {
     public void recalculate_returns_completable_future() throws Exception {
         // Verify that recalculate returns a future we can wait on
         tm.begin();
-        long id = folderService.create("future-test");
+        long id = folderService.create("future-test").id();
         FolderEntity folder = folderService.read(id);
         tm.commit();
 
@@ -277,7 +277,7 @@ public class RecalculateTest extends FreshDb {
         // Upload multiple values, verify change detection fires, then recalculate
         // and verify change detection results are consistent (same count).
         tm.begin();
-        long folderId = folderService.create("multi-recalc-test");
+        long folderId = folderService.create("multi-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode rangeNode = new JqNode("range", ".y", folder.group.root);
@@ -299,15 +299,15 @@ public class RecalculateTest extends FreshDb {
 
         // Create fingerprint + fixed threshold (max=50 → y=100 will violate)
         Long fpNodeId = nodeService.createConfigured("_fp", groupId,
-                io.hyperfoil.tools.h5m.api.NodeType.FINGERPRINT, List.of(fpSourceId), null);
+                io.hyperfoil.tools.h5m.api.NodeType.FINGERPRINT, List.of(fpSourceId), null).id();
         Long ftNodeId = nodeService.createConfigured("ft", groupId,
                 io.hyperfoil.tools.h5m.api.NodeType.FIXED_THRESHOLD,
                 List.of(fpNodeId, folder.group.root.id, rangeId),
-                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null));
+                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null)).id();
 
         // Upload 3 values that all exceed the threshold
         for (int i = 0; i < 3; i++) {
-            folderService.upload("multi-recalc-test",
+            folderService.upload(folderId,
                     JqValues.parse(String.format("{\"y\": %d, \"fp\": \"default\"}", 100 + i * 10)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -342,7 +342,7 @@ public class RecalculateTest extends FreshDb {
         // When a node's operation changes, recalculateNode should produce
         // values reflecting the new operation, not the old one.
         tm.begin();
-        long folderId = folderService.create("update-recalc-test");
+        long folderId = folderService.create("update-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
@@ -354,7 +354,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("update-recalc-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -392,7 +392,7 @@ public class RecalculateTest extends FreshDb {
     public void recalculateNode_tracks_progress() throws Exception {
         // Upload multiple values, then recalculate and verify progress tracking
         tm.begin();
-        long folderId = folderService.create("progress-test");
+        long folderId = folderService.create("progress-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
@@ -404,7 +404,7 @@ public class RecalculateTest extends FreshDb {
 
         // Upload 3 values
         for (int i = 0; i < 3; i++) {
-            folderService.upload("progress-test",
+            folderService.upload(folderId,
                     JqValues.parse(String.format("{\"key\": \"value_%d\"}", i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -444,7 +444,7 @@ public class RecalculateTest extends FreshDb {
         //
         // Pipeline: root → each (.items[]) → value ({each}:.v)
         tm.begin();
-        long folderId = folderService.create("split-recalc-test");
+        long folderId = folderService.create("split-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         // JQ node that splits the array — produces multiple values
@@ -467,7 +467,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data with 2 items (datasets) per upload
-        folderService.upload("split-recalc-test",  JqValues.parse(
+        folderService.upload(folderId, JqValues.parse(
                 "{\"items\": [{\"v\": 10}, {\"v\": 20}]}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -482,7 +482,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload a second data point
-        folderService.upload("split-recalc-test",  JqValues.parse(
+        folderService.upload(folderId, JqValues.parse(
                 "{\"items\": [{\"v\": 30}, {\"v\": 40}]}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -526,7 +526,7 @@ public class RecalculateTest extends FreshDb {
         // reads the recomputed extract data, produces the same result.
         // After recalculate: extract.data nullified again, transform.data preserved.
         tm.begin();
-        long folderId = folderService.create("ephemeral-recalc-test");
+        long folderId = folderService.create("ephemeral-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
@@ -550,7 +550,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("ephemeral-recalc-test",  JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Verify: extract data should be NULL (ephemeral), transform data should be present
@@ -595,7 +595,7 @@ public class RecalculateTest extends FreshDb {
         // recalculateNode(C) must walk up past B and A to find the root,
         // then recompute A → B → C via cascade.
         tm.begin();
-        long folderId = folderService.create("chain-recalc-test");
+        long folderId = folderService.create("chain-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -623,7 +623,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("chain-recalc-test", JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Verify after upload: A and B are nullified, C has data
@@ -676,7 +676,7 @@ public class RecalculateTest extends FreshDb {
         // C has two sources: A (KEEP, has data) and B (DISCARD, data=NULL)
         // recalculateNode(C) must walk up B's chain (to root) but not A's.
         tm.begin();
-        long folderId = folderService.create("mixed-recalc-test");
+        long folderId = folderService.create("mixed-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -705,7 +705,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("mixed-recalc-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -747,7 +747,7 @@ public class RecalculateTest extends FreshDb {
         // Pipeline: root → A(.key) [KEEP]
         // recalculateNode(A) — source is root (always has data), no walk needed.
         tm.begin();
-        long folderId = folderService.create("toplevel-recalc-test");
+        long folderId = folderService.create("toplevel-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -759,7 +759,7 @@ public class RecalculateTest extends FreshDb {
         long nodeAId = nodeA.id;
         tm.commit();
 
-        folderService.upload("toplevel-recalc-test", JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         tm.begin();
@@ -779,7 +779,7 @@ public class RecalculateTest extends FreshDb {
     public void findRecomputationStartNodes_returns_target_when_sources_available() throws Exception {
         // Unit test for the helper method directly
         tm.begin();
-        long folderId = folderService.create("start-nodes-test");
+        long folderId = folderService.create("start-nodes-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -807,7 +807,7 @@ public class RecalculateTest extends FreshDb {
     public void findRecomputationStartNodes_walks_up_past_ephemeral() throws Exception {
         // Unit test: A[DISCARD] → B[KEEP], recalculating B should start from A
         tm.begin();
-        long folderId = folderService.create("walk-up-test");
+        long folderId = folderService.create("walk-up-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -836,7 +836,7 @@ public class RecalculateTest extends FreshDb {
         // Unit test: A[DISCARD] → B[DISCARD] → C[KEEP]
         // recalculating C should start from A (walk all the way up)
         tm.begin();
-        long folderId = folderService.create("walk-chain-test");
+        long folderId = folderService.create("walk-chain-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -872,7 +872,7 @@ public class RecalculateTest extends FreshDb {
         // Verify that recalculate() creates a ProcessingTrackerEntity
         // and marks it completed when processing finishes.
         tm.begin();
-        long folderId = folderService.create("tracking-test");
+        long folderId = folderService.create("tracking-test").id();
         FolderEntity folder = folderService.read(folderId);
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
         extract.group = folder.group;
@@ -881,7 +881,7 @@ public class RecalculateTest extends FreshDb {
         folder.group.persist();
         tm.commit();
 
-        folderService.upload("tracking-test",  JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Recalculate and wait
@@ -903,7 +903,7 @@ public class RecalculateTest extends FreshDb {
         // Simulate a crash during recalculation by manually creating an
         // incomplete tracker, then calling recovery.
         tm.begin();
-        long folderId = folderService.create("recovery-recalc-test");
+        long folderId = folderService.create("recovery-recalc-test").id();
         FolderEntity folder = folderService.read(folderId);
         JqNode extract = new JqNode("extract", ".key", folder.group.root);
         extract.group = folder.group;
@@ -915,7 +915,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("recovery-recalc-test",  JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Simulate crash: create incomplete recalculation tracker
@@ -951,7 +951,7 @@ public class RecalculateTest extends FreshDb {
         // ephemeral source chain: root → A[DISCARD] → B[DISCARD] → C[KEEP]
         // Recovery should walk up the ephemeral chain and recompute correctly.
         tm.begin();
-        long folderId = folderService.create("recovery-ephemeral-test");
+        long folderId = folderService.create("recovery-ephemeral-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -979,7 +979,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload("recovery-ephemeral-test",  JqValues.parse("{\"key\": \"hello\"}"))
+        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
         // Verify: A and B nullified, C has data
@@ -1033,7 +1033,7 @@ public class RecalculateTest extends FreshDb {
         // producing "world", but B and C still have old values.
         // Recovery should detect the incomplete state and re-process B and C.
         tm.begin();
-        long folderId = folderService.create("mid-process-test");
+        long folderId = folderService.create("mid-process-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -1061,7 +1061,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload initial data
-        folderService.upload("mid-process-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -1133,7 +1133,7 @@ public class RecalculateTest extends FreshDb {
         // Simulate: node A's operation changed to .other, but crash before reprocessing.
         // Recovery must walk up the ephemeral chain and recompute everything.
         tm.begin();
-        long folderId = folderService.create("mid-ephemeral-test");
+        long folderId = folderService.create("mid-ephemeral-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -1161,7 +1161,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload initial data
-        folderService.upload("mid-ephemeral-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -1227,7 +1227,7 @@ public class RecalculateTest extends FreshDb {
     @Test
     public void recalculateNode_rejects_node_without_group() throws Exception {
         tm.begin();
-        long folderId = folderService.create("no-group-test");
+        long folderId = folderService.create("no-group-test").id();
         FolderEntity folder = folderService.read(folderId);
         JqNode orphan = new JqNode("orphan", ".key", folder.group.root);
         // Intentionally leave group=null to simulate an orphan node
@@ -1247,7 +1247,7 @@ public class RecalculateTest extends FreshDb {
         // C has two sources: A (ephemeral) and B (KEEP).
         // Start nodes should include A (needs recompute) but not B.
         tm.begin();
-        long folderId = folderService.create("diamond-test");
+        long folderId = folderService.create("diamond-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode nodeA = new JqNode("a", ".key", folder.group.root);
@@ -1307,7 +1307,7 @@ public class RecalculateTest extends FreshDb {
     @Test
     public void recovery_with_deleted_node_cleans_up_tracker() throws Exception {
         tm.begin();
-        long folderId = folderService.create("recovery-deleted-node-test");
+        long folderId = folderService.create("recovery-deleted-node-test").id();
         tm.commit();
 
         tm.begin();

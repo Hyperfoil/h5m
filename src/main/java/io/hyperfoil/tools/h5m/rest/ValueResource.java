@@ -17,7 +17,6 @@ import java.util.List;
 
 @Path("/api/value")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Value", description = "Manage computed values produced by nodes")
 public class ValueResource {
 

@@ -350,7 +350,7 @@ public class VerifyLegacy implements Callable<Integer> {
         }
 
         // Get h5m views
-        List<View> h5mViews = viewService.getViews(testName);
+        List<View> h5mViews = viewService.getViews(folderService.find(testName).id());
         Map<String, View> h5mViewsByName = new LinkedHashMap<>();
         for (View v : h5mViews) {
             h5mViewsByName.put(v.name(), v);

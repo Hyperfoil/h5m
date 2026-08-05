@@ -33,8 +33,8 @@ public class RemoveCmd implements Callable<Integer> {
             cmd.usage(System.out);
             return 0;
         }
-        Folder folder = folderService.byName(name);
-        NodeGroup nodeGroup = nodeGroupService.byName(name);
+        Folder folder = folderService.find(name);
+        NodeGroup nodeGroup = nodeGroupService.find(name);
         List<Node> nodes = nodeService.findNodeByFqdn(name);
 
         if (folder != null) {
@@ -44,7 +44,7 @@ public class RemoveCmd implements Callable<Integer> {
                 nodes.forEach(n-> System.err.println("  node = "+n.fqdn()));
             }else{
                 System.out.println("deleting "+name+" folder");
-                folderService.delete(name);
+                folderService.delete(folder.id());
             }
         } else if (nodeGroup != null) {
             if(!nodes.isEmpty()) {

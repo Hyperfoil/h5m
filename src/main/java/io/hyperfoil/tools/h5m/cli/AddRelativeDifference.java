@@ -59,7 +59,7 @@ public class AddRelativeDifference implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroup foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.find(groupName);
         if(foundGroup==null){
             System.err.println("node group with name "+groupName+" does not exist");
             return 1;
@@ -129,7 +129,7 @@ public class AddRelativeDifference implements Callable<Integer> {
             }
         }
 
-        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null).id();
         List<Long> sources = domainNode == null ? List.of(fingerprintId, groupByNode.id(), rangeNode.id()) : List.of(fingerprintId, groupByNode.id(), rangeNode.id(), domainNode.id());
         nodeService.createConfigured(name, foundGroup.id(), NodeType.RELATIVE_DIFFERENCE, sources, new RelativeDifferenceConfig(filter, threshold, window, minPrevious, fingerprintFilter));
 

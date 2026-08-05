@@ -73,7 +73,7 @@ public class EDivisiveTest extends FreshDb {
      */
     private long setupAndUpload(String folderName, double[] series, int windowLen, double maxPvalue) throws Exception {
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
 
         // Create nodes: root -> value (extracts .v), domain (extracts .d) -> fingerprint -> edivisive
@@ -111,7 +111,7 @@ public class EDivisiveTest extends FreshDb {
         // Upload each value as a separate run with an incrementing domain value
         for (int i = 0; i < series.length; i++) {
             String json = String.format("{\"v\": %f, \"fp\": \"default\", \"d\": %d}", series[i], i);
-            folderService.upload(folderName, JqValues.parse(json))
+            folderService.upload(folderId, JqValues.parse(json))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -208,7 +208,7 @@ public class EDivisiveTest extends FreshDb {
         String folderName = "recomp-test";
 
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode valueNode = new JqNode("value", ".v", folder.group.root);
@@ -244,7 +244,7 @@ public class EDivisiveTest extends FreshDb {
         // Upload first batch: step from 100 to 200
         for (int i = 0; i < 10; i++) {
             double v = i < 5 ? 100.0 : 200.0;
-            folderService.upload(folderName, JqValues.parse(String.format("{\"v\": %f, \"fp\": \"default\", \"d\": %d}", v, i)))
+            folderService.upload(folderId, JqValues.parse(String.format("{\"v\": %f, \"fp\": \"default\", \"d\": %d}", v, i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -255,7 +255,7 @@ public class EDivisiveTest extends FreshDb {
 
         // Upload more data — all at 200 (extending the second segment)
         for (int i = 0; i < 5; i++) {
-            folderService.upload(folderName, JqValues.parse(String.format("{\"v\": 200.0, \"fp\": \"default\", \"d\": %d}", 10 + i)))
+            folderService.upload(folderId, JqValues.parse(String.format("{\"v\": 200.0, \"fp\": \"default\", \"d\": %d}", 10 + i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -292,7 +292,7 @@ public class EDivisiveTest extends FreshDb {
     public void rest_createConfigured_edivisive() throws Exception {
         // Test that the createConfigured path works for EDIVISIVE nodes
         tm.begin();
-        long folderId = folderService.create("rest-ed-test");
+        long folderId = folderService.create("rest-ed-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode rangeNode = new JqNode("range", ".y", folder.group.root);
@@ -308,10 +308,10 @@ public class EDivisiveTest extends FreshDb {
         long fpSourceId = fpSource.id;
         tm.commit();
 
-        Long fpNodeId = nodeService.createConfigured("_fp-test", groupId, NodeType.FINGERPRINT, List.of(fpSourceId), null);
+        Long fpNodeId = nodeService.createConfigured("_fp-test", groupId, NodeType.FINGERPRINT, List.of(fpSourceId), null).id();
         Long edNodeId = nodeService.createConfigured("ed-test", groupId, NodeType.EDIVISIVE,
                 List.of(fpNodeId, folder.group.root.id, rangeId),
-                new EDivisiveConfig(10, 0.01, 0.0, 200, null));
+                new EDivisiveConfig(10, 0.01, 0.0, 200, null)).id();
 
         assertNotNull(edNodeId, "Should return a valid node ID");
 
@@ -334,7 +334,7 @@ public class EDivisiveTest extends FreshDb {
         // detected independently per fingerprint
         String folderName = "multi-fp-test";
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode valueNode = new JqNode("value", ".v", folder.group.root);
@@ -369,19 +369,19 @@ public class EDivisiveTest extends FreshDb {
 
         // Alpha: stable at 100 for 10 uploads, then step to 200
         for (int i = 0; i < 10; i++) {
-            folderService.upload(folderName, JqValues.parse(
+            folderService.upload(folderId, JqValues.parse(
                     String.format("{\"v\": 100.0, \"fp\": \"alpha\", \"d\": %d}", i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
         for (int i = 10; i < 20; i++) {
-            folderService.upload(folderName, JqValues.parse(
+            folderService.upload(folderId, JqValues.parse(
                     String.format("{\"v\": 200.0, \"fp\": \"alpha\", \"d\": %d}", i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
         // Beta: completely stable at 500 (no change points expected)
         for (int i = 0; i < 20; i++) {
-            folderService.upload(folderName, JqValues.parse(
+            folderService.upload(folderId, JqValues.parse(
                     String.format("{\"v\": 500.0, \"fp\": \"beta\", \"d\": %d}", i + 100)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -413,7 +413,7 @@ public class EDivisiveTest extends FreshDb {
         String folderName = "ooo-test";
 
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode valueNode = new JqNode("value", ".v", folder.group.root);
@@ -448,7 +448,7 @@ public class EDivisiveTest extends FreshDb {
 
         // Upload stable series at y=100
         for (int i = 0; i < 20; i++) {
-            folderService.upload(folderName, JqValues.parse(
+            folderService.upload(folderId, JqValues.parse(
                     String.format("{\"v\": 100.0, \"fp\": \"default\", \"d\": %d}", i)))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
@@ -464,7 +464,7 @@ public class EDivisiveTest extends FreshDb {
         // This won't necessarily change the analysis since e-divisive looks at the
         // most recent N values. domain=15 is within the window.
         // The key point: the upload should not crash and should re-analyze correctly.
-        folderService.upload(folderName, JqValues.parse(
+        folderService.upload(folderId, JqValues.parse(
                 "{\"v\": 100.0, \"fp\": \"default\", \"d\": 15}"))
                 .future.orTimeout(30, TimeUnit.SECONDS).join();
 
@@ -814,6 +814,7 @@ public class EDivisiveTest extends FreshDb {
         for (int i = 10; i < 20; i++) series[i] = 200.0 + (i % 3);
 
         long edId = setupAndUpload("recalc-pipeline-test", series, 5, 0.05);
+        long recalcFolderId = folderService.find("recalc-pipeline-test").id();
 
         // Count change points after initial uploads
         tm.begin();
@@ -826,7 +827,7 @@ public class EDivisiveTest extends FreshDb {
         // Upload 5 more values at y=200 (extending the series without adding a new change point)
         for (int i = 0; i < 5; i++) {
             String json = String.format("{\"v\": %f, \"fp\": \"default\", \"d\": %d}", 200.0 + (i % 3), 20 + i);
-            folderService.upload("recalc-pipeline-test", JqValues.parse(json))
+            folderService.upload(recalcFolderId, JqValues.parse(json))
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 

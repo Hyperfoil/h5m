@@ -13,10 +13,10 @@ public interface ViewServiceInterface {
     /**
      * Lists all views for a folder.
      *
-     * @param folderName The folder name.
+     * @param folderId The folder ID.
      * @return A list of views for the folder.
      */
-    List<View> getViews(String folderName);
+    List<View> getViews(long folderId);
 
     /**
      * Gets a single view by ID.
@@ -29,11 +29,11 @@ public interface ViewServiceInterface {
     /**
      * Creates a new view for a folder.
      *
-     * @param folderName The folder name.
+     * @param folderId The folder ID.
      * @param view The view to create.
      * @return The created view with generated ID.
      */
-    View createView(String folderName, View view);
+    View createView(long folderId, View view);
 
     /**
      * Updates an existing view.
@@ -55,9 +55,9 @@ public interface ViewServiceInterface {
      * Gets the filtered pivoted data for a view.
      * Returns one row per upload with only the nodes referenced by the view's components.
      *
-     * @param folderName The folder name.
+     * @param folderId The folder ID.
      * @param viewId The view ID.
      * @return A list of JSON objects, one per upload.
      */
-    List<JqValue> getViewData(String folderName, Long viewId);
+    List<JqValue> getViewData(long folderId, Long viewId);
 }

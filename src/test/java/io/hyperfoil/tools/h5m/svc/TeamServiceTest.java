@@ -26,7 +26,7 @@ public class TeamServiceTest extends FreshDb {
     void create_team() {
         long id = teamService.create("test-team");
         assertTrue(id > 0);
-        Team team = teamService.byName("test-team");
+        Team team = teamService.find("test-team");
         assertNotNull(team);
         assertEquals("test-team", team.name());
     }
@@ -42,9 +42,9 @@ public class TeamServiceTest extends FreshDb {
     @Test
     void delete_team() {
         long id = teamService.create("to-delete");
-        assertNotNull(teamService.byName("to-delete"));
+        assertNotNull(teamService.find("to-delete"));
         teamService.delete(id);
-        assertNull(teamService.byName("to-delete"));
+        assertNull(teamService.find("to-delete"));
     }
 
     @Test

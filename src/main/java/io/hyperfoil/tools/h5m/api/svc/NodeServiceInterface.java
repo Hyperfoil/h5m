@@ -17,9 +17,9 @@ public interface NodeServiceInterface {
      * @param groupId   The ID of the group the node belongs to.
      * @param type      The type of the node.
      * @param operation The operation associated with the node.
-     * @return The ID of the created node.
+     * @return The created node.
      */
-    Long create(String name, Long groupId, NodeType type, String operation);
+    Node create(String name, Long groupId, NodeType type, String operation);
 
     /**
      * Creates a new node with sources and configuration.
@@ -29,10 +29,10 @@ public interface NodeServiceInterface {
      * @param type          The type of the node.
      * @param sources       A list of source node IDs.
      * @param configuration The configuration object for the node.
-     * @return The ID of the created node.
+     * @return The created node.
      * @throws IllegalArgumentException If the configuration is invalid for the given node type.
      */
-    Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration);
+    Node createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration);
 
     /**
      * Deletes a node by its ID.

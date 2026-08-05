@@ -23,7 +23,6 @@ import java.util.Map;
 
 @Path("/api/folder")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Folder", description = "Manage folders for uploaded data")
 public class FolderResource {
 
@@ -52,11 +51,11 @@ public class FolderResource {
     }
 
     @GET
-    @Path("{name}")
+    @Path("find")
     @PermitAll
     @Operation(description = "Retrieve a folder by its name")
-    public Folder byFolderName(@PathParam("name") String name) {
-        return folderService.byName(name);
+    public Folder findFolder(@QueryParam("name") String name) {
+        return folderService.find(name);
     }
 
     @GET
@@ -68,32 +67,31 @@ public class FolderResource {
     }
 
     @POST
-    @Path("{name}")
     @Authenticated
     @Operation(description = "Create a new folder")
-    public long createFolder(@PathParam("name") String name) {
+    public Folder createFolder(@QueryParam("name") String name) {
         return folderService.create(name);
     }
 
     @DELETE
-    @Path("{name}")
+    @Path("{id}")
     @Authenticated
-    @Operation(description = "Delete a folder by its name")
-    public long deleteFolder(@PathParam("name") String name) {
-        return folderService.delete(name);
+    @Operation(description = "Delete a folder by its ID")
+    public void deleteFolder(@PathParam("id") long id) {
+        folderService.delete(id);
     }
 
     @POST
-    @Path("{name}/upload")
+    @Path("{id}/upload")
     @Authenticated
     @Operation(description = "Upload JSON data to a folder. Returns immediately with an uploadId.")
     public long upload(
-            @PathParam("name") String name,
+            @PathParam("id") long id,
             JqValue data) {
         if (data == null) {
             throw new BadRequestException("Missing request body");
         }
-        return folderService.upload(name, data).uploadId;
+        return folderService.upload(id, data).uploadId;
     }
 
     @GET
@@ -109,11 +107,11 @@ public class FolderResource {
     }
 
     @GET
-    @Path("{name}/structure")
+    @Path("{id}/structure")
     @PermitAll
     @Operation(description = "Get the structural representation of a folder")
-    public JqValue structure(@PathParam("name") String name) {
-        return folderService.structure(name);
+    public JqValue structure(@PathParam("id") long id) {
+        return folderService.structure(id);
     }
 
     @GET

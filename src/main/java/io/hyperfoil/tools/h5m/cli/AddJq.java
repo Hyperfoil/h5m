@@ -38,7 +38,7 @@ public class AddJq implements Callable<Integer> {
                 System.out.printf("Enter target group / folder name: ");
                 groupName = sc.nextLine();
             }
-            foundGroup =  nodeGroupService.byName(groupName);
+            foundGroup =  nodeGroupService.find(groupName);
             if(foundGroup == null){
                 System.err.println("could not find "+groupName);
                 groupName = null;

@@ -156,15 +156,15 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
                 name, WARMUP, MEASURE,
                 this::cleanDb,
                 () -> {
-                    setupFlatNodes(name, nodeCount);
-                    uploadAndWait(name, data);
+                    long folderId = setupFlatNodes(name, nodeCount);
+                    uploadAndWait(folderId, data);
                 }
         );
 
         // Final run for reporting
         cleanDb();
-        setupFlatNodes(name, nodeCount);
-        uploadAndWait(name, data);
+        long folderId = setupFlatNodes(name, nodeCount);
+        uploadAndWait(folderId, data);
         reportCounts(name, nodeCount, files.length);
         results.add(result);
     }
@@ -176,21 +176,21 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
                 name, WARMUP, MEASURE,
                 this::cleanDb,
                 () -> {
-                    setupChainedNodes(name);
-                    uploadAndWait(name, data);
+                    long folderId = setupChainedNodes(name);
+                    uploadAndWait(folderId, data);
                 }
         );
 
         cleanDb();
-        setupChainedNodes(name);
-        uploadAndWait(name, data);
+        long folderId = setupChainedNodes(name);
+        uploadAndWait(folderId, data);
         reportCounts(name, 3, files.length);
         results.add(result);
     }
 
-    private void setupFlatNodes(String folderName, int nodeCount) throws Exception {
+    private long setupFlatNodes(String folderName, int nodeCount) throws Exception {
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -209,11 +209,12 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
         }
         folder.group.persist();
         tm.commit();
+        return folderId;
     }
 
-    private void setupChainedNodes(String folderName) throws Exception {
+    private long setupChainedNodes(String folderName) throws Exception {
         tm.begin();
-        long folderId = folderService.create(folderName);
+        long folderId = folderService.create(folderName).id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -234,11 +235,12 @@ public class UploadPipelineBenchmarkTest extends FreshDb {
 
         folder.group.persist();
         tm.commit();
+        return folderId;
     }
 
-    private void uploadAndWait(String folderName, JqValue[] data) throws Exception {
+    private void uploadAndWait(long folderId, JqValue[] data) throws Exception {
         for (int i = 0; i < data.length; i++) {
-            folderService.upload(folderName, data[i]);
+            folderService.upload(folderId, data[i]);
             // Drain work queue every 10 uploads to prevent connection pool exhaustion
             // when chained nodes create cascading work items
             if ((i + 1) % 10 == 0) {

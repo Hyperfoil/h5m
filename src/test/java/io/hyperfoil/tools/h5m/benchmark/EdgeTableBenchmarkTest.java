@@ -226,7 +226,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
         // Create folder first, then add nodes to its group so upload triggers value computation
         tm.begin();
-        long folderId = folderService.create("bench_folder");
+        long folderId = folderService.create("bench_folder").id();
         FolderEntity folder = folderService.read(folderId);
         long groupId = folder.group.id;
         long rootId = folder.group.root.id;
@@ -240,7 +240,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
         // Upload data — let @Transactional handle the commit so work queue
         // threads can see the persisted data before starting execution
-        folderService.upload("bench_folder",
+        folderService.upload(folderId,
                 JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 
@@ -256,7 +256,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
         cleanDb();
 
         tm.begin();
-        long folderId = folderService.create("bench_folder");
+        long folderId = folderService.create("bench_folder").id();
         FolderEntity folder = folderService.read(folderId);
         long groupId = folder.group.id;
         long rootId = folder.group.root.id;
@@ -264,7 +264,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
         graphBuilder.buildDiamondInGroup(groupId, rootId, layers, width);
 
-        folderService.upload("bench_folder",
+        folderService.upload(folderId,
                 JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 

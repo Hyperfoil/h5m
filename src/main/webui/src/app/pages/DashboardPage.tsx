@@ -91,7 +91,7 @@ const SummaryCards = ({ summaries }: { summaries: FolderSummary[] }) => {
 const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [confirmFolder, setConfirmFolder] = useState<string | null>(null);
+  const [confirmFolder, setConfirmFolder] = useState<FolderSummary | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const deleteFolder = useMutation({
@@ -161,7 +161,7 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
                   iconDescription="Delete folder"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setConfirmFolder(summary.name ?? '');
+                    setConfirmFolder(summary);
                   }}
                 />
               </StructuredListCell>
@@ -174,13 +174,13 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
     <Modal
       open={confirmFolder !== null}
       danger
-      modalHeading={`Delete "${confirmFolder ?? ''}"`}
+      modalHeading={`Delete "${confirmFolder?.name ?? ''}"`}
       primaryButtonText="Delete"
       secondaryButtonText="Cancel"
       onRequestClose={() => { setConfirmFolder(null); setDeleteError(null); }}
       onSecondarySubmit={() => { setConfirmFolder(null); setDeleteError(null); }}
       onRequestSubmit={() => {
-        deleteFolder.mutate({ path: { name: confirmFolder ?? '' } });
+        deleteFolder.mutate({ path: { id: confirmFolder!.id! } });
       }}
     >
       <p>Are you sure you want to delete this folder? This action cannot be undone.</p>

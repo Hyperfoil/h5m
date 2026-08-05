@@ -26,16 +26,16 @@ function formatCellValue(value: unknown): string {
 }
 
 const ViewDataTable = ({
-  folderName,
+  folderId,
   view,
 }: {
-  folderName: string;
+  folderId: number;
   view: View;
 }) => {
   const viewId = view.id;
   const { data: rows, isLoading, isError } = useQuery(
     getViewDataOptions({
-      path: { name: folderName, viewId: viewId! },
+      path: { folderId, viewId: viewId! },
     }),
   );
 
@@ -83,9 +83,9 @@ const ViewDataTable = ({
   );
 };
 
-export const DataTab = ({ folderName, groupId }: { folderName: string; groupId: number }) => {
+export const DataTab = ({ folderId, groupId }: { folderId: number; groupId: number }) => {
   const { data: views, isLoading: viewsLoading } = useQuery(
-    getViewsOptions({ path: { name: folderName } }),
+    getViewsOptions({ path: { folderId } }),
   );
   const [selectedViewId, setSelectedViewId] = useState<number | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -158,7 +158,7 @@ export const DataTab = ({ folderName, groupId }: { folderName: string; groupId: 
       {selectedView && selectedView.components && selectedView.components.length > 0 && (
         <ViewDataTable
           key={`${String(selectedView.id)}-${String(selectedView.components?.length ?? 0)}-${selectedView.components?.map(c => String(c.nodeId)).join(',') ?? ''}`}
-          folderName={folderName}
+          folderId={folderId}
           view={selectedView}
         />
       )}
@@ -168,7 +168,7 @@ export const DataTab = ({ folderName, groupId }: { folderName: string; groupId: 
             key={modalKey}
             open={configModalOpen}
             onClose={() => setConfigModalOpen(false)}
-            folderName={folderName}
+            folderId={folderId}
             groupId={groupId}
             view={editingView}
           />

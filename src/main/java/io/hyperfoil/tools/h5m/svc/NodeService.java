@@ -98,7 +98,7 @@ public class NodeService implements NodeServiceInterface {
 
     @Override
     @Transactional
-    public Long create(String name, Long groupId, NodeType type, String operation){
+    public Node create(String name, Long groupId, NodeType type, String operation){
         NodeEntity node = switch (type) {
             case JQ -> JqNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
             case JS -> JsNode.parse(name, operation, n -> internalFindNodeByFqdn(n, groupId));
@@ -111,12 +111,12 @@ public class NodeService implements NodeServiceInterface {
             node.sources.add(node.group.root);
         }
         em.persist(node);
-        return node.id;
+        return apiMapper.toNode(node, new CycleAvoidingContext());
     }
 
     @Override
     @Transactional
-    public Long createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) {
+    public Node createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) {
         NodeEntity node = switch (type) {
             case FINGERPRINT -> new FingerprintNode(name, "");
             case FIXED_THRESHOLD -> new FixedThreshold(name, toFixedThresholdConfig(configuration).toJsonString());
@@ -129,7 +129,7 @@ public class NodeService implements NodeServiceInterface {
         node.sources = NodeEntity.findByIds(sources);
 
         em.persist(node);
-        return node.id;
+        return apiMapper.toNode(node, new CycleAvoidingContext());
     }
 
     /** Convert configuration (Map from REST or record from CLI) to JqObject for FixedThreshold. */

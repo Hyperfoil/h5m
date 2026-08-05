@@ -29,7 +29,6 @@ import java.util.Objects;
 
 @Path("/api/node")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Node", description = "Manage transformation nodes in the DAG pipeline")
 public class NodeResource {
 
@@ -48,7 +47,7 @@ public class NodeResource {
     @POST
     @Authenticated
     @Operation(description = "Create a new node with an operation")
-    public Long createNode(
+    public Node createNode(
             @QueryParam("name") @NotEmpty String name,
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,
@@ -60,7 +59,7 @@ public class NodeResource {
     @Path("configured")
     @Authenticated
     @Operation(description = "Create a new node with sources and configuration")
-    public Long createConfigured(
+    public Node createConfigured(
             @QueryParam("name") @NotEmpty String name,
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,

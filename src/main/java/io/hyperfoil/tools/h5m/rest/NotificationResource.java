@@ -21,7 +21,6 @@ import java.util.List;
 
 @Path("/api/notification")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Notification", description = "Manage notification configurations for change detection")
 public class NotificationResource {
 
@@ -33,7 +32,7 @@ public class NotificationResource {
     @Authenticated
     @Transactional
     @Operation(description = "Create a notification config for a folder")
-    public long createConfig(
+    public NotificationConfigResponse createConfig(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
             @QueryParam("method") @Parameter(description = "Notification method") NotificationMethod method,
             @QueryParam("secrets") @Parameter(description = "Secret config data (tokens, passwords)") String secrets,
@@ -45,7 +44,7 @@ public class NotificationResource {
         }
         NotificationConfig config = new NotificationConfig(folder, method, data, secrets);
         config.persist();
-        return config.id;
+        return new NotificationConfigResponse(config.id, folderId, config.method, config.data, config.template, config.enabled);
     }
 
     @GET
@@ -65,7 +64,7 @@ public class NotificationResource {
     @Authenticated
     @Transactional
     @Operation(description = "Update a notification config")
-    public void updateConfig(
+    public NotificationConfigResponse updateConfig(
             @PathParam("id") long id,
             @QueryParam("method") @Parameter(description = "New notification method") NotificationMethod method,
             @QueryParam("enabled") @Parameter(description = "Enable or disable") Boolean enabled,
@@ -88,6 +87,7 @@ public class NotificationResource {
         if (enabled != null) {
             config.enabled = enabled;
         }
+        return new NotificationConfigResponse(config.id, config.folder != null ? config.folder.id : null, config.method, config.data, config.template, config.enabled);
     }
 
     @DELETE

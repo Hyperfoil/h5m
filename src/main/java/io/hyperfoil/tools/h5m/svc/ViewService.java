@@ -33,8 +33,8 @@ public class ViewService implements ViewServiceInterface {
 
     @Override
     @Transactional
-    public List<View> getViews(String folderName) {
-        FolderEntity folder = findFolder(folderName);
+    public List<View> getViews(long folderId) {
+        FolderEntity folder = findFolder(folderId);
         return folder.views.stream().map(apiMapper::toView).toList();
     }
 
@@ -50,8 +50,8 @@ public class ViewService implements ViewServiceInterface {
 
     @Override
     @Transactional
-    public View createView(String folderName, View view) {
-        FolderEntity folder = findFolder(folderName);
+    public View createView(long folderId, View view) {
+        FolderEntity folder = findFolder(folderId);
 
         ViewEntity entity = new ViewEntity(view.name(), folder);
         entity.components = new ArrayList<>();
@@ -136,7 +136,7 @@ public class ViewService implements ViewServiceInterface {
 
     @Override
     @Transactional
-    public List<JqValue> getViewData(String folderName, Long viewId) {
+    public List<JqValue> getViewData(long folderId, Long viewId) {
         ViewEntity view = em.createQuery(
             "SELECT v FROM folder_view v LEFT JOIN FETCH v.components c LEFT JOIN FETCH c.node WHERE v.id = :id",
             ViewEntity.class
@@ -145,7 +145,7 @@ public class ViewService implements ViewServiceInterface {
             throw new NotFoundException("View not found: " + viewId);
         }
 
-        FolderEntity folder = findFolder(folderName);
+        FolderEntity folder = findFolder(folderId);
         Long rootNodeId = folder.group.root.id;
 
         List<Long> nodeIds = view.components.stream()
@@ -159,13 +159,13 @@ public class ViewService implements ViewServiceInterface {
         return valueService.getGroupedValues(rootNodeId, nodeIds);
     }
 
-    private FolderEntity findFolder(String folderName) {
+    private FolderEntity findFolder(long folderId) {
         FolderEntity folder = em.createQuery(
-            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.root WHERE f.name = :name",
+            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.root WHERE f.id = :id",
             FolderEntity.class
-        ).setParameter("name", folderName).getSingleResult();
+        ).setParameter("id", folderId).getSingleResult();
         if (folder == null) {
-            throw new NotFoundException("Folder not found: " + folderName);
+            throw new NotFoundException("Folder not found: " + folderId);
         }
         // Initialize views and their components (avoids MultipleBagFetchException)
         folder.views.size();

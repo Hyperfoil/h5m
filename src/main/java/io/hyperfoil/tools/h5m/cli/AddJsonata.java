@@ -60,7 +60,7 @@ public class AddJsonata implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroup foundGroup =  nodeGroupService.byName(groupName);
+        NodeGroup foundGroup =  nodeGroupService.find(groupName);
         if(foundGroup == null){
             System.err.println("group not found");
             return 1;

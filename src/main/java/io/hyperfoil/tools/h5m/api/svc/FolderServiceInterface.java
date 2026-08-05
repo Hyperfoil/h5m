@@ -29,7 +29,7 @@ public interface FolderServiceInterface {
      * @param name The name of the folder.
      * @return The folder with the given name.
      */
-    Folder byName(String name);
+    Folder find(String name);
 
     /**
      * Gets the upload count for all folders.
@@ -42,29 +42,28 @@ public interface FolderServiceInterface {
      * Creates a new folder with the given name.
      *
      * @param name The name of the folder to create.
-     * @return The ID of the created folder.
+     * @return The created folder.
      */
-    long create(String name);
+    Folder create(String name);
 
     /**
-     * Deletes a folder by its name.
+     * Deletes a folder by its ID.
      *
-     * @param name The name of the folder to delete.
-     * @return The ID of the deleted folder.
+     * @param id The ID of the folder to delete.
      */
-    long delete(String name);
+    void delete(long id);
 
     /**
-     * Uploads data to a specific path within a folder.
+     * Uploads data to a folder.
      * Returns immediately with an {@link Upload} containing the upload ID and a future
      * that completes when all processing finishes.
      *
-     * @param name The name of the folder.
+     * @param folderId The ID of the folder.
      * @param data The JSON data to upload.
      * @return an Upload with the upload ID (safe to return to callers) and
      *         a future (for callers that need to await completion).
      */
-    Upload upload(String name, JqValue data);
+    Upload upload(long folderId, JqValue data);
 
     /**
      * Selectively recalculates values for a specific node and its dependents.
@@ -77,10 +76,10 @@ public interface FolderServiceInterface {
     /**
      * Retrieves the structural representation of a folder.
      *
-     * @param name The name of the folder.
+     * @param folderId The ID of the folder.
      * @return The JSON representation of the folder's structure.
      */
-    JqValue structure(String name);
+    JqValue structure(long folderId);
 
     /**
      * Retrieves dashboard summaries for all folders.
@@ -92,18 +91,18 @@ public interface FolderServiceInterface {
     /**
      * Exports a folder's node graph to a JSON file.
      *
-     * @param folderName The folder to export.
+     * @param folderId The folder ID.
      * @param outputPath Path to write the JSON file.
      */
-    void export(String folderName, Path outputPath) throws IOException;
+    void export(long folderId, Path outputPath) throws IOException;
 
     /**
      * Imports a folder and its node graph from a JSON file.
      *
      * @param inputPath Path to the JSON file.
      * @param overwrite If true, delete existing folder before importing.
-     * @return The folder name that was imported.
+     * @return The imported folder.
      */
-    String importFolder(Path inputPath, boolean overwrite) throws IOException;
+    Folder importFolder(Path inputPath, boolean overwrite) throws IOException;
 
 }

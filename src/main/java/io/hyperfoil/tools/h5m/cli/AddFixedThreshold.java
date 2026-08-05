@@ -62,7 +62,7 @@ public class AddFixedThreshold implements Callable<Integer> {
             System.err.println("missing group name");
             return 1;
         }
-        NodeGroup foundGroup = nodeGroupService.byName(groupName);
+        NodeGroup foundGroup = nodeGroupService.find(groupName);
         if (foundGroup == null) {
             System.err.println("node group with name " + groupName + " does not exist");
             return 1;
@@ -119,7 +119,7 @@ public class AddFixedThreshold implements Callable<Integer> {
             }
         }
 
-        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null);
+        Long fingerprintId = nodeService.createConfigured("_fp-" + name, foundGroup.id(), NodeType.FINGERPRINT, fingerprintNodes, null).id();
         nodeService.createConfigured(name, foundGroup.id(), NodeType.FIXED_THRESHOLD, List.of(fingerprintId, groupByNode.id(), rangeNode.id()), new FixedThresholdConfig(min, max, minInclusive, maxInclusive, fingerprintFilter));
 
         return 0;

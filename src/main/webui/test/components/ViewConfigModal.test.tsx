@@ -73,7 +73,7 @@ function renderModal(props: {
     <ViewConfigModal
       open={props.open ?? true}
       onClose={props.onClose ?? vi.fn()}
-      folderName="test-folder"
+      folderId={42}
       groupId={1}
       view={props.view ?? null}
     />,

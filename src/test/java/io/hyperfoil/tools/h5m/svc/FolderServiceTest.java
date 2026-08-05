@@ -67,7 +67,7 @@ public class FolderServiceTest extends FreshDb {
     public void recovery_reprocesses_incomplete_upload() throws Exception {
         // Set up folder with a JQ node
         tm.begin();
-        long folderId = folderService.create("recovery-test");
+        long folderId = folderService.create("recovery-test").id();
         FolderEntity folder = folderService.read(folderId);
         JqNode jqNode = new JqNode("extract", ".key", folder.group.root);
         jqNode.group = folder.group;
@@ -132,7 +132,7 @@ public class FolderServiceTest extends FreshDb {
     public void recovery_skips_missing_folder() throws Exception {
         // Create a root value in a folder, then delete the folder but leave tracking
         tm.begin();
-        long folderId = folderService.create("temp-folder");
+        long folderId = folderService.create("temp-folder").id();
         FolderEntity folder = folderService.read(folderId);
         ValueEntity rootValue = valueService.create(new ValueEntity(folder, folder.group.root,
                 JqValues.parse("{\"key\": \"orphaned\"}")));
@@ -159,7 +159,7 @@ public class FolderServiceTest extends FreshDb {
         // their values but before the tracking record was marked completed.
         // Recovery should dedup everything (no new values) and still complete.
         tm.begin();
-        long folderId = folderService.create("already-computed");
+        long folderId = folderService.create("already-computed").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode extractKey = new JqNode("extractKey", ".key", folder.group.root);
@@ -225,7 +225,7 @@ public class FolderServiceTest extends FreshDb {
     public void ephemeral_discard_data_nulled_after_upload() throws Exception {
         // ephemeral=DISCARD: data should be nulled after upload
         tm.begin();
-        long folderId = folderService.create("ephemeral-discard-test");
+        long folderId = folderService.create("ephemeral-discard-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode node = new JqNode("extract", ".key", folder.group.root);
@@ -235,7 +235,7 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-discard-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -250,7 +250,7 @@ public class FolderServiceTest extends FreshDb {
     public void ephemeral_keep_data_preserved_after_upload() throws Exception {
         // ephemeral=KEEP: data should always be preserved
         tm.begin();
-        long folderId = folderService.create("ephemeral-keep-test");
+        long folderId = folderService.create("ephemeral-keep-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode node = new JqNode("extract", ".key", folder.group.root);
@@ -260,7 +260,7 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload("ephemeral-keep-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -278,7 +278,7 @@ public class FolderServiceTest extends FreshDb {
         // Node graph: root → parent (.key) → child ({parent}:.length)
         // parent is intermediate because child depends on it
         tm.begin();
-        long folderId = folderService.create("ephemeral-auto-test");
+        long folderId = folderService.create("ephemeral-auto-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         // Parent node — ephemeral=AUTO (default), will have a non-detection child
@@ -300,7 +300,7 @@ public class FolderServiceTest extends FreshDb {
         // No need to call markAutoEphemeral — the inlined AUTO logic in
         // nullifyEphemeralData resolves AUTO nodes based on graph structure
 
-        folderService.upload("ephemeral-auto-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -322,7 +322,7 @@ public class FolderServiceTest extends FreshDb {
     public void ephemeral_auto_leaf_data_preserved() throws Exception {
         // ephemeral=AUTO: leaf node (no children) should keep data
         tm.begin();
-        long folderId = folderService.create("ephemeral-leaf-test");
+        long folderId = folderService.create("ephemeral-leaf-test").id();
         FolderEntity folder = folderService.read(folderId);
 
         JqNode leaf = new JqNode("leaf", ".key", folder.group.root);
@@ -332,7 +332,7 @@ public class FolderServiceTest extends FreshDb {
         long leafId = leaf.id;
         tm.commit();
 
-        folderService.upload("ephemeral-leaf-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"key\": \"k1\"}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
@@ -349,7 +349,7 @@ public class FolderServiceTest extends FreshDb {
         // Set up folder with two independent top-level nodes extracting different fields.
         // Verifies that recovery processes all nodes, not just the first one.
         tm.begin();
-        long folderId = folderService.create("multi-node-test");
+        long folderId = folderService.create("multi-node-test").id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -401,10 +401,10 @@ public class FolderServiceTest extends FreshDb {
     @Test
     public void upload_id_matches_root_value() throws Exception {
         tm.begin();
-        folderService.create("upload-root-match-test");
+        long folderId = folderService.create("upload-root-match-test").id();
         tm.commit();
 
-        long uploadId = folderService.upload("upload-root-match-test",
+        long uploadId = folderService.upload(folderId,
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
 
         tm.begin();
@@ -417,10 +417,10 @@ public class FolderServiceTest extends FreshDb {
     @Test
     public void upload_creates_processing_tracker() throws Exception {
         tm.begin();
-        folderService.create("upload-tracker-svc-test");
+        long folderId = folderService.create("upload-tracker-svc-test").id();
         tm.commit();
 
-        long uploadId = folderService.upload("upload-tracker-svc-test",
+        long uploadId = folderService.upload(folderId,
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
 
         tm.begin();
@@ -434,12 +434,12 @@ public class FolderServiceTest extends FreshDb {
     @Test
     public void upload_returns_unique_ids_per_upload() throws Exception {
         tm.begin();
-        folderService.create("upload-unique-svc-test");
+        long folderId = folderService.create("upload-unique-svc-test").id();
         tm.commit();
 
-        long id1 = folderService.upload("upload-unique-svc-test",
+        long id1 = folderService.upload(folderId,
                 JqValues.parse("{\"cpu\": 95}")).uploadId;
-        long id2 = folderService.upload("upload-unique-svc-test",
+        long id2 = folderService.upload(folderId,
                 JqValues.parse("{\"cpu\": 99}")).uploadId;
 
         assertNotEquals(id1, id2, "Each upload should return a unique ID");
@@ -447,7 +447,7 @@ public class FolderServiceTest extends FreshDb {
     @Test
     public void delete_folder_with_uploads() throws Exception {
         tm.begin();
-        folderService.create("delete-upload-test");
+        long folderId = folderService.create("delete-upload-test").id();
         tm.commit();
 
 
@@ -477,15 +477,14 @@ public class FolderServiceTest extends FreshDb {
         long logId = log.id;
         tm.commit();
 
-        folderService.upload("delete-upload-test",
+        folderService.upload(folderId,
                 JqValues.parse("{\"cpu\": 95}"))
                 .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
 
-        long deleted = folderService.delete("delete-upload-test");
+        folderService.delete(folderId);
 
         tm.begin();
         assertNull(FolderEntity.find("name", "delete-upload-test").firstResult(), "Folder should not exist after deletion");
-        assertEquals(1, deleted, "One folder should have been deleted");
         assertNotNull(NodeGroupEntity.findById(groupId), "Node group should still exist after folder deletion");
         assertNull(NotificationConfig.findById(configId), "Notification config should be deleted ");
         assertNull(NotificationLog.findById(logId), "Notification log should be deleted");

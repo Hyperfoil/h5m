@@ -31,8 +31,8 @@ public class ImportFolder implements Callable<Integer> {
         }
 
         try {
-            String folderName = folderService.importFolder(path, overwrite);
-            System.out.println("Imported folder '" + folderName + "' from " + path);
+            var folder = folderService.importFolder(path, overwrite);
+            System.out.println("Imported folder '" + folder.name() + "' from " + path);
             return 0;
         } catch (Exception e) {
             System.err.println("Import failed: " + e.getMessage());

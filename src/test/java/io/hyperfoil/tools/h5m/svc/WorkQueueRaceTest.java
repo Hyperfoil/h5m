@@ -61,7 +61,7 @@ public class WorkQueueRaceTest extends FreshDb {
     @Test
     @Tag("postgresql-only")
     void rapidUploadsShouldProduceAllValues() throws Exception {
-        createThreeNodeTopology("rapid_test");
+        long folderId = createThreeNodeTopology("rapid_test");
 
         // Upload all files back-to-back without draining — maximizes contention.
         // try/finally ensures the queue drains before FreshDb's @AfterEach truncation,
@@ -69,7 +69,7 @@ public class WorkQueueRaceTest extends FreshDb {
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload("rapid_test",  data);
+                folderService.upload(folderId, data);
             }
         } finally {
             awaitWorkQueue(30_000);
@@ -85,12 +85,12 @@ public class WorkQueueRaceTest extends FreshDb {
      */
     @Test
     void sequentialUploadsShouldProduceAllValues() throws Exception {
-        createThreeNodeTopology("sequential_test");
+        long folderId = createThreeNodeTopology("sequential_test");
 
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload("sequential_test", data);
+                folderService.upload(folderId, data);
                 awaitWorkQueue(30_000);
             }
         } finally {
@@ -112,10 +112,10 @@ public class WorkQueueRaceTest extends FreshDb {
                 ". Missing values indicate the race condition silently dropped work. See #50");
     }
 
-    private void createThreeNodeTopology(String folderName) throws Exception {
+    private long createThreeNodeTopology(String folderName) throws Exception {
         tm.begin();
         try {
-            long folderId = folderService.create(folderName);
+            long folderId = folderService.create(folderName).id();
             FolderEntity folder = folderService.read(folderId);
             NodeGroupEntity group = folder.group;
             NodeEntity root = group.root;
@@ -133,6 +133,7 @@ public class WorkQueueRaceTest extends FreshDb {
             n3.persist();
 
             tm.commit();
+            return folderId;
         } catch (Exception e) {
             tm.rollback();
             throw e;

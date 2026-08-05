@@ -32,7 +32,7 @@ public class FolderImportExportTest extends FreshDb {
     public void export_and_import_roundtrip() throws Exception {
         // Create a folder with a small node graph: root -> a -> b, root -> c
         tm.begin();
-        long folderId = folderService.create("roundtrip-test");
+        long folderId = folderService.create("roundtrip-test").id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -57,7 +57,7 @@ public class FolderImportExportTest extends FreshDb {
         // Export
         Path exportFile = Files.createTempFile("h5m-export-", ".json");
         try {
-            folderService.export("roundtrip-test", exportFile);
+            folderService.export(folderId, exportFile);
 
             // Verify export file
             JqValue exported = JqValues.parse(Files.readString(exportFile));
@@ -67,24 +67,22 @@ public class FolderImportExportTest extends FreshDb {
             assertEquals("root", nodes.getElement(0).getField("type").asString(""), "First node should be root");
 
             // Delete the original folder
-            tm.begin();
-            folderService.delete("roundtrip-test");
-            tm.commit();
+            folderService.delete(folderId);
 
             // Verify it's gone
-            assertNull(folderService.byName("roundtrip-test"), "Folder should be deleted");
+            assertNull(folderService.find("roundtrip-test"), "Folder should be deleted");
 
             // Import
-            String importedName = folderService.importFolder(exportFile, false);
-            assertEquals("roundtrip-test", importedName);
+            var imported2 = folderService.importFolder(exportFile, false);
+            assertEquals("roundtrip-test", imported2.name());
 
             // Verify the imported folder
-            assertNotNull(folderService.byName("roundtrip-test"), "Folder should exist after import");
+            assertNotNull(folderService.find("roundtrip-test"), "Folder should exist after import");
 
             // Verify node count
             tm.begin();
             FolderEntity imported = folderService.read(
-                folderService.byName("roundtrip-test").id()
+                folderService.find("roundtrip-test").id()
             );
             // group.sources contains all non-root nodes
             int nodeCount = imported.group.sources.size();
@@ -116,13 +114,13 @@ public class FolderImportExportTest extends FreshDb {
                 """);
 
             // Import without overwrite — should skip
-            String result = folderService.importFolder(exportFile, false);
-            assertEquals("existing-folder", result);
+            var result = folderService.importFolder(exportFile, false);
+            assertEquals("existing-folder", result.name());
 
             // Verify the original folder is unchanged (no extra nodes)
             tm.begin();
             FolderEntity folder = folderService.read(
-                folderService.byName("existing-folder").id()
+                folderService.find("existing-folder").id()
             );
             int nodeCount = folder.group.sources.size();
             tm.commit();
@@ -153,13 +151,13 @@ public class FolderImportExportTest extends FreshDb {
                 """);
 
             // Import with overwrite
-            String result = folderService.importFolder(exportFile, true);
-            assertEquals("overwrite-test", result);
+            var result = folderService.importFolder(exportFile, true);
+            assertEquals("overwrite-test", result.name());
 
             // Verify the folder was replaced with the new structure
             tm.begin();
             FolderEntity folder = folderService.read(
-                folderService.byName("overwrite-test").id()
+                folderService.find("overwrite-test").id()
             );
             int nodeCount = folder.group.sources.size();
             tm.commit();
@@ -173,7 +171,7 @@ public class FolderImportExportTest extends FreshDb {
     @Test
     public void export_preserves_node_types_and_operations() throws Exception {
         tm.begin();
-        long folderId = folderService.create("types-test");
+        long folderId = folderService.create("types-test").id();
         FolderEntity folder = folderService.read(folderId);
         NodeEntity root = folder.group.root;
 
@@ -187,7 +185,7 @@ public class FolderImportExportTest extends FreshDb {
 
         Path exportFile = Files.createTempFile("h5m-export-", ".json");
         try {
-            folderService.export("types-test", exportFile);
+            folderService.export(folderId, exportFile);
 
             JqValue exported = JqValues.parse(Files.readString(exportFile));
             JqValue nodes = exported.getField("nodes");

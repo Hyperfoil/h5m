@@ -32,7 +32,7 @@ public class ListNotification implements Callable<Integer> {
             return 0;
         }
 
-        Folder folder = folderService.byName(folderName);
+        Folder folder = folderService.find(folderName);
         if (folder == null) {
             System.err.println("Folder not found: " + folderName);
             return 1;

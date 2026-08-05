@@ -28,7 +28,7 @@ public class AddFolder implements Callable<Integer> {
             System.out.printf("Enter name: ");
             name = sc.nextLine();
         }
-        NodeGroup existingGroup =  nodeGroupService.byName(name);
+        NodeGroup existingGroup =  nodeGroupService.find(name);
         if(existingGroup != null){
             System.err.println(name+" conflicts with an existing node group");
             return 1;

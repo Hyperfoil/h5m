@@ -57,17 +57,20 @@ public class RestEndpointTest extends FreshDb {
     @Inject
     FolderService folderService;
 
-    private void createFolder(String name) {
-        given()
+    private long createFolder(String name) {
+        return given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .when().post("/api/folder/" + name)
+                .queryParam("name", name)
+                .when().post("/api/folder")
                 .then()
-                .statusCode(200);
+                .statusCode(200)
+                .extract().jsonPath().getLong("id");
     }
 
     private Long getGroupId(String name) {
         return given()
-                .when().get("/api/group/" + name)
+                .queryParam("name", name)
+                .when().get("/api/group/find")
                 .then()
                 .extract().jsonPath().getLong("id");
     }
@@ -92,7 +95,7 @@ public class RestEndpointTest extends FreshDb {
                 .when().post("/api/node/configured")
                 .then()
                 .statusCode(200)
-                .extract().as(Long.class);
+                .extract().jsonPath().getLong("id");
     }
 
     private Long createNodeWithType(Long groupId, String name, String type, String operation) {
@@ -105,7 +108,7 @@ public class RestEndpointTest extends FreshDb {
                 .when().post("/api/node")
                 .then()
                 .statusCode(200)
-                .extract().as(Long.class);
+                .extract().jsonPath().getLong("id");
     }
 
     // -- Folder endpoints --
@@ -115,7 +118,8 @@ public class RestEndpointTest extends FreshDb {
         createFolder("test-folder");
 
         given()
-                .when().get("/api/folder/test-folder")
+                .queryParam("name", "test-folder")
+                .when().get("/api/folder/find")
                 .then()
                 .statusCode(200)
                 .body("name", equalTo("test-folder"))
@@ -165,18 +169,18 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void folder_upload_and_structure() {
-        createFolder("upload-test");
+        long folderId = createFolder("upload-test");
 
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .queryParam("path", "results.json")
                 .body("{\"key\": \"value\"}")
-                .when().post("/api/folder/upload-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200);
 
         given()
-                .when().get("/api/folder/upload-test/structure")
+                .when().get("/api/folder/" + folderId + "/structure")
                 .then()
                 .statusCode(200)
                 .body(notNullValue());
@@ -184,16 +188,17 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void folder_delete() {
-        createFolder("delete-me");
+        long folderId = createFolder("delete-me");
 
         given()
-                .when().delete("/api/folder/delete-me")
+                .when().delete("/api/folder/" + folderId)
                 .then()
-                .statusCode(200);
+                .statusCode(204);
 
         // null return becomes 204 No Content
         given()
-                .when().get("/api/folder/delete-me")
+                .queryParam("name", "delete-me")
+                .when().get("/api/folder/find")
                 .then()
                 .statusCode(204);
     }
@@ -261,7 +266,8 @@ public class RestEndpointTest extends FreshDb {
         createFolder("group-test");
 
         given()
-                .when().get("/api/group/group-test")
+                .queryParam("name", "group-test")
+                .when().get("/api/group/find")
                 .then()
                 .statusCode(200)
                 .body("name", equalTo("group-test"))
@@ -271,7 +277,8 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void group_get_nonexistent() {
         given()
-                .when().get("/api/group/nonexistent")
+                .queryParam("name", "nonexistent")
+                .when().get("/api/group/find")
                 .then()
                 .statusCode(204);
     }
@@ -423,7 +430,7 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void upload_and_verify_jq_values_via_rest() throws InterruptedException {
-        createFolder("e2e-test");
+        long folderId = createFolder("e2e-test");
         Long groupId = getGroupId("e2e-test");
         Long jqNodeId = createNode(groupId, "extract", ".key");
 
@@ -432,7 +439,7 @@ public class RestEndpointTest extends FreshDb {
                 .contentType(MediaType.APPLICATION_JSON)
                 .queryParam("path", "$")
                 .body("{\"key\": \"hello\"}")
-                .when().post("/api/folder/e2e-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200);
 
@@ -467,10 +474,11 @@ public class RestEndpointTest extends FreshDb {
     public void dashboard_returns_folder_summary_with_rhivos_upload() throws Exception {
         // Import rhivos node graph and upload a run
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", runData)
+            folderService.upload(rhivosFolderId, runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -489,11 +497,12 @@ public class RestEndpointTest extends FreshDb {
     public void dashboard_counts_multiple_uploads() throws Exception {
         // Import rhivos node graph and upload two runs
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload("rhivos-perf-comprehensive", runData)
+                folderService.upload(rhivosFolderId, runData)
                         .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }
@@ -511,10 +520,11 @@ public class RestEndpointTest extends FreshDb {
     public void value_data_returns_json_for_uploaded_rhivos_run() throws Exception {
         // Import rhivos node graph and upload a run
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", runData)
+            folderService.upload(rhivosFolderId, runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
@@ -546,10 +556,10 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void view_default_created_for_new_folder() {
-        createFolder("view-default");
+        long folderId = createFolder("view-default");
 
         given()
-                .when().get("/api/folder/view-default/view/")
+                .when().get("/api/folder/" + folderId + "/view/")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
@@ -560,10 +570,11 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_default_created_on_import_empty() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Default view should exist but be empty (users configure it)
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
@@ -575,6 +586,7 @@ public class RestEndpointTest extends FreshDb {
     public void view_create_and_retrieve() throws Exception {
         // Import rhivos nodes so we have real node IDs to reference
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Find node IDs for "user" and "uuid" by querying the group
         tm.begin();
@@ -597,7 +609,7 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(viewJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .body("name", equalTo("test-view"))
@@ -608,7 +620,7 @@ public class RestEndpointTest extends FreshDb {
 
         // Retrieve it
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/" + viewId)
+                .when().get("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
                 .statusCode(200)
                 .body("name", equalTo("test-view"))
@@ -616,7 +628,7 @@ public class RestEndpointTest extends FreshDb {
 
         // List should contain Default + test-view
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(2));
@@ -625,6 +637,7 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_update_changes_components() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
@@ -645,7 +658,7 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(createJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
@@ -662,7 +675,7 @@ public class RestEndpointTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(updateJson)
-                .when().put("/api/folder/rhivos-perf-comprehensive/view/" + viewId)
+                .when().put("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
                 .statusCode(200)
                 .body("name", equalTo("updatable-renamed"))
@@ -673,6 +686,7 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_update_with_same_header_names() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
@@ -694,7 +708,7 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(createJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
@@ -713,7 +727,7 @@ public class RestEndpointTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(updateJson)
-                .when().put("/api/folder/rhivos-perf-comprehensive/view/" + viewId)
+                .when().put("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
                 .statusCode(200)
                 .body("components.size()", equalTo(2))
@@ -726,6 +740,7 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_delete_works() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
@@ -741,20 +756,20 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(createJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
 
         // Delete it
         given()
-                .when().delete("/api/folder/rhivos-perf-comprehensive/view/" + viewId)
+                .when().delete("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
                 .statusCode(204);
 
         // Custom view should be gone, only Default remains
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
@@ -764,10 +779,11 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_delete_default_rejected() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Find the auto-created Default view's ID
         Long viewId = given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/")
                 .then()
                 .statusCode(200)
                 .body("[0].name", equalTo("Default"))
@@ -775,7 +791,7 @@ public class RestEndpointTest extends FreshDb {
 
         // Attempting to delete "Default" should fail
         given()
-                .when().delete("/api/folder/rhivos-perf-comprehensive/view/" + viewId)
+                .when().delete("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
                 .statusCode(anyOf(equalTo(400), equalTo(500)));
     }
@@ -784,6 +800,7 @@ public class RestEndpointTest extends FreshDb {
     public void view_data_returns_filtered_rhivos_values() throws Exception {
         // Import rhivos nodes
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Create the view BEFORE uploading — nodes referenced by views are
         // excluded from ephemeral nullification, so this must happen first
@@ -808,7 +825,7 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(viewJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
@@ -817,13 +834,13 @@ public class RestEndpointTest extends FreshDb {
         // because they are referenced by the view
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
             io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload("rhivos-perf-comprehensive", runData)
+            folderService.upload(rhivosFolderId, runData)
                     .future.orTimeout(30, TimeUnit.SECONDS).join();
         }
 
         // Get view data — should return filtered results with only start_time and end_time columns
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/" + viewId + "/data")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/" + viewId + "/data")
                 .then()
                 .statusCode(200)
                 .body("size()", greaterThan(0))
@@ -834,6 +851,7 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_data_with_multiple_uploads() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         // Create the view BEFORE uploading — nodes referenced by views are
         // excluded from ephemeral nullification
@@ -852,7 +870,7 @@ public class RestEndpointTest extends FreshDb {
         Long viewId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(viewJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 .extract().jsonPath().getLong("id");
@@ -861,14 +879,14 @@ public class RestEndpointTest extends FreshDb {
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload("rhivos-perf-comprehensive", runData)
+                folderService.upload(rhivosFolderId, runData)
                         .future.orTimeout(30, TimeUnit.SECONDS).join();
             }
         }
 
         // View data should have one row per upload
         given()
-                .when().get("/api/folder/rhivos-perf-comprehensive/view/" + viewId + "/data")
+                .when().get("/api/folder/" + rhivosFolderId + "/view/" + viewId + "/data")
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(2))
@@ -879,6 +897,7 @@ public class RestEndpointTest extends FreshDb {
     @Test
     public void view_component_ordering() throws Exception {
         folderService.importFolder(Path.of("src/test/resources/rhivos/nodes.json"), false);
+        long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         tm.begin();
         FolderEntity folder = FolderEntity.find("name", "rhivos-perf-comprehensive").firstResult();
@@ -901,7 +920,7 @@ public class RestEndpointTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(viewJson)
-                .when().post("/api/folder/rhivos-perf-comprehensive/view")
+                .when().post("/api/folder/" + rhivosFolderId + "/view")
                 .then()
                 .statusCode(200)
                 // Components should be ordered by headerOrder
@@ -929,10 +948,11 @@ public class RestEndpointTest extends FreshDb {
     public void labelValues_returns_grouped_values() throws InterruptedException {
         Long folderId = given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .when().post("/api/folder/lv-test")
+                .queryParam("name", "lv-test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(200)
-                .extract().as(Long.class);
+                .extract().jsonPath().getLong("id");
 
         Long groupId = getGroupId("lv-test");
         Long throughputId=createNode(groupId, "throughput", ".throughput");
@@ -940,12 +960,12 @@ public class RestEndpointTest extends FreshDb {
 
         given().contentType(MediaType.APPLICATION_JSON)
                 .body("{\"throughput\": 115, \"build_id\": 201}")
-                .when().post("/api/folder/lv-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then().statusCode(200);
 
         given().contentType(MediaType.APPLICATION_JSON)
                 .body("{\"throughput\": 100, \"build_id\": 202}")
-                .when().post("/api/folder/lv-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then().statusCode(200);
 
         long deadline = System.currentTimeMillis() + 10_000;
@@ -979,12 +999,12 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void upload_returns_uploadId() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        createFolder("upload-id-test");
+        long folderId = createFolder("upload-id-test");
 
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"cpu\": 95}")
-                .when().post("/api/folder/upload-id-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1003,21 +1023,21 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void FolderUpload_empty_body_returns_error() {
-        createFolder("test-empty");
+        long folderId = createFolder("test-empty");
         given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .when().post("/api/folder/test-empty/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(400);
     }
 
     @Test
     public void FolderUpload_tracking_record_created() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
-        createFolder("test-tracking");
+        long folderId = createFolder("test-tracking");
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"cpu\": 95}")
-                .when().post("/api/folder/test-tracking/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .extract().as(Long.class);
 
@@ -1034,19 +1054,19 @@ public class RestEndpointTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"cpu\": 95}")
-                .when().post("/api/folder/test-folderg/upload")
+                .when().post("/api/folder/999999/upload")
                 .then()
                 .statusCode(500);
     }
 
     @Test
     public void multiple_uploads_return_unique_ids() {
-        createFolder("upload-unique-ids-test");
+        long folderId = createFolder("upload-unique-ids-test");
 
         Long uploadId1 = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"cpu\": 95}")
-                .when().post("/api/folder/upload-unique-ids-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1054,7 +1074,7 @@ public class RestEndpointTest extends FreshDb {
         Long uploadId2 = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"cpu\": 99}")
-                .when().post("/api/folder/upload-unique-ids-test/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);

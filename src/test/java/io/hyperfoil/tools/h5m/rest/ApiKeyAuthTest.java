@@ -27,7 +27,8 @@ public class ApiKeyAuthTest extends FreshDb {
     void write_endpoint_returns_401_without_auth() {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .when().post("/api/folder/test")
+                .queryParam("name", "test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(401);
     }
@@ -48,7 +49,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + key)
-                .when().post("/api/folder/auth-test")
+                .queryParam("name", "auth-test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(200);
     }
@@ -58,7 +60,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer H5M_INVALID_KEY_12345678")
-                .when().post("/api/folder/test")
+                .queryParam("name", "test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(401);
     }
@@ -73,7 +76,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + key)
-                .when().post("/api/folder/test")
+                .queryParam("name", "test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(401);
     }
@@ -115,7 +119,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + bootstrapKey)
-                .when().post("/api/folder/bootstrap-test")
+                .queryParam("name", "bootstrap-test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(200);
     }
@@ -130,7 +135,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + bootstrapKey)
-                .when().post("/api/folder/bootstrap-test")
+                .queryParam("name", "bootstrap-test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(200);
     }
@@ -189,7 +195,8 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + keyToRevoke)
-                .when().post("/api/folder/test")
+                .queryParam("name", "test")
+                .when().post("/api/folder")
                 .then()
                 .statusCode(401);
     }

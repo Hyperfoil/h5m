@@ -42,7 +42,7 @@ public class NodeGroupService implements NodeGroupServiceInterface {
 
     @Override
     @Transactional
-    public NodeGroup byName(String name){
+    public NodeGroup find(String name){
         return apiMapper.toNodeGroup(NodeGroupEntity.find("name",name).firstResult(), new CycleAvoidingContext());
     }
 

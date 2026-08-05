@@ -67,13 +67,13 @@ public class H5m implements QuarkusApplication {
 
     @CommandLine.Command(name="structure",description = "use yaup to compute the structure of a folder",aliases = {"shape"}, mixinStandardHelpOptions = true)
     public int structure(String folderName){
-        try {
-            JqValue structure = folderService.structure(folderName);
-            System.out.println(JqValues.toPrettyJsonString(structure));
-        } catch (NoResultException e) {
+        Folder folder = folderService.find(folderName);
+        if (folder == null) {
             System.err.println("could not find folder "+folderName);
             return 1;
         }
+        JqValue structure = folderService.structure(folder.id());
+        System.out.println(JqValues.toPrettyJsonString(structure));
         return 0;
     }
     @CommandLine.Command(name="upload",description = "")
@@ -83,7 +83,7 @@ public class H5m implements QuarkusApplication {
             @CommandLine.Option(names = {"to"},description = "grouping node" ,arity = "1")
             String folderName
     ){
-        Folder folder = folderService.byName(folderName);
+        Folder folder = folderService.find(folderName);
         if(folder == null){
             System.err.println("could not find folder "+folderName);
             return 1;
@@ -102,7 +102,7 @@ public class H5m implements QuarkusApplication {
                 JqValue read = JqValues.parse(Files.readString(f.toPath()));
                 if(read!=null){
                     try {
-                        Upload upload = folderService.upload(folderName, read);
+                        Upload upload = folderService.upload(folder.id(), read);
                         upload.future.orTimeout(5, TimeUnit.MINUTES).join();
                     } catch (NoResultException e) {
                         System.err.println("could not find folder " + folderName);

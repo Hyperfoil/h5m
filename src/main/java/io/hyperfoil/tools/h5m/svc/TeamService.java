@@ -33,9 +33,9 @@ public class TeamService implements TeamServiceInterface {
 
     @Override
     @Transactional
-    public Team byName(String name) {
+    public Team find(String name) {
         TeamEntity entity = TeamEntity.find("name", name).firstResult();
-        return apiMapper.toTeam(entity);
+        return entity != null ? apiMapper.toTeam(entity) : null;
     }
 
     @Override

@@ -102,7 +102,7 @@ function renderDataTab(views: View[] = mockViews, viewData: unknown[] = mockView
   queryClient.setQueryData(['byId'], mockNodeGroup);
 
   return renderWithProviders(
-    <DataTab folderName="test-folder" groupId={1} />,
+    <DataTab folderId={42} groupId={1} />,
     { queryClient },
   );
 }

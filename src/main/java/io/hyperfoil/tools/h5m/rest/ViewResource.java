@@ -13,9 +13,8 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
 
-@Path("/api/folder/{name}/view")
+@Path("/api/folder/{folderId}/view")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "View", description = "Manage views for folder data presentation")
 public class ViewResource {
 
@@ -26,30 +25,30 @@ public class ViewResource {
     @Path("/")
     @PermitAll
     @Operation(description = "List all views for a folder")
-    public List<View> getViews(@PathParam("name") String folderName) {
-        return viewService.getViews(folderName);
+    public List<View> getViews(@PathParam("folderId") long folderId) {
+        return viewService.getViews(folderId);
     }
 
     @GET
     @Path("/{viewId}")
     @PermitAll
     @Operation(description = "Get a view definition")
-    public View getView(@PathParam("name") String folderName, @PathParam("viewId") Long viewId) {
+    public View getView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId) {
         return viewService.getView(viewId);
     }
 
     @POST
     @Authenticated
     @Operation(description = "Create a new view for a folder")
-    public View createView(@PathParam("name") String folderName, View view) {
-        return viewService.createView(folderName, view);
+    public View createView(@PathParam("folderId") long folderId, View view) {
+        return viewService.createView(folderId, view);
     }
 
     @PUT
     @Path("/{viewId}")
     @Authenticated
     @Operation(description = "Update a view")
-    public View updateView(@PathParam("name") String folderName, @PathParam("viewId") Long viewId, View view) {
+    public View updateView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId, View view) {
         return viewService.updateView(viewId, view);
     }
 
@@ -57,7 +56,7 @@ public class ViewResource {
     @Path("/{viewId}")
     @Authenticated
     @Operation(description = "Delete a view (cannot delete the Default view)")
-    public void deleteView(@PathParam("name") String folderName, @PathParam("viewId") Long viewId) {
+    public void deleteView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId) {
         viewService.deleteView(viewId);
     }
 
@@ -65,7 +64,7 @@ public class ViewResource {
     @Path("/{viewId}/data")
     @PermitAll
     @Operation(description = "Get filtered pivoted data for a view")
-    public List<JqValue> getViewData(@PathParam("name") String folderName, @PathParam("viewId") Long viewId) {
-        return viewService.getViewData(folderName, viewId);
+    public List<JqValue> getViewData(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId) {
+        return viewService.getViewData(folderId, viewId);
     }
 }
