@@ -1086,12 +1086,12 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void upload_status_empty_folder() {
-        createFolder("upload-status-empty");
+        long folderId = createFolder("upload-status-empty");
 
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"value\": 42}")
-                .when().post("/api/folder/upload-status-empty/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1115,14 +1115,14 @@ public class RestEndpointTest extends FreshDb {
 
     @Test
     public void upload_status() {
-        createFolder("upload-status");
+        long folderId = createFolder("upload-status");
         Long groupId = getGroupId("upload-status");
         createNode(groupId, "extract", ".value");
 
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"value\": 42}")
-                .when().post("/api/folder/upload-status/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1143,7 +1143,7 @@ public class RestEndpointTest extends FreshDb {
         // Set up a folder with extractor nodes and a FixedThreshold detection node.
         // Upload data that violates the threshold via REST and verify the upload
         // status endpoint reports the change detection result.
-        createFolder("ft-detect");
+        long folderId = createFolder("ft-detect");
         Long groupId = getGroupId("ft-detect");
 
         // Create JQ extractor nodes — these source from the root node automatically
@@ -1152,7 +1152,7 @@ public class RestEndpointTest extends FreshDb {
 
         // Get the root node ID to use as groupBy for the FixedThreshold
         tm.begin();
-        FolderEntity folder = FolderEntity.find("name", "ft-detect").firstResult();
+        FolderEntity folder = FolderEntity.findById(folderId);
         Long rootNodeId = folder.group.root.id;
         tm.commit();
 
@@ -1170,7 +1170,7 @@ public class RestEndpointTest extends FreshDb {
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"value\": 5, \"env\": {\"type\": \"perf-test\"}}")
-                .when().post("/api/folder/ft-detect/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1192,14 +1192,14 @@ public class RestEndpointTest extends FreshDb {
     public void upload_status_no_change_when_within_threshold() throws Exception {
         // Same setup as upload_status_with_change_detection, but upload data
         // that is within the threshold range — no change detection should fire.
-        createFolder("ft-no-change");
+        long folderId = createFolder("ft-no-change");
         Long groupId = getGroupId("ft-no-change");
 
         Long rangeNodeId = createNode(groupId, "range", ".value");
         Long fpExtractorId = createNode(groupId, "fp-extractor", ".env");
 
         tm.begin();
-        FolderEntity folder = FolderEntity.find("name", "ft-no-change").firstResult();
+        FolderEntity folder = FolderEntity.findById(folderId);
         Long rootNodeId = folder.group.root.id;
         tm.commit();
 
@@ -1215,7 +1215,7 @@ public class RestEndpointTest extends FreshDb {
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"value\": 50, \"env\": {\"type\": \"perf-test\"}}")
-                .when().post("/api/folder/ft-no-change/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
@@ -1241,14 +1241,14 @@ public class RestEndpointTest extends FreshDb {
         // Same setup as upload_status_with_change_detection — create a folder
         // with a FixedThreshold that will fire, then evict the in-memory cache
         // to force the DB fallback path.
-        createFolder("ft-detect-fallback");
+        long folderId = createFolder("ft-detect-fallback");
         Long groupId = getGroupId("ft-detect-fallback");
 
         Long rangeNodeId = createNode(groupId, "range", ".value");
         Long fpExtractorId = createNode(groupId, "fp-extractor", ".env");
 
         tm.begin();
-        FolderEntity folder = FolderEntity.find("name", "ft-detect-fallback").firstResult();
+        FolderEntity folder = FolderEntity.findById(folderId);
         Long rootNodeId = folder.group.root.id;
         tm.commit();
 
@@ -1263,7 +1263,7 @@ public class RestEndpointTest extends FreshDb {
         Long uploadId = given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"value\": 5, \"env\": {\"type\": \"perf-test\"}}")
-                .when().post("/api/folder/ft-detect-fallback/upload")
+                .when().post("/api/folder/" + folderId + "/upload")
                 .then()
                 .statusCode(200)
                 .extract().as(Long.class);
