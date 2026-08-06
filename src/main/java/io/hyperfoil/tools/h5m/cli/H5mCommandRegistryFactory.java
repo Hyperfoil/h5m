@@ -36,6 +36,8 @@ public class H5mCommandRegistryFactory implements CliCommandRegistryFactory {
             AdminCmd.class,
             ChangeFolderCmd.class,
             UploadCmd.class,
+            StatusCmd.class,
+            ChangesCmd.class,
             ViewCmd.class,
             RunCmd.class
     );

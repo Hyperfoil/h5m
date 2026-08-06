@@ -688,6 +688,14 @@ public class H5mTest {
                 new String[]{"cd", ".."}
         );
 
+        // Upload output should contain the processing ID(s) and detection summary
+        String uploadOutput = results.get(7); // upload command is at index 7
+        assertTrue(uploadOutput.contains("processing id:"), "upload should show processing id\n" + uploadOutput);
+        assertTrue(uploadOutput.contains("Processing complete."), "upload should show completion\n" + uploadOutput);
+        assertTrue(uploadOutput.contains("2 changes detected"), "upload should show 2 changes\n" + uploadOutput);
+        assertTrue(uploadOutput.contains("FIXED_THRESHOLD"), "upload should show detection type\n" + uploadOutput);
+        assertTrue(uploadOutput.contains("fingerprint="), "upload should show fingerprint\n" + uploadOutput);
+
         String last = results.get(results.size() - 2);
         // 3 rangeNode values + 3 fp1 values + 3 _fp-ftNode values + 2 fixedthreshold violations = 11
         assertTrue(last.contains("Count: 11"), "expect 11 values from test\n" + last);
