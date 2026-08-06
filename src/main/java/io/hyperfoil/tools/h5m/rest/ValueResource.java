@@ -45,15 +45,23 @@ public class ValueResource {
         return data;
     }
 
+
     @GET
     @Path("{id}/descendants")
     @PermitAll
-    @Operation(description = "Get descendant values of a value. Use ?detection=true to filter to detection node values only.")
+    @Operation(description = "Get all descendant values of a value. Use ?detection=true to filter to detection node values or ?node=id to filter to values from specified nodes. Detection is mutually exclusive and takes effect over node list")
     public List<Value> getDescendants(
             @PathParam("id") Long id,
-            @QueryParam("detection") @DefaultValue("false") boolean detectionOnly) {
+            @QueryParam("detection") @DefaultValue("false") boolean detectionOnly,
+            @QueryParam("node") List<Long> nodes) {
+        if(valueServiceImpl.byId(id) == null){
+            throw new  NotFoundException("Value not found: " + id);
+        }
         if (detectionOnly) {
             return valueServiceImpl.getDetectionDescendants(id);
+        }
+        if (nodes != null && !nodes.isEmpty()) {
+            return valueServiceImpl.getDescendantValues(id,nodes);
         }
         // General descendants — delegate to ValueService
         return valueServiceImpl.getAllDescendants(id);

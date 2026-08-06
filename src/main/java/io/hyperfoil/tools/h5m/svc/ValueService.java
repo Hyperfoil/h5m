@@ -689,6 +689,35 @@ public class ValueService implements ValueServiceInterface {
     }
 
     /**
+     * returns the values that depend on the root value somewhere up the hierarchy and come from the specified nodeId(s)
+     * @param rootValueId
+     * @param nodeId
+     * @return
+     */
+    public List<Value> getDescendantValues(long rootValueId,List<Long> nodeId) {
+        if(nodeId.isEmpty()){
+            return getAllDescendants(rootValueId);
+        }
+        @SuppressWarnings("unchecked")
+        List<Long> ids =  em.unwrap(Session.class).createNativeQuery(
+                """
+                    WITH RECURSIVE sourceRecursive (v_id) AS (
+                    SELECT ve.child_id from value_edge ve where ve.parent_id = :rootId
+                    UNION ALL
+                    SELECT ve.child_id from value_edge ve JOIN sourceRecursive sr
+                    ON ve.parent_id = sr.v_id
+                )
+                SELECT distinct v.id FROM value v JOIN sourceRecursive sr ON v.id = sr.v_id WHERE v.node_id in :nodeId
+                """,Long.class
+        ).setParameter("rootId", rootValueId).setParameter("nodeId",nodeId)
+                .getResultStream().toList();
+        CycleAvoidingContext ctx = new CycleAvoidingContext();
+        return em.unwrap(Session.class)
+                .findMultiple(ValueEntity.class, ids)
+                .stream().map(e -> apiMapper.toValue(e, ctx))
+                .toList();
+    }
+    /**
      * Returns detection node values that are descendants of the given root value.
      * Checks the in-memory detection cache first (populated by the
      * ChangeDetectedEvent observer), then falls back to a DB query.

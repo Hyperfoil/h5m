@@ -1119,6 +1119,11 @@ public class ValueServiceTest extends FreshDb {
 
         assertFalse(found.contains(rootValue),"descendants should not include self: "+found);
         assertTrue(found.contains(bravobravoValue),"descendants should include value from target node: "+found);
+
+        List<Value> foundValues = valueService.getDescendantValues(rootValue.getId(),List.of(bravobravo.getId()));
+        List<Long> foundValueIds = foundValues.stream().map(Value::id).toList();
+        assertFalse(foundValueIds.contains(rootValue.getId()),"descendants should not include self: "+foundValueIds);
+        assertTrue(foundValueIds.contains(bravobravoValue.getId()),"descendants should include value from target node: "+foundValues);
     }
 
     @Test
@@ -1152,9 +1157,51 @@ public class ValueServiceTest extends FreshDb {
             "grandchild value should be in descendants");
         assertEquals(2, found.size(),
             "should find exactly 2 descendants: " + found);
+
+        List<Value> foundValue = valueService.getDescendantValues(rootValue.getId(),List.of(node.getId()));
+        List<Long> foundValueIds = foundValue.stream().map(Value::id).toList();
+        assertFalse(foundValueIds.contains(rootValue.id),"root value should not appear in its own descendants even when node types match");
+        assertTrue(foundValueIds.contains(childValue.id),"child value should be in descendants");
+        assertTrue(foundValueIds.contains(grandchildValue.id),"grandchild value should be in descendants");
+        assertEquals(2,foundValue.size(),"should find exactly 2 descendants: " + foundValue);
+    }
+    @Test
+    public void getDescendantValues_filter_multiple_nodes() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        NodeEntity one = new JqNode("one",".one",root);
+        one.persist();
+        NodeEntity two = new JqNode("two",".two",root);
+        two.persist();
+        NodeEntity three = new JqNode("three",".three",root);
+        three.persist();
+
+
+        ValueEntity rootValue = new ValueEntity(null, root, JqString.of("root"));
+        rootValue.persist();
+
+        ValueEntity oneValue = new ValueEntity(null, one, JqString.of("one"),List.of(rootValue));
+        oneValue.persist();
+
+        ValueEntity twoValue = new ValueEntity(null, two, JqString.of("two"),List.of(rootValue));
+        twoValue.persist();
+
+        ValueEntity threeValue = new ValueEntity(null, three, JqString.of("three"),List.of(rootValue));
+        threeValue.persist();
+        tm.commit();
+
+        List<Value> found = valueService.getDescendantValues(rootValue.id,List.of(one.id,two.id));
+        assertEquals(2,found.size(),"expect to find two values: "+found);
+        List<Long> valueIds =  found.stream().map(Value::id).toList();
+        assertTrue(valueIds.contains(oneValue.id),"one value should be in descendants");
+        assertTrue(valueIds.contains(twoValue.id),"two value should be in descendants");
+        assertFalse(valueIds.contains(threeValue.id),"three value should not b in descendants");
+
+
     }
 
-    @Test
+        @Test
     public void getDescendantValuesByNodes_excludes_root_when_same_node() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         tm.begin();
         NodeEntity node = new JqNode("sametype");
@@ -1186,7 +1233,7 @@ public class ValueServiceTest extends FreshDb {
     }
 
     @Test
-    public void getDescendantValues_node() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+    public void getNodeDescendantValues_node() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity root = new JqNode("root");
         root.persist();
