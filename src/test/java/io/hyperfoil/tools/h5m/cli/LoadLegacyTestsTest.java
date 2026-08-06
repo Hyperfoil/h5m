@@ -255,7 +255,7 @@ public class LoadLegacyTestsTest extends FreshDb {
 
         assertNotNull(first);
         assertEquals("label",first.name);
-        assertEquals(".tag",first.operation);
+        assertEquals(".tag?",first.operation);
         assertInstanceOf(JqNode.class,first);
     }
     @Test

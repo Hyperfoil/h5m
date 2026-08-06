@@ -259,8 +259,8 @@ public class LoadLegacyTests implements Callable<Integer> {
 
             // Convert jsonpath to jq — sqlall (isArray) wraps in [...] to collect all matches
             String jqOperation = extractor.isArray
-                    ? NodeService.jsonpathToLaxJqArray(extractor.jsonpath())
-                    : NodeService.jsonpathToLaxJq(extractor.jsonpath());
+                    ? io.hyperfoil.tools.jjq.jsonpath.JsonpathToJq.convertArray(extractor.jsonpath())
+                    : io.hyperfoil.tools.jjq.jsonpath.JsonpathToJq.convert(extractor.jsonpath());
             NodeEntity node = JqNode.parse(extractorName, jqOperation, nodeTracking::getNodes);
             if (node == null) {
                 System.err.println("failed to create node for extractor " + extractor);

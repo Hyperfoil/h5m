@@ -58,7 +58,7 @@
         <!-- dependencies -->
         <lib.jdbi>3.41.3</lib.jdbi>
         <lib.jhunter>0.1.0</lib.jhunter>
-        <lib.jjq>0.1.7</lib.jjq>
+        <lib.jjq>0.1.8</lib.jjq>
         <lib.jmh>1.37</lib.jmh>
 
         <lib.mapstruct>1.6.3</lib.mapstruct>
@@ -120,6 +120,11 @@
         <dependency>
             <groupId>io.hyperfoil.tools</groupId>
             <artifactId>jjq-jsonata</artifactId>
+            <version>${lib.jjq}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.hyperfoil.tools</groupId>
+            <artifactId>jjq-jsonpath</artifactId>
             <version>${lib.jjq}</version>
         </dependency>
         <dependency>

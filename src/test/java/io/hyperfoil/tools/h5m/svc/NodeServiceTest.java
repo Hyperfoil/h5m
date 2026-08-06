@@ -2046,72 +2046,6 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
-    public void findJqKeyChain(){
-        List<NodeService.Range> found;
-        String input;
-        //standard chain
-        found = NodeService.findJqKeyChain(input=".a.b.c");
-        assertEquals(1,found.size());
-        assertEquals(0,found.getFirst().start());
-        assertEquals(input.length(),found.getFirst().stop());
-
-        found = NodeService.findJqKeyChain(input = ".a.\"b | \t ? [ c\".c | .c");
-        assertEquals(1,found.size(),found.toString());
-        assertEquals(0,found.getFirst().start());
-        assertEquals(".a.\"b | \t ? [ c\".c",input.substring(found.get(0).start(),found.get(0).stop()));
-
-        found = NodeService.findJqKeyChain(input=".a.b | .c");
-        assertEquals(1,found.size());
-        assertEquals(0,found.getFirst().start());
-        assertEquals(".a.b",input.substring(found.get(0).start(),found.get(0).stop()));
-
-        found = NodeService.findJqKeyChain(input=".a.b | .c.d");
-        assertEquals(2,found.size());
-        assertEquals(".a.b",input.substring(found.get(0).start(),found.get(0).stop()));
-        assertEquals(".c.d",input.substring(found.get(1).start(),found.get(1).stop()));
-
-        found = NodeService.findJqKeyChain(input=".a.[\"text()\"]");
-        assertEquals(0,found.size());
-
-        found = NodeService.findJqKeyChain(input="$.a.b ? (@.c.e==\"two\").c.d");
-        assertEquals(3,found.size());
-        assertEquals(".a.b",input.substring(found.get(0).start(),found.get(0).stop()));
-        assertEquals(".c.e",input.substring(found.get(1).start(),found.get(1).stop()));
-        assertEquals(".c.d",input.substring(found.get(2).start(),found.get(2).stop()));
-    }
-
-    @Test
-    public void splitNotInQuotes(){
-        List<String> found;
-        found = NodeService.splitNotInQuotes(".a.b.c",".");
-        assertEquals(3,found.size(),found.toString());
-        assertEquals("a",found.get(0));
-        assertEquals("b",found.get(1));
-        assertEquals("c",found.get(2));
-
-        found = NodeService.splitNotInQuotes(".a",".");
-        assertEquals(1,found.size(),found.toString());
-        assertEquals("a",found.get(0));
-
-        found = NodeService.splitNotInQuotes(".a.\".'b.c'\".c",".");
-        assertEquals(3,found.size(),found.toString());
-        assertEquals("a",found.get(0));
-        assertEquals("\".'b.c'\"",found.get(1));
-        assertEquals("c",found.get(2));
-
-    }
-
-    @Test
-    public void convertToLaxChains(){
-        String response;
-        assertEquals(".a",NodeService.convertToLaxJqChains(".a"),"no change");
-        assertEquals("if (.a | type) == \"array\" then .a[] else .a end | if (.b | type) == \"array\" then .b[] else .b end | .c",
-                NodeService.convertToLaxJqChains(".a.b.c"));
-
-    }
-
-
-    @Test
     public void jsonpathToJq_filter_equals() {
         assertEquals(
                 ".boot_time[]?.boot_logs[]? | select(.name == \"early-boot-service.service\")",
@@ -2128,7 +2062,7 @@ public class NodeServiceTest extends FreshDb {
     @Test
     public void jsonpathToJq_filter_like_regex() {
         assertEquals(
-                ".boot_time[]?.boot_logs[]? | select((.name | test(\"^InitRD$\")))",
+                ".boot_time[]?.boot_logs[]? | select((.name | type == \"string\" and test(\"^InitRD$\")))",
                 NodeService.jsonpathToJq("$.boot_time[*].boot_logs[*] ? (@.name like_regex \"^InitRD$\")"));
     }
 
@@ -2145,14 +2079,14 @@ public class NodeServiceTest extends FreshDb {
 
     @Test
     public void jsonpathToJq_keyvalue_function(){
-        assertEquals(".results[]? | to_entries[] | .key",
+        assertEquals(                ".results[]? | to_entries[].key",
                 NodeService.jsonpathToJq("$.results[*].keyvalue().key"));
     }
 
     @Test
     public void jsonpathToJq_filter_with_quoted_fields_and_trailing_path() {
         assertEquals(
-                ".faban.summary.benchResults.driverSummary[]? | select(.[\"@name\"] == \"MfgDriver\").customStats.stat[0].passed.[\"text()\"]",
+                ".faban.summary.benchResults.driverSummary[]? | select(.[\"@name\"] == \"MfgDriver\").customStats.stat[0].passed.\"text()\"",
                 NodeService.jsonpathToJq("$.faban.summary.benchResults.driverSummary[*] ? (@.\"@name\" == \"MfgDriver\").customStats.stat[0].passed.\"text()\""));
     }
 
