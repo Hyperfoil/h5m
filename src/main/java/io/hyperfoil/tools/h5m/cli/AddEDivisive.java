@@ -8,52 +8,56 @@ import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.node.EDivisive;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
+import org.aesh.command.option.Option;
+import org.aesh.command.option.OptionList;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@CommandLine.Command(name = "edivisive", separator = " ", description = "add an e-divisive (Hunter) change detection node", mixinStandardHelpOptions = true)
-public class AddEDivisive implements Callable<Integer> {
+@CommandDefinition(name = "edivisive", description = "add an e-divisive (Hunter) change detection node", generateHelp = true)
+public class AddEDivisive implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"to"}, description = "target group / test")
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target group / test")
     String groupName;
 
-    @CommandLine.Option(names = {"range"}, arity = "1", description = "node that produces the value to inspect")
+    @Option(name = "range", acceptNameWithoutDashes = true, description = "node that produces the value to inspect")
     String rangeName;
 
-    @CommandLine.Option(names = {"domain"}, arity = "1", required = true, description = "node used to sort the range values (required for e-divisive)")
+    @Option(name = "domain", acceptNameWithoutDashes = true, required = true, description = "node used to sort the range values (required for e-divisive)")
     String domainName;
 
-    @CommandLine.Option(names = {"windowLen"}, arity = "0..1", description = "sliding window size for the split phase (min 3)",
+    @Option(name = "windowLen", acceptNameWithoutDashes = true, description = "sliding window size for the split phase (min 3)",
             defaultValue = "" + EDivisive.DEFAULT_WINDOW_LEN)
     int windowLen;
 
-    @CommandLine.Option(names = {"maxPvalue"}, arity = "0..1", description = "significance threshold for change points",
+    @Option(name = "maxPvalue", acceptNameWithoutDashes = true, description = "significance threshold for change points",
             defaultValue = "" + EDivisive.DEFAULT_MAX_PVALUE)
     double maxPvalue;
 
-    @CommandLine.Option(names = {"minMagnitude"}, arity = "0..1", description = "minimum relative change magnitude to report (e.g., 0.1 = 10%)",
+    @Option(name = "minMagnitude", acceptNameWithoutDashes = true, description = "minimum relative change magnitude to report (e.g., 0.1 = 10%)",
             defaultValue = "" + EDivisive.DEFAULT_MIN_MAGNITUDE)
     double minMagnitude;
 
-    @CommandLine.Option(names = {"maxSeriesLength"}, arity = "0..1", description = "maximum number of recent data points to analyze",
+    @Option(name = "maxSeriesLength", acceptNameWithoutDashes = true, description = "maximum number of recent data points to analyze",
             defaultValue = "" + EDivisive.DEFAULT_MAX_SERIES_LENGTH)
     int maxSeriesLength;
 
-    @CommandLine.Option(names = {"fingerprint"}, description = "node names to use as fingerprint")
+    @OptionList(name = "fingerprint", description = "node names to use as fingerprint")
     List<String> fingerprints;
 
-    @CommandLine.Option(names = {"--fingerprint-filter", "-ff"}, arity = "0..1", description = "jq filter expression for fingerprints")
+    @Option(name = "fingerprint-filter", acceptNameWithoutDashes = true, description = "jq filter expression for fingerprints")
     String fingerprintFilter;
 
-    @CommandLine.Option(names = {"by"}, description = "grouping node", arity = "0..1")
-    public String groupBy;
+    @Option(name = "by", acceptNameWithoutDashes = true, description = "grouping node")
+    String groupBy;
 
-    @CommandLine.Parameters(index = "0", arity = "1", description = "node name")
+    @Argument(description = "node name")
     String name;
 
     @Inject
@@ -63,48 +67,48 @@ public class AddEDivisive implements Callable<Integer> {
     NodeServiceInterface nodeService;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
         if (name == null || name.isEmpty()) {
-            System.err.println("missing node name");
-            return 1;
+            invocation.println("missing node name");
+            return CommandResult.FAILURE;
         }
         if (groupName == null || groupName.isEmpty()) {
-            System.err.println("missing group name");
-            return 1;
+            invocation.println("missing group name");
+            return CommandResult.FAILURE;
         }
         NodeGroup foundGroup = nodeGroupService.byName(groupName);
         if (foundGroup == null) {
-            System.err.println("node group with name " + groupName + " does not exist");
-            return 1;
+            invocation.println("node group with name " + groupName + " does not exist");
+            return CommandResult.FAILURE;
         }
 
         List<Node> foundNodes = nodeService.findNodeByFqdn(name, foundGroup.id());
         if (!foundNodes.isEmpty()) {
-            System.err.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+            invocation.println(groupName + " already has " + name + " node(s)\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
         }
 
         if (rangeName == null || rangeName.isEmpty()) {
-            System.err.println("Missing range");
-            return 1;
+            invocation.println("Missing range");
+            return CommandResult.FAILURE;
         }
         foundNodes = nodeService.findNodeByFqdn(rangeName, foundGroup.id());
         if (foundNodes.isEmpty()) {
-            System.err.println("could not find matching range node by name " + rangeName);
-            return 1;
+            invocation.println("could not find matching range node by name " + rangeName);
+            return CommandResult.FAILURE;
         } else if (foundNodes.size() > 1) {
-            System.err.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-            return 1;
+            invocation.println("found more than one matching range node by name " + rangeName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+            return CommandResult.FAILURE;
         }
         Node rangeNode = foundNodes.getFirst();
 
-        // domainName is required=true, so always present
         foundNodes = nodeService.findNodeByFqdn(domainName, foundGroup.id());
         if (foundNodes.isEmpty()) {
-            System.err.println("could not find matching domain node by name " + domainName);
-            return 1;
+            invocation.println("could not find matching domain node by name " + domainName);
+            return CommandResult.FAILURE;
         } else if (foundNodes.size() > 1) {
-            System.err.println("found more than one matching domain node by name " + domainName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-            return 1;
+            invocation.println("found more than one matching domain node by name " + domainName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+            return CommandResult.FAILURE;
         }
         Node domainNode = foundNodes.getFirst();
 
@@ -112,11 +116,11 @@ public class AddEDivisive implements Callable<Integer> {
         if (groupBy != null && !groupBy.isEmpty()) {
             foundNodes = nodeService.findNodeByFqdn(groupBy, foundGroup.id());
             if (foundNodes.isEmpty()) {
-                System.err.println("could not find matching group by node with name " + groupBy);
-                return 1;
+                invocation.println("could not find matching group by node with name " + groupBy);
+                return CommandResult.FAILURE;
             } else if (foundNodes.size() > 1) {
-                System.err.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-                return 1;
+                invocation.println("found more than one matching group by node for name " + groupBy + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+                return CommandResult.FAILURE;
             }
             groupByNode = foundNodes.getFirst();
         }
@@ -126,15 +130,14 @@ public class AddEDivisive implements Callable<Integer> {
 
         List<Long> fingerprintNodes = new ArrayList<>();
         if (fingerprints != null && !fingerprints.isEmpty()) {
-            List<String> fingerprintNames = fingerprints.stream().flatMap(fp -> Arrays.stream(fp.split(","))).map(String::trim).filter(v -> !v.isBlank()).toList();
-            for (String fingerprintName : fingerprintNames) {
+            for (String fingerprintName : fingerprints) {
                 foundNodes = nodeService.findNodeByFqdn(fingerprintName, foundGroup.id());
                 if (foundNodes.isEmpty()) {
-                    System.err.println("could not find matching fingerprint node by name " + fingerprintName);
-                    return 1;
+                    invocation.println("could not find matching fingerprint node by name " + fingerprintName);
+                    return CommandResult.FAILURE;
                 } else if (foundNodes.size() > 1) {
-                    System.err.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
-                    return 1;
+                    invocation.println("found more than one matching fingerprint node by name " + fingerprintName + "\n  " + foundNodes.stream().map(Node::fqdn).collect(Collectors.joining("\n  ")));
+                    return CommandResult.FAILURE;
                 }
                 fingerprintNodes.add(foundNodes.getFirst().id());
             }
@@ -145,6 +148,6 @@ public class AddEDivisive implements Callable<Integer> {
         nodeService.createConfigured(name, foundGroup.id(), NodeType.EDIVISIVE, sources,
                 new EDivisiveConfig(windowLen, maxPvalue, minMagnitude, maxSeriesLength, fingerprintFilter));
 
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

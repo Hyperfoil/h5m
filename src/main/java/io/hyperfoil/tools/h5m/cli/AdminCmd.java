@@ -1,14 +1,14 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import picocli.CommandLine;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
 
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(
+@CommandDefinition(
         name = "admin",
-        description = "admin operations",
-        mixinStandardHelpOptions = true,
-        subcommands = {
+        description = "Administration commands for managing users, teams, and API keys",
+        groupCommands = {
                 AdminCreateTeam.class,
                 AdminCreateUser.class,
                 AdminListTeams.class,
@@ -17,13 +17,12 @@ import java.util.concurrent.Callable;
                 AdminCreateApiKey.class,
                 AdminListApiKeys.class,
                 AdminRevokeApiKey.class,
-        }
+        },
+        generateHelp = true
 )
-public class AdminCmd implements Callable<Integer> {
+public class AdminCmd implements Command<H5mCommandInvocation> {
     @Override
-    public Integer call() throws Exception {
-        CommandLine cmd = new CommandLine(this);
-        cmd.usage(System.out);
-        return 0;
+    public CommandResult execute(H5mCommandInvocation invocation) {
+        return CommandResult.SUCCESS;
     }
 }

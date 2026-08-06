@@ -5,19 +5,24 @@ import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Arguments;
+import org.aesh.command.option.Option;
+
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name="jq", separator = " ", description = "add jq node", mixinStandardHelpOptions = true)
-public class AddJq implements Callable<Integer> {
+@CommandDefinition(name="jq", description = "Add a JQ transformation node that applies a jq filter expression to input data", generateHelp = true)
+public class AddJq implements Command<H5mCommandInvocation> {
 
-    @CommandLine.Option(names = {"to"},description = "target group / test" ) String groupName;
-    @CommandLine.Parameters(index="0",arity="0..1",description = "node name") String name;
-    @CommandLine.Parameters(index="1",arity="0..1",description = "jq filter") String jq;
+    @Option(name = "to", acceptNameWithoutDashes = true, description = "target group / test") String groupName;
+    @Arguments(description = "name and jq filter") List<String> args;
 
     @Inject
     NodeGroupServiceInterface nodeGroupService;
@@ -26,48 +31,56 @@ public class AddJq implements Callable<Integer> {
     NodeServiceInterface nodeService;
 
     @Override
-    public Integer call() throws Exception {
-        Scanner sc = new Scanner(System.in);
-        if(name == null && H5m.consoleAttached()){
-            System.out.printf("Enter name: ");
-            name = sc.nextLine();
-        }
-        NodeGroup foundGroup;
-        do{
-            if(groupName == null && H5m.consoleAttached()){
-                System.out.printf("Enter target group / folder name: ");
-                groupName = sc.nextLine();
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        try {
+            if (groupName == null && invocation.hasFolderContext()) groupName = invocation.getFolderName();
+            String name = (args != null && args.size() >= 1) ? args.get(0) : null;
+            String jq = (args != null && args.size() >= 2) ? args.get(1) : null;
+            Scanner sc = new Scanner(System.in);
+            if(name == null){
+                invocation.print("Enter name: ");
+                name = sc.nextLine();
             }
-            foundGroup =  nodeGroupService.byName(groupName);
-            if(foundGroup == null){
-                System.err.println("could not find "+groupName);
-                groupName = null;
-            }
-        }while(groupName == null && H5m.consoleAttached());
+            NodeGroup foundGroup;
+            do{
+                if(groupName == null){
+                    invocation.print("Enter target group / folder name: ");
+                    groupName = sc.nextLine();
+                }
+                foundGroup =  nodeGroupService.byName(groupName);
+                if(foundGroup == null){
+                    invocation.println("could not find "+groupName);
+                    groupName = null;
+                }
+            }while(groupName == null);
 
-        if("-".equals(jq)){
-            StringBuilder sb = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                    sb.append(System.lineSeparator());
+            if("-".equals(jq)){
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                        sb.append(System.lineSeparator());
+                    }
+                }
+                if(sb.length()>0){
+                    jq = sb.toString().trim();
+                }else{
+                    invocation.println("unable to read function from input");
+                    return CommandResult.FAILURE;
                 }
             }
-            if(sb.length()>0){
-                jq = sb.toString().trim();
-            }else{
-                System.err.println("unable to read function from input");
-                return 1;
+            if(jq == null){
+                invocation.print("Enter jq filter: ");
+                jq = sc.nextLine();
             }
-        }
-        if(jq == null && H5m.consoleAttached()){
-            System.out.printf("Enter jq filter: ");
-            jq = sc.nextLine();
-        }
 
-        nodeService.create(name, foundGroup.id(), NodeType.JQ, jq);
+            nodeService.create(name, foundGroup.id(), NodeType.JQ, jq);
 
-        return 0;
+            return CommandResult.SUCCESS;
+        } catch (Exception e) {
+            invocation.println("Error: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
     }
 }
