@@ -23,6 +23,12 @@ public class Work implements Runnable, Comparable<Work>{
 
     private Set<NodeEntity> activeNodes;
 
+    // Cached set of all transitive ancestor node IDs for activeNodes.
+    // Populated by precomputeAncestors() while the Hibernate session is open,
+    // then used by dependsOn() for O(1) lookups during WorkQueue sorting
+    // (which runs in afterCompletion, outside the session).
+    private Set<Long> ancestorNodeIds;
+
     /*
      * If the work should be performed after work for any dependent Nodes regardless of Values
      */
@@ -69,6 +75,29 @@ public class Work implements Runnable, Comparable<Work>{
     }
     public List<Long> getSourceValueIds(){return sourceValueIds;}
 
+    /**
+     * Pre-computes the transitive ancestor node IDs for all active nodes.
+     * Must be called while the Hibernate session is open (sources are lazy).
+     * After this, dependsOn() uses O(1) Set.contains() instead of traversing
+     * the NodeEntity.sources graph.
+     */
+    public void precomputeAncestors() {
+        if (activeNodes == null || activeNodes.isEmpty()) return;
+        ancestorNodeIds = new HashSet<>();
+        for (NodeEntity activeNode : activeNodes) {
+            if (activeNode.sources == null) continue;
+            Queue<NodeEntity> queue = new ArrayDeque<>(activeNode.sources);
+            while (!queue.isEmpty()) {
+                NodeEntity node = queue.poll();
+                if (node.id != null && ancestorNodeIds.add(node.id)) {
+                    if (node.sources != null) {
+                        queue.addAll(node.sources);
+                    }
+                }
+            }
+        }
+    }
+
     //work A depends on work B if A.activeNode depends on B.activeNode
     public boolean dependsOn(Work work){
 
@@ -78,17 +107,26 @@ public class Work implements Runnable, Comparable<Work>{
         if (this.activeNodes == null || this.activeNodes.isEmpty()) {
             return false;
         }
-        // Check node-level dependency: does any of this Work's active nodes
-        // depend on any of the other Work's active nodes?
+        // Fast path: use pre-computed ancestor IDs if available
         boolean hasNodeDependency = false;
-        for (NodeEntity thisNode : this.activeNodes) {
+        if (ancestorNodeIds != null) {
             for (NodeEntity otherNode : work.activeNodes) {
-                if (thisNode.dependsOn(otherNode)) {
+                if (otherNode.id != null && ancestorNodeIds.contains(otherNode.id)) {
                     hasNodeDependency = true;
                     break;
                 }
             }
-            if (hasNodeDependency) break;
+        } else {
+            // Fallback: traverse the source graph (requires active Hibernate session)
+            for (NodeEntity thisNode : this.activeNodes) {
+                for (NodeEntity otherNode : work.activeNodes) {
+                    if (thisNode.dependsOn(otherNode)) {
+                        hasNodeDependency = true;
+                        break;
+                    }
+                }
+                if (hasNodeDependency) break;
+            }
         }
         if (!hasNodeDependency) {
             return false;
@@ -192,6 +230,7 @@ public class Work implements Runnable, Comparable<Work>{
         sourceValueIds = null;
         sourceNodes = null;
         activeNodes = null;
+        ancestorNodeIds = null;
     }
 
     @Override

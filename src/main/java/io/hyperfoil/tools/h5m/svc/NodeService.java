@@ -1265,7 +1265,7 @@ public class NodeService implements NodeServiceInterface {
                             newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
                             rtrn.add(newValue);
                         }else{
-                            System.err.println("null data from value "+resolvedValue+" from node="+node.name);
+                            Log.debugf("null data from value %s from node=%s", resolvedValue, node.name);
                         }
                     }catch (PolyglotException pe){
                         System.err.println("exception jsNode "+node.name+" sourceValues="+sourceValues+"\n"+pe.getMessage());

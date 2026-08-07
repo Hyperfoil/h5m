@@ -14,7 +14,9 @@ import io.hyperfoil.tools.jjq.jakarta.JqValueJavaType;
 import io.hyperfoil.tools.jjq.jakarta.JqValueJdbcType;
 import org.hibernate.annotations.JavaType;
 import org.hibernate.annotations.JdbcType;
+import org.hibernate.annotations.Mutability;
 import org.hibernate.annotations.NativeGenerator;
+import org.hibernate.type.descriptor.java.Immutability;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -38,6 +40,7 @@ public class ValueEntity extends PanacheEntityBase {
     @JdbcType(JqValueJdbcType.class)
     @JavaType(JqValueJavaType.class)
     @Basic(fetch = FetchType.LAZY)
+    @Mutability(Immutability.class)
     public JqValue data;
 
     //not yet used but the idea is to sort multiple values based on idx to preserve node output order for next nodes input
@@ -73,6 +76,7 @@ public class ValueEntity extends PanacheEntityBase {
             indexes = @Index(name = "idx_value_edge_parent", columnList = "parent_id")
     )
     @OrderColumn(name = "idx")
+    @Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
     public List<ValueEntity> sources;
 
     public ValueEntity(){
