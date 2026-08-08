@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
-import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
+import io.hyperfoil.tools.h5m.api.node.StdDevAnomalyConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.persistence.DiscriminatorValue;
@@ -48,6 +48,17 @@ public class StdDevAnomaly extends NodeEntity implements DetectionNode {
     public StdDevAnomaly(String name, String operation) {
         super(name, operation);
         config = new Json();
+    }
+
+    public StdDevAnomaly(String name, StdDevAnomalyConfig sd) {
+        super(name, "");
+        config = new Json();
+        config.set(WINDOW_SIZE, sd.windowSize());
+        config.set(DEVIATIONS, sd.deviations());
+        if (sd.direction() != null) config.set(DIRECTION, sd.direction().name());
+        config.set(MIN_DATA_POINTS, sd.minDataPoints());
+        if (sd.fingerprintFilter() != null) config.set(FINGERPRINT_FILTER, sd.fingerprintFilter());
+        operation = config.toString();
     }
 
     @Override

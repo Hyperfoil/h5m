@@ -4,6 +4,7 @@ import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.RecalculationStatus;
+import io.hyperfoil.tools.h5m.api.node.NodeConfiguration;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -22,6 +23,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
@@ -64,7 +66,7 @@ public class NodeResource {
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,
             @QueryParam("sources") @NotNull @NotEmpty List<Long> sources,
-            Object configuration) {
+            @RequestBody(required = false) NodeConfiguration configuration) {
         try {
             return nodeService.createConfigured(name, groupId, type, sources, configuration);
         } catch (IllegalArgumentException e) {

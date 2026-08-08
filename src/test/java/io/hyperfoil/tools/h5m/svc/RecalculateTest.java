@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.node.FixedThresholdConfig;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -171,7 +172,7 @@ public class RecalculateTest extends FreshDb {
         Long ftNodeId = nodeService.createConfigured("ft", groupId,
                 io.hyperfoil.tools.h5m.api.NodeType.FIXED_THRESHOLD,
                 List.of(fpNodeId, folder.group.root.id, rangeId),
-                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null)).id();
+                new FixedThresholdConfig(null, 50.0, false, true, null)).id();
 
         // Upload a value that exceeds the threshold
         eventObserver.clear();
@@ -303,7 +304,7 @@ public class RecalculateTest extends FreshDb {
         Long ftNodeId = nodeService.createConfigured("ft", groupId,
                 io.hyperfoil.tools.h5m.api.NodeType.FIXED_THRESHOLD,
                 List.of(fpNodeId, folder.group.root.id, rangeId),
-                new io.hyperfoil.tools.h5m.api.FixedThresholdConfig(null, 50.0, false, true, null)).id();
+                new FixedThresholdConfig(null, 50.0, false, true, null)).id();
 
         // Upload 3 values that all exceed the threshold
         for (int i = 0; i < 3; i++) {

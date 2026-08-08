@@ -3,7 +3,7 @@ package io.hyperfoil.tools.h5m.svc;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
+import io.hyperfoil.tools.h5m.api.node.StdDevAnomalyConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;

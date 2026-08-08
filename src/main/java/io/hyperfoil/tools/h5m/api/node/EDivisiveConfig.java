@@ -1,4 +1,6 @@
-package io.hyperfoil.tools.h5m.api;
+package io.hyperfoil.tools.h5m.api.node;
+
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * Configuration for the E-Divisive (Hunter) change detection algorithm.
@@ -26,4 +28,5 @@ package io.hyperfoil.tools.h5m.api;
  *                        Bounds computation time for long-running tests.
  * @param fingerprintFilter optional jq filter to select specific fingerprint values
  */
-public record EDivisiveConfig(int windowLen, double maxPvalue, double minMagnitude, int maxSeriesLength, String fingerprintFilter) {}
+@Schema(description = "Configuration for the E-Divisive (Hunter) change detection algorithm")
+public record EDivisiveConfig(int windowLen, double maxPvalue, double minMagnitude, int maxSeriesLength, String fingerprintFilter) implements NodeConfiguration {}

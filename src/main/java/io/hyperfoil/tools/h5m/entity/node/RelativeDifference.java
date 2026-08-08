@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.jjq.value.*;
 import jakarta.persistence.DiscriminatorValue;
@@ -35,6 +36,18 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     public RelativeDifference(String name, String operation) {
         super(name,operation);
         config = JqObject.EMPTY;
+    }
+
+    public RelativeDifference(String name, RelativeDifferenceConfig rd) {
+        super(name, "");
+        JqObject.Builder b = JqObject.builder();
+        if (rd.filter() != null) b.put("filter", rd.filter());
+        b.put("threshold", rd.threshold());
+        b.put("window", (long) rd.window());
+        b.put("minPrevious", (long) rd.minPrevious());
+        if (rd.fingerprintFilter() != null) b.put("fingerprintFilter", rd.fingerprintFilter());
+        config = b.build();
+        operation = config.toJsonString();
     }
 
     @Override
