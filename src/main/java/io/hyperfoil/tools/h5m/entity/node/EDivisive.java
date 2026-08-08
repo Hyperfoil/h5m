@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.node.EDivisiveConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.yaup.json.Json;
 import jakarta.persistence.DiscriminatorValue;
@@ -39,6 +40,17 @@ public class EDivisive extends NodeEntity implements DetectionNode {
         } else {
             config = new Json();
         }
+    }
+
+    public EDivisive(String name, EDivisiveConfig ed) {
+        super(name, "");
+        config = new Json();
+        config.set(WINDOW_LEN, ed.windowLen());
+        config.set(MAX_PVALUE, ed.maxPvalue());
+        config.set(MIN_MAGNITUDE, ed.minMagnitude());
+        config.set(MAX_SERIES_LENGTH, ed.maxSeriesLength());
+        if (ed.fingerprintFilter() != null) config.set(FINGERPRINT_FILTER, ed.fingerprintFilter());
+        operation = config.toString();
     }
 
     @Override

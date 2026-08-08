@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.api.EDivisiveConfig;
+import io.hyperfoil.tools.h5m.api.node.EDivisiveConfig;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeGroup;
 import io.hyperfoil.tools.h5m.api.NodeType;
