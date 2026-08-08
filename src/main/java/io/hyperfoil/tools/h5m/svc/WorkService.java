@@ -38,6 +38,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -212,13 +213,10 @@ public class WorkService implements WorkServiceInterface {
         if (!newWorks.isEmpty()) {
             List<Work> toQueue = List.copyOf(newWorks);
             for (Work work : toQueue) {
-                // Pre-compute ancestor caches while session is open — needed by
-                // WorkQueue.sort() → dependsOn() which runs in afterCompletion
-                // outside the session. Without this, dependsOn() would try to
-                // lazily traverse NodeEntity.sources and fail.
-                if (work.getActiveNodes() != null) {
-                    work.dependsOn(work);
-                }
+                // Pre-compute ancestor node IDs while the Hibernate session is
+                // open. WorkQueue.sort() → dependsOn() runs in afterCompletion
+                // (outside the session) and needs these for O(1) dependency checks.
+                work.precomputeAncestors();
                 // Increment trackers for each work item (before afterCompletion decrement)
                 incrementTrackers(work, 1);
             }
@@ -308,16 +306,21 @@ public class WorkService implements WorkServiceInterface {
         WorkQueue workQueue = workExecutor.getWorkQueue();
         boolean decrementDeferred = false;
         try {
-            // Load source values by ID from the database (or 2LC cache).
-            // Work only carries value IDs — full entities are loaded here in
-            // the transaction that needs them.
-            List<ValueEntity> sourceValues = new ArrayList<>();
-            for (Long valueId : w.getSourceValueIds()) {
-                ValueEntity managed = em.find(ValueEntity.class, valueId);
-                if (managed != null) {
-                    Hibernate.initialize(managed.data);
-                    sourceValues.add(managed);
-                }
+            // Batch-load source values with data eagerly fetched in a single
+            // query. em.find() + Hibernate.initialize(data) would trigger N
+            // separate lazy-load SELECTs because the 2LC does not cache lazy
+            // BYTEA properties. This JPQL query loads all values with their
+            // data column in one round-trip.
+            List<ValueEntity> sourceValues;
+            List<Long> sourceIds = w.getSourceValueIds();
+            if (sourceIds == null || sourceIds.isEmpty()) {
+                sourceValues = List.of();
+            } else {
+                sourceValues = em.createQuery(
+                        "SELECT v FROM value v LEFT JOIN FETCH v.sources WHERE v.id IN :ids",
+                        ValueEntity.class)
+                    .setParameter("ids", sourceIds)
+                    .getResultList();
             }
 
             // Reload active nodes in this transaction's persistence context —
