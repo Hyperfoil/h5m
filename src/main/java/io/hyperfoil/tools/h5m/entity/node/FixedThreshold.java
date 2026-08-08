@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.node.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqValue;
@@ -48,6 +49,18 @@ public class FixedThreshold extends NodeEntity implements DetectionNode {
     public FixedThreshold(String name, String operation) {
         super(name, operation);
         config = JqObject.EMPTY;
+    }
+
+    public FixedThreshold(String name, FixedThresholdConfig ft) {
+        super(name, "");
+        JqObject.Builder b = JqObject.builder();
+        if (ft.min() != null) b.put("min", ft.min());
+        if (ft.max() != null) b.put("max", ft.max());
+        if (ft.minInclusive() != null) b.put("minInclusive", ft.minInclusive());
+        if (ft.maxInclusive() != null) b.put("maxInclusive", ft.maxInclusive());
+        if (ft.fingerprintFilter() != null) b.put("fingerprintFilter", ft.fingerprintFilter());
+        config = b.build();
+        operation = config.toJsonString();
     }
 
     @PostLoad

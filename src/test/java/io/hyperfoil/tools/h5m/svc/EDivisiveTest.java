@@ -3,7 +3,7 @@ package io.hyperfoil.tools.h5m.svc;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.api.EDivisiveConfig;
+import io.hyperfoil.tools.h5m.api.node.EDivisiveConfig;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;

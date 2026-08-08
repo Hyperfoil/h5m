@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
+import io.hyperfoil.tools.h5m.api.node.StdDevAnomalyConfig;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
 
 /**

@@ -3,12 +3,13 @@ package io.hyperfoil.tools.h5m.svc;
 import io.hyperfoil.tools.jjq.jsonata.JsonataCompiler;
 import io.hyperfoil.tools.jjq.jsonata.JsonataException;
 import io.hyperfoil.tools.jjq.value.*;
-import io.hyperfoil.tools.h5m.api.EDivisiveConfig;
-import io.hyperfoil.tools.h5m.api.FixedThresholdConfig;
+import io.hyperfoil.tools.h5m.api.node.EDivisiveConfig;
+import io.hyperfoil.tools.h5m.api.node.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
-import io.hyperfoil.tools.h5m.api.RelativeDifferenceConfig;
-import io.hyperfoil.tools.h5m.api.StdDevAnomalyConfig;
+import io.hyperfoil.tools.h5m.api.node.NodeConfiguration;
+import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig;
+import io.hyperfoil.tools.h5m.api.node.StdDevAnomalyConfig;
 import io.hyperfoil.tools.jhunter.Analysis;
 import io.hyperfoil.tools.jhunter.AnalysisOptions;
 import io.hyperfoil.tools.jhunter.ChangePoint;
@@ -116,13 +117,13 @@ public class NodeService implements NodeServiceInterface {
 
     @Override
     @Transactional
-    public Node createConfigured(String name, Long groupId, NodeType type, List<Long> sources, Object configuration) {
+    public Node createConfigured(String name, Long groupId, NodeType type, List<Long> sources, NodeConfiguration configuration) {
         NodeEntity node = switch (type) {
             case FINGERPRINT -> new FingerprintNode(name, "");
-            case FIXED_THRESHOLD -> new FixedThreshold(name, toFixedThresholdConfig(configuration).toJsonString());
-            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, toRelativeDifferenceConfig(configuration).toJsonString());
-            case STDDEV_ANOMALY -> new StdDevAnomaly(name, toStdDevAnomalyConfig(configuration).toJsonString());
-            case EDIVISIVE -> new EDivisive(name, toEDivisiveConfig(configuration).toJsonString());
+            case FIXED_THRESHOLD -> new FixedThreshold(name, (FixedThresholdConfig) configuration);
+            case RELATIVE_DIFFERENCE -> new RelativeDifference(name, (RelativeDifferenceConfig) configuration);
+            case STDDEV_ANOMALY -> new StdDevAnomaly(name, (StdDevAnomalyConfig) configuration);
+            case EDIVISIVE -> new EDivisive(name, (EDivisiveConfig) configuration);
             default -> throw new IllegalArgumentException("Invalid node type " + type.display());
         };
         node.group = NodeGroupEntity.findById(groupId);
@@ -130,74 +131,6 @@ public class NodeService implements NodeServiceInterface {
 
         em.persist(node);
         return apiMapper.toNode(node, new CycleAvoidingContext());
-    }
-
-    /** Convert configuration (Map from REST or record from CLI) to JqObject for FixedThreshold. */
-    private static JqObject toFixedThresholdConfig(Object config) {
-        if (config instanceof FixedThresholdConfig ft) {
-            JqObject.Builder b = JqObject.builder();
-            if (ft.min() != null) b.put("min", ft.min());
-            if (ft.max() != null) b.put("max", ft.max());
-            if (ft.minInclusive() != null) b.put("minInclusive", ft.minInclusive());
-            if (ft.maxInclusive() != null) b.put("maxInclusive", ft.maxInclusive());
-            if (ft.fingerprintFilter() != null) b.put("fingerprintFilter", ft.fingerprintFilter());
-            return b.build();
-        } else if (config instanceof Map<?, ?>) {
-            JqValue v = JqValues.fromJavaObject(config);
-            if (v instanceof JqObject obj) return obj;
-        }
-        throw new IllegalArgumentException("Invalid FixedThreshold configuration: " + config);
-    }
-
-    /** Convert configuration (Map from REST or record from CLI) to JqObject for RelativeDifference. */
-    private static JqObject toRelativeDifferenceConfig(Object config) {
-        if (config instanceof RelativeDifferenceConfig rd) {
-            JqObject.Builder b = JqObject.builder();
-            if (rd.filter() != null) b.put("filter", rd.filter());
-            b.put("threshold", rd.threshold());
-            b.put("window", (long) rd.window());
-            b.put("minPrevious", (long) rd.minPrevious());
-            if (rd.fingerprintFilter() != null) b.put("fingerprintFilter", rd.fingerprintFilter());
-            return b.build();
-        } else if (config instanceof Map<?, ?>) {
-            JqValue v = JqValues.fromJavaObject(config);
-            if (v instanceof JqObject obj) return obj;
-        }
-        throw new IllegalArgumentException("Invalid RelativeDifference configuration: " + config);
-    }
-
-    /** Convert configuration to JqObject for StdDevAnomaly. */
-    private static JqObject toStdDevAnomalyConfig(Object config) {
-        if (config instanceof StdDevAnomalyConfig sd) {
-            JqObject.Builder b = JqObject.builder();
-            b.put("windowSize", (long) sd.windowSize());
-            b.put("deviations", sd.deviations());
-            if (sd.direction() != null) b.put("direction", sd.direction().name());
-            b.put("minDataPoints", (long) sd.minDataPoints());
-            if (sd.fingerprintFilter() != null) b.put("fingerprintFilter", sd.fingerprintFilter());
-            return b.build();
-        } else if (config instanceof Map<?, ?>) {
-            JqValue v = JqValues.fromJavaObject(config);
-            if (v instanceof JqObject obj) return obj;
-        }
-        throw new IllegalArgumentException("Invalid StdDevAnomaly configuration: " + config);
-    }
-
-    /** Convert configuration (Map from REST or record from CLI) to JqObject for EDivisive. */
-    private static JqObject toEDivisiveConfig(Object config) {
-        if (config instanceof EDivisiveConfig ed) {
-            JqObject.Builder b = JqObject.builder();
-            b.put("windowLen", (long) ed.windowLen());
-            b.put("maxPvalue", ed.maxPvalue());
-            b.put("minMagnitude", ed.minMagnitude());
-            b.put("maxSeriesLength", (long) ed.maxSeriesLength());
-            if (ed.fingerprintFilter() != null) b.put("fingerprintFilter", ed.fingerprintFilter());
-            return b.build();
-        } else if (config instanceof Map<?, ?>) {
-            JqValue v = JqValues.fromJavaObject(config);
-            if (v instanceof JqObject obj) return obj;
-        }
-        throw new IllegalArgumentException("Invalid EDivisive configuration: " + config);
     }
 
     @Transactional
