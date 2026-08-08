@@ -313,7 +313,15 @@ public class LoadLegacyTests implements Callable<Integer> {
             // whether the function uses named property access (value["key"]) or positional.
             List<NodeEntity> sources = labelNodesByName.values().stream()
                     .flatMap(List::stream).collect(Collectors.toList());
-            rtrn = new JsNode(label.name, label.function, sources);
+            // Try converting simple JS patterns to jq to avoid GraalVM Truffle
+            // interpreter overhead (issue #247). Only single-source labels with
+            // known patterns are converted.
+            String jqEquivalent = sources.size() == 1 ? JsToJqPatterns.tryConvert(label.function) : null;
+            if (jqEquivalent != null) {
+                rtrn = new JqNode(label.name, jqEquivalent, sources);
+            } else {
+                rtrn = new JsNode(label.name, label.function, sources);
+            }
             if(rtrn!=null){
                 nodeTracking.addNode(rtrn);
                 group.addNode(rtrn);
@@ -496,7 +504,11 @@ public class LoadLegacyTests implements Callable<Integer> {
                         //missing
                     }
                 }
-                NodeEntity variableNode = new JsNode(variable.name(),variable.calculation(),sources);
+                // Try converting simple JS variable calculations to jq (issue #247)
+                String jqCalc = sources.size() == 1 ? JsToJqPatterns.tryConvert(variable.calculation()) : null;
+                NodeEntity variableNode = jqCalc != null
+                        ? new JqNode(variable.name(), jqCalc, sources)
+                        : new JsNode(variable.name(), variable.calculation(), sources);
                 folder.group.addNode(variableNode);
                 nodeTracking.addNode(variableNode);
                 variableIdToNode.put(variable.id(),variableNode);
