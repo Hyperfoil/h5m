@@ -861,6 +861,23 @@ public class ValueService implements ValueServiceInterface {
 
     @Override
     @Transactional
+    public long getNodeValueCount(Long nodeId) {
+        return ValueEntity.count("node.id", nodeId);
+    }
+
+    @Override
+    @Transactional
+    public List<Value> getNodeValuesPage(Long nodeId, int limit) {
+        CycleAvoidingContext cycleContext = new CycleAvoidingContext();
+        // Fetch the most recent values (highest ids), then reverse for oldest-to-newest display
+        List<ValueEntity> entities = ValueEntity.find("node.id = ?1 ORDER BY id DESC", nodeId)
+                .page(0, limit)
+                .list();
+        return entities.reversed().stream().map(entity -> apiMapper.toValue(entity, cycleContext)).toList();
+    }
+
+    @Override
+    @Transactional
     public List<JqValue> getLabelValues(Long folderId, Long groupByNodeId, List<Long> nodeIds, Long sortByNodeId) {
         FolderEntity folder = FolderEntity.findById(folderId);
         if (folder == null) {

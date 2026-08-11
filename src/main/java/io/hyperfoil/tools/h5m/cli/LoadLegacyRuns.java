@@ -5,11 +5,16 @@ import io.hyperfoil.tools.jjq.value.JqValues;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.api.Folder;
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Option;
+import org.aesh.readline.prompt.Prompt;
+
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -17,16 +22,13 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name="load-legacy-runs")
-public class LoadLegacyRuns implements Callable<Integer> {
+@CommandDefinition(name = "load-runs", description = "Import run data from a legacy Horreum PostgreSQL database and process through the node graph", generateHelp = true)
+public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
 
     @Inject
     FolderService folderService;
@@ -34,45 +36,67 @@ public class LoadLegacyRuns implements Callable<Integer> {
     @Inject
     WorkService workService;
 
-    @CommandLine.Option(names = {"username"}, description = "legacy db username", defaultValue = "quarkus") String username;
-    @CommandLine.Option(names = {"password"}, description = "legacy db password", defaultValue = "quarkus") String password;
-    @CommandLine.Option(names = {"url"}, description = "legacy connection url",defaultValue = "jdbc:postgresql://0.0.0.0:") String url;
-    @CommandLine.Option(names = {"testId"}, description = "specify which test(s) to load. Comma-separated for multiple. Loads all if unspecified", split = ",") List<Long> testId;
-    @CommandLine.Option(names = {"limit"}, description = "max runs to load", defaultValue = "-1") int limit;
-    @CommandLine.Option(names = {"offset"}, description = "how many runs to skip ", defaultValue = "-1") int offset;
-    @CommandLine.Option(names = {"batch"}, description = "max runs to batch at once", defaultValue = "-1") int batch;
-    @CommandLine.Option(names = {"pause"}, description = "pause for user input after every batch", defaultValue = "false") boolean pause;
+    @Option(name = "username", acceptNameWithoutDashes = true, description = "legacy db username", defaultValue = "quarkus")
+    String username;
+
+    @Option(name = "password", acceptNameWithoutDashes = true, description = "legacy db password", defaultValue = "quarkus")
+    String password;
+
+    @Option(name = "url", acceptNameWithoutDashes = true, description = "legacy connection url", defaultValue = "jdbc:postgresql://0.0.0.0:")
+    String url;
+
+    @Option(name = "testId", acceptNameWithoutDashes = true, description = "specify which test to load. Loads all if unspecified")
+    Long testId;
+
+    @Option(name = "limit", acceptNameWithoutDashes = true, description = "max runs to load", defaultValue = "-1")
+    int limit;
+
+    @Option(name = "offset", acceptNameWithoutDashes = true, description = "how many runs to skip", defaultValue = "-1")
+    int offset;
+
+    @Option(name = "batch", acceptNameWithoutDashes = true, description = "max runs to batch at once", defaultValue = "-1")
+    int batch;
+
+    @Option(name = "pause", acceptNameWithoutDashes = true, description = "pause for user input after every batch", hasValue = false, defaultValue = "false")
+    boolean pause;
 
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        try {
+            return doExecute(invocation);
+        } catch (Exception e) {
+            invocation.println("Error: " + e.getMessage());
+            return CommandResult.FAILURE;
+        }
+    }
+
+    private CommandResult doExecute(H5mCommandInvocation invocation) throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put(AgroalPropertiesReader.MAX_SIZE, "1");
         props.put(AgroalPropertiesReader.MIN_SIZE, "1");
         props.put(AgroalPropertiesReader.INITIAL_SIZE, "1");
         props.put(AgroalPropertiesReader.MAX_LIFETIME_S, "57");
         props.put(AgroalPropertiesReader.ACQUISITION_TIMEOUT_S, "54");
-        props.put(AgroalPropertiesReader.PRINCIPAL,username); //username
-        props.put(AgroalPropertiesReader.CREDENTIAL,password);//password
-        props.put(AgroalPropertiesReader.PROVIDER_CLASS_NAME , "org.postgresql.Driver");
-        props.put(AgroalPropertiesReader.JDBC_URL, url );
-        AgroalDataSource ds  = AgroalDataSource.from(new AgroalPropertiesReader()
+        props.put(AgroalPropertiesReader.PRINCIPAL, username);
+        props.put(AgroalPropertiesReader.CREDENTIAL, password);
+        props.put(AgroalPropertiesReader.PROVIDER_CLASS_NAME, "org.postgresql.Driver");
+        props.put(AgroalPropertiesReader.JDBC_URL, url);
+        AgroalDataSource ds = AgroalDataSource.from(new AgroalPropertiesReader()
                 .readProperties(props)
                 .get());
 
-        Map<Long,String> tests = new LinkedHashMap<>();
-        try(Connection connection = ds.getConnection()){
-            if(testId!=null && !testId.isEmpty()){
-                for (Long id : testId) {
-                    try(PreparedStatement statement = connection.prepareStatement("select name from test where id = ?")){
-                        statement.setLong(1, id);
-                        try (ResultSet rs = statement.executeQuery()){
-                            while(rs.next()){
-                                tests.put(id, rs.getString("name"));
-                            }
+        Map<Long, String> tests = new HashMap<>();
+        try (Connection connection = ds.getConnection()) {
+            if (testId != null && testId > -1) {
+                try (PreparedStatement statement = connection.prepareStatement("select name from test where id = ?")) {
+                    statement.setLong(1, testId);
+                    try (ResultSet rs = statement.executeQuery()) {
+                        while (rs.next()) {
+                            tests.put(testId, rs.getString("name"));
                         }
                     }
                 }
-            }else {
+            } else {
                 try (Statement statement = connection.createStatement()) {
                     try (ResultSet rs = statement.executeQuery("select id,name from test")) {
                         while (rs.next()) {
@@ -81,98 +105,85 @@ public class LoadLegacyRuns implements Callable<Integer> {
                     }
                 }
             }
-            System.out.println("loaded "+tests.size()+" legacy tests");
-            for(Long testId : tests.keySet()){
+            invocation.println("loaded " + tests.size() + " legacy tests");
+            for (Long testId : tests.keySet()) {
                 String name = tests.get(testId);
                 Folder folder = folderService.find(name);
-                if(folder == null){
-                    System.out.println("Failed to find Folder for test "+name+" id="+testId);
+                if (folder == null) {
+                    invocation.println("Failed to find Folder for test " + name + " id=" + testId);
                     continue;
                 }
-                // Phase 1: Fetch run IDs (lightweight, no large data transfer)
-                String idQuery = "select id from run where testid = ? and trashed = false order by id desc";
-                if (limit > 0) idQuery += " limit ?";
-                if (offset > 0) idQuery += " offset ?";
-                List<Long> runIds = new ArrayList<>();
-                try (PreparedStatement ps = connection.prepareStatement(idQuery)) {
+                try (PreparedStatement ps = connection.prepareStatement("select count(id) from run where testid = ? and trashed = false")) {
                     ps.setLong(1, testId);
-                    int paramIdx = 2;
-                    if (limit > 0) ps.setInt(paramIdx++, limit);
-                    if (offset > 0) ps.setInt(paramIdx, offset);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            runIds.add(rs.getLong(1));
+                            invocation.println("loading " + rs.getLong(1) + " uploads to " + name);
                         }
                     }
                 }
-                System.out.println("loading " + runIds.size() + " uploads to " + name);
-
-                // Phase 2: Process in batches, fetching data per batch
-                int batchSize = batch > 0 ? batch : runIds.size();
-                int count = 0;
-                Scanner scanner = new Scanner(System.in);
-                for (int batchStart = 0; batchStart < runIds.size(); batchStart += batchSize) {
-                    if (Thread.interrupted()) throw new InterruptedException("Import interrupted");
-
-                    int batchEnd = Math.min(batchStart + batchSize, runIds.size());
-                    List<Long> batchIds = runIds.subList(batchStart, batchEnd);
-
-                    // Fetch data for this batch only (short-lived query, no long cursor)
-                    String placeholders = String.join(",", batchIds.stream().map(id -> "?").toList());
-                    List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
-                    try (PreparedStatement ps = connection.prepareStatement(
-                            "select id, data from run where id in (" + placeholders + ")")) {
-                        for (int i = 0; i < batchIds.size(); i++) {
-                            ps.setLong(i + 1, batchIds.get(i));
+                String runQuery = limit > 0
+                        ? "select id,data from run where testid = ? and trashed = false order by id desc limit ?"
+                        : "select id,data from run where testid = ? and trashed = false order by id desc";
+                if (offset > 0) {
+                    runQuery += " offset ?";
+                }
+                connection.setAutoCommit(false);
+                try (PreparedStatement ps = connection.prepareStatement(runQuery)) {
+                    ps.setFetchSize(5);
+                    ps.setLong(1, testId);
+                    if (limit > 0) ps.setInt(2, limit);
+                    if (offset > 0) {
+                        if (limit > 0) {
+                            ps.setInt(3, offset);
+                        } else {
+                            ps.setInt(2, offset);
                         }
-                        try (ResultSet rs = ps.executeQuery()) {
-                            while (rs.next()) {
-                                long id = rs.getLong(1);
-                                System.out.println(name + " " + id);
-                                // Parse directly from bytes — avoids UTF-8→char decoding,
-                                // StringBuilder doubling, and String copy that the previous
-                                // getCharacterStream() path required.
-                                byte[] bytes = rs.getBytes("data");
-                                JqValue data = JqValues.parse(bytes);
-                                batchFutures.add(folderService.upload(folder.id(), data).future);
-                                count++;
+                    }
+                    int count = 0;
+                    int batchCount = 0;
+                    List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            if (Thread.interrupted()) throw new InterruptedException("Import interrupted");
+                            Long id = rs.getLong(1);
+                            invocation.println(name + " " + id);
+                            // Parse directly from bytes — avoids UTF-8→char decoding,
+                            // StringBuilder doubling, and String copy that the previous
+                            // getCharacterStream() path required.
+                            byte[] bytes = rs.getBytes("data");
+                            JqValue data = JqValues.parse(bytes);
+                            batchFutures.add(folderService.upload(folder.id(), data).future);
+                            count++;
+                            batchCount++;
+                            if (batch > 0 && batchCount >= batch) {
+                                invocation.println("waiting for batch of " + batchCount + " to complete");
+                                CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
+                                        .orTimeout(10, TimeUnit.MINUTES)
+                                        .join();
+                                invocation.println("batch complete");
+                                batchFutures.clear();
+                                if (pause) {
+                                    invocation.getShell().readLine(new Prompt("Press Enter to continue..."));
+                                }
+                                batchCount = 0;
                             }
                         }
                     }
-
-                    // Wait for this batch to complete before fetching next
+                    // Wait for any remaining uploads
                     if (!batchFutures.isEmpty()) {
-                        System.out.println("waiting for batch of " + batchFutures.size() + " to complete");
+                        invocation.println("waiting for final " + batchFutures.size() + " uploads to complete");
                         CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
                                 .orTimeout(10, TimeUnit.MINUTES)
                                 .join();
-                        System.out.println("batch complete");
                     }
-
-                    if (pause) {
-                        scanner.nextLine();
-                    }
+                    invocation.println("loaded " + count + " runs");
+                } finally {
+                    connection.setAutoCommit(true);
                 }
-                System.out.println("loaded " + count + " runs");
             }
         } finally {
             ds.close();
         }
-        // Wait for the work queue to drain — async cascade workers may still be
-        // processing after the upload futures complete. Without this, the CLI
-        // process exits and CDI context is destroyed while workers are active.
-        System.out.println("waiting for work queue to drain...");
-        long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
-        int stableChecks = 0;
-        while (stableChecks < 5 && System.currentTimeMillis() < deadline) {
-            if (workService.isIdle()) {
-                stableChecks++;
-            } else {
-                stableChecks = 0;
-            }
-            try { Thread.sleep(200); } catch (InterruptedException e) { break; }
-        }
-        System.out.println("work queue drained");
-        return 0;
+        return CommandResult.SUCCESS;
     }
 }

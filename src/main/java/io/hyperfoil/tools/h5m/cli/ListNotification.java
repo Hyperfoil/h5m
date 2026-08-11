@@ -3,58 +3,72 @@ package io.hyperfoil.tools.h5m.cli;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
+import io.hyperfoil.tools.h5m.api.svc.NotificationServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
+
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Option;
 
 import java.util.List;
-import java.util.concurrent.Callable;
 
-@CommandLine.Command(name = "notification", aliases = {"notifications"}, separator = " ",
-    description = "list notification configs for a folder",
-    mixinStandardHelpOptions = true)
-public class ListNotification implements Callable<Integer> {
+@CommandDefinition(name = "list", description = "List notification configurations for a folder", generateHelp = true)
+public class ListNotification implements Command<H5mCommandInvocation>, FolderAware {
 
-    @CommandLine.Parameters(index = "0", arity = "0..1", description = "folder name")
+    @Option(name = "from", acceptNameWithoutDashes = true, description = "folder name",
+            completer = FolderCompleter.class)
     String folderName;
 
     @Inject
     FolderServiceInterface folderService;
 
+    @Inject
+    NotificationServiceInterface notificationService;
+
     @Override
-    public Integer call() throws Exception {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+        if (folderName == null && invocation.hasFolderContext()) {
+            folderName = invocation.getFolderName();
+        }
+
         if (folderName == null) {
-            List<NotificationConfig> all = NotificationConfig.listAll();
+            List<NotificationConfig> all = notificationService.listAll();
             if (all.isEmpty()) {
-                System.out.println("No notification configs found.");
+                invocation.println("No notification configs found.");
             } else {
-                printConfigs(all);
+                printConfigs(invocation, all);
             }
-            return 0;
+            return CommandResult.SUCCESS;
         }
 
         Folder folder = folderService.find(folderName);
         if (folder == null) {
-            System.err.println("Folder not found: " + folderName);
-            return 1;
+            invocation.println("Folder not found: " + folderName);
+            return CommandResult.FAILURE;
         }
 
-        List<NotificationConfig> configs = NotificationConfig.find("folder.id", folder.id()).list();
+        List<NotificationConfig> configs = notificationService.listByFolder(folder.id());
         if (configs.isEmpty()) {
-            System.out.println("No notification configs for " + folderName);
+            invocation.println("No notification configs for " + folderName);
         } else {
-            printConfigs(configs);
+            printConfigs(invocation, configs);
         }
-        return 0;
+        return CommandResult.SUCCESS;
     }
 
-    private void printConfigs(List<NotificationConfig> configs) {
-        System.out.printf("%-6s %-20s %-14s %-8s %-30s %s%n", "ID", "Folder", "Method", "Enabled", "Data", "Template");
-        System.out.println("-".repeat(100));
+    private void printConfigs(H5mCommandInvocation invocation, List<NotificationConfig> configs) {
+        invocation.println(String.format("%-6s %-18s %-20s %-14s %-8s %-30s %s", "ID", "Name", "Folder", "Method", "Enabled", "Data", "Template"));
+        invocation.println("-".repeat(120));
         for (NotificationConfig config : configs) {
+            String nameDisplay = config.name != null ? config.name : "-";
             String folderDisplay = config.folder != null ? config.folder.name : "?";
             String templateDisplay = config.template != null ? config.template : "(default)";
-            System.out.printf("%-6d %-20s %-14s %-8s %-30s %s%n",
-                config.id, folderDisplay, config.method.label(), config.enabled, config.data, templateDisplay);
+            invocation.println(String.format("%-6d %-18s %-20s %-14s %-8s %-30s %s",
+                config.id, nameDisplay, folderDisplay, config.method.label(), config.enabled, config.data, templateDisplay));
         }
     }
+
+    @Override
+    public String getFolderName() { return folderName; }
 }

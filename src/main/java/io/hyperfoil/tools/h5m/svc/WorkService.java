@@ -1,6 +1,8 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.JqValues;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.ProcessingState;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -287,6 +289,32 @@ public class WorkService implements WorkServiceInterface {
      */
     public Optional<UploadTracker> getTracker(long rootValueId) {
         return Optional.ofNullable(trackers.get(rootValueId));
+    }
+
+    /**
+     * Returns the processing status for an upload by its root value ID.
+     * Checks in-memory trackers first (active processing), then falls back
+     * to a DB query to determine if the upload completed previously.
+     */
+    @Override
+    @Transactional
+    public ProcessingState getProcessingStatus(long rootValueId) {
+        Optional<UploadTracker> tracker = getTracker(rootValueId);
+        if (tracker.isPresent()) {
+            if (tracker.get().getFuture().isDone()) {
+                return tracker.get().getFuture().isCompletedExceptionally()
+                        ? ProcessingState.FAILED
+                        : ProcessingState.COMPLETED;
+            }
+            return ProcessingState.PROCESSING;
+        }
+        // Tracker already cleaned up — check if root value exists in DB
+        ValueEntity rootValue = ValueEntity.findById(rootValueId);
+        if (rootValue != null && rootValue.node != null
+                && rootValue.node.type() == NodeType.ROOT) {
+            return ProcessingState.COMPLETED;
+        }
+        return ProcessingState.NOT_FOUND;
     }
 
     public WorkQueue getQueue(){return workExecutor.getWorkQueue();}

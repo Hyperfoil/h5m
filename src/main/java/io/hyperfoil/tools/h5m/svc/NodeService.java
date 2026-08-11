@@ -184,6 +184,22 @@ public class NodeService implements NodeServiceInterface {
         return node.id;
     }
 
+    @Override
+    @Transactional
+    public long update(long nodeId, String name, String operation) {
+        NodeEntity node = NodeEntity.findById(nodeId);
+        if (node == null) {
+            throw new IllegalArgumentException("Node not found: " + nodeId);
+        }
+        if (name != null) {
+            node.name = name;
+        }
+        if (operation != null) {
+            node.operation = operation;
+        }
+        return update(node);
+    }
+
     /**
      * returns this list of Ephemeral nodes that must be recalculated to be able to recalculate the input node
      * @param node

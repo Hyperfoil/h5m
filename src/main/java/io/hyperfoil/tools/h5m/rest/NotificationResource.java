@@ -35,6 +35,7 @@ public class NotificationResource {
     public NotificationConfigResponse createConfig(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
             @QueryParam("method") @Parameter(description = "Notification method") NotificationMethod method,
+            @QueryParam("name") @Parameter(description = "Notification name (optional)") String name,
             @QueryParam("secrets") @Parameter(description = "Secret config data (tokens, passwords)") String secrets,
             String data) {
         notificationService.validateConfig(method, data);
@@ -44,7 +45,9 @@ public class NotificationResource {
         }
         NotificationConfig config = new NotificationConfig(folder, method, data, secrets);
         config.persist();
-        return new NotificationConfigResponse(config.id, folderId, config.method, config.data, config.template, config.enabled);
+        // Auto-generate name if not provided
+        config.name = name != null ? name : method.label() + "-" + config.id;
+        return new NotificationConfigResponse(config.id, config.name, folderId, config.method, config.data, config.template, config.enabled);
     }
 
     @GET
@@ -53,9 +56,9 @@ public class NotificationResource {
     @Operation(description = "List notification configs for a folder")
     public List<NotificationConfigResponse> listConfigs(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId) {
-        List<NotificationConfig> configs = NotificationConfig.find("folder.id", folderId).list();
+        List<NotificationConfig> configs = notificationService.listByFolder(folderId);
         return configs.stream().map(c -> new NotificationConfigResponse(
-                c.id, c.folder != null ? c.folder.id : null, c.method, c.data, c.template, c.enabled
+                c.id, c.name, c.folder != null ? c.folder.id : null, c.method, c.data, c.template, c.enabled
         )).toList();
     }
 
@@ -87,7 +90,7 @@ public class NotificationResource {
         if (enabled != null) {
             config.enabled = enabled;
         }
-        return new NotificationConfigResponse(config.id, config.folder != null ? config.folder.id : null, config.method, config.data, config.template, config.enabled);
+        return new NotificationConfigResponse(config.id, config.name, config.folder != null ? config.folder.id : null, config.method, config.data, config.template, config.enabled);
     }
 
     @DELETE

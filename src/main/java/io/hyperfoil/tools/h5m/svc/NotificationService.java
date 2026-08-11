@@ -30,7 +30,7 @@ import java.util.Optional;
  * no additional DB lookups are needed.
  */
 @ApplicationScoped
-public class NotificationService {
+public class NotificationService implements io.hyperfoil.tools.h5m.api.svc.NotificationServiceInterface {
     @Inject
     EntityManager em;
 
@@ -98,6 +98,7 @@ public class NotificationService {
      *
      * @throws IllegalArgumentException if the method is unknown or config is invalid
      */
+    @Override
     public void validateConfig(NotificationMethod method, String configData) {
         NotificationPlugin plugin = findPlugin(method)
             .orElseThrow(() -> new IllegalArgumentException("Unknown notification method: " + method));
@@ -136,6 +137,70 @@ public class NotificationService {
         log.persist();
     }
 
+    @Override
+    @Transactional
+    public NotificationConfig findByName(long folderId, String name) {
+        return NotificationConfig.find("folder.id = ?1 AND name = ?2", folderId, name).firstResult();
+    }
+
+    @Override
+    @Transactional
+    public NotificationConfig findByNameOrId(long folderId, String nameOrId) {
+        // Try as id first
+        try {
+            long id = Long.parseLong(nameOrId);
+            NotificationConfig config = NotificationConfig.findById(id);
+            if (config != null) return config;
+        } catch (NumberFormatException ignored) {
+        }
+        // Fall back to name lookup within folder
+        return findByName(folderId, nameOrId);
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteByNameOrId(long folderId, String nameOrId) {
+        NotificationConfig config = findByNameOrId(folderId, nameOrId);
+        if (config == null) return false;
+        config.delete();
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public List<NotificationConfig> listAll() {
+        List<NotificationConfig> configs = NotificationConfig.listAll();
+        // Eagerly initialize lazy folder.name so it's accessible outside the transaction
+        configs.forEach(c -> { if (c.folder != null) { var _ = c.folder.name; } });
+        return configs;
+    }
+
+    @Override
+    @Transactional
+    public List<NotificationConfig> listByFolder(long folderId) {
+        List<NotificationConfig> configs = NotificationConfig.find("folder.id", folderId).list();
+        // Eagerly initialize lazy folder.name so it's accessible outside the transaction
+        configs.forEach(c -> { if (c.folder != null) { var _ = c.folder.name; } });
+        return configs;
+    }
+
+    @Override
+    @Transactional
+    public NotificationConfig create(long folderId, NotificationMethod method, String name,
+                                     String data, String secrets, String template) {
+        FolderEntity folder = FolderEntity.findById(folderId);
+        if (folder == null) {
+            throw new IllegalArgumentException("Folder not found: " + folderId);
+        }
+        NotificationConfig config = new NotificationConfig(folder, method, data, secrets);
+        config.template = template;
+        config.persist();
+        // Auto-generate name if not provided: "{method}-{id}"
+        config.name = name != null ? name : method.label() + "-" + config.id;
+        return config;
+    }
+
+    @Override
     @Transactional
     public void deleteForFolder(long folderId) {
         em.createNativeQuery("DELETE FROM notification_config WHERE folder_id = :fid")

@@ -16,6 +16,13 @@ public class NotificationConfig extends PanacheEntityBase {
     public Long id;
 
     /**
+     * User-friendly name for this notification config.
+     * Optional — auto-generated as "{method}-{id}" if not provided.
+     * Must be unique within a folder.
+     */
+    public String name;
+
+    /**
      * The folder this notification config belongs to.
      */
     @ManyToOne(fetch = FetchType.LAZY)

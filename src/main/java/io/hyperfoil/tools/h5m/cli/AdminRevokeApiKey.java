@@ -2,23 +2,25 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.svc.ApiKeyServiceInterface;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import org.aesh.command.Command;
+import org.aesh.command.CommandDefinition;
+import org.aesh.command.CommandResult;
+import org.aesh.command.option.Argument;
 
-@CommandLine.Command(name = "revoke-api-key", description = "revoke an API key", mixinStandardHelpOptions = true)
-public class AdminRevokeApiKey implements Callable<Integer> {
+@CommandDefinition(name = "revoke-api-key", description = "Revoke an existing API key", generateHelp = true)
+public class AdminRevokeApiKey implements Command<H5mCommandInvocation> {
 
     @Inject
     ApiKeyServiceInterface apiKeyService;
 
-    @CommandLine.Parameters(index = "0", description = "API key ID")
+    @Argument(description = "API key ID", required = true)
     public long keyId;
 
     @Override
-    public Integer call() {
+    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         apiKeyService.revoke(keyId);
-        System.out.println("API key " + keyId + " revoked.");
-        return 0;
+        invocation.println("API key " + keyId + " revoked.");
+        return CommandResult.SUCCESS;
     }
 }

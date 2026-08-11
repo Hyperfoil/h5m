@@ -42,6 +42,31 @@ public interface ValueServiceInterface {
     List<Value> getNodeValues(Long nodeId);
 
     /**
+     * Returns the total count of values for a specific node.
+     *
+     * @param nodeId The ID of the node.
+     * @return The count of values.
+     */
+    long getNodeValueCount(Long nodeId);
+
+    /**
+     * Retrieves the most recent values for a specific node, ordered by id descending.
+     *
+     * @param nodeId The ID of the node.
+     * @param limit Maximum number of values to return.
+     * @return A list of the most recent values, ordered oldest to newest.
+     */
+    List<Value> getNodeValuesPage(Long nodeId, int limit);
+
+    /**
+     * Returns detection node values that are descendants of the given root value.
+     *
+     * @param rootValueId the root value ID (upload ID)
+     * @return detection values as DTOs, or empty list if none found
+     */
+    List<Value> getDetectionDescendants(long rootValueId);
+
+    /**
          * Returns one row per upload for a folder, with each row containing the values of the requested nodes.
          * groupByNodeId and sortByNodeId are always included in every row regardless of nodeIds.
          * @param folderId Folder Id to query.

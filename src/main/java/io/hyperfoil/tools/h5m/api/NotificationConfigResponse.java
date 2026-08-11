@@ -10,6 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @Schema(description = "Notification configuration for a folder (secrets excluded)")
 public record NotificationConfigResponse(
         @Schema(description = "Unique config ID") Long id,
+        @Schema(description = "Notification name") String name,
         @Schema(description = "Folder ID") Long folderId,
         @Schema(description = "Notification method") NotificationMethod method,
         @Schema(description = "Plugin-specific configuration data (JSON)") String data,
