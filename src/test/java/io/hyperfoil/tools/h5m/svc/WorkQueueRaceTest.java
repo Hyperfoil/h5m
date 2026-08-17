@@ -33,6 +33,9 @@ public class WorkQueueRaceTest extends FreshDb {
     FolderService folderService;
 
     @Inject
+    ValueService valueService;
+
+    @Inject
     WorkService workService;
 
     @Inject
@@ -69,7 +72,7 @@ public class WorkQueueRaceTest extends FreshDb {
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload(folderId, data);
+                valueService.createRootValue(folderId, data);
             }
         } finally {
             awaitWorkQueue(30_000);
@@ -90,7 +93,7 @@ public class WorkQueueRaceTest extends FreshDb {
         try {
             for (String fileName : TEST_FILES) {
                 JqValue data = loadQvssFile(fileName);
-                folderService.upload(folderId, data);
+                valueService.createRootValue(folderId, data);
                 awaitWorkQueue(30_000);
             }
         } finally {

@@ -2,7 +2,6 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Folder;
-import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.hyperfoil.tools.jjq.JqProgram;

@@ -48,6 +48,9 @@ public class ValueServiceTest extends FreshDb {
     FolderService folderService;
 
     @Inject
+    ProcessingService processingService;
+
+    @Inject
     WorkService workService;
 
     @Test
@@ -2056,8 +2059,7 @@ public class ValueServiceTest extends FreshDb {
         for (String runFile : List.of("/qvss/15248.json", "/qvss/15769.json", "/qvss/16326.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
                 JqValue runData = JqValues.parse(is.readAllBytes());
-                folderService.upload(qvssFolderId, runData)
-                        .future.orTimeout(60, TimeUnit.SECONDS).join();
+                processingService.awaitIngestion(valueService.createRootValue(qvssFolderId, runData), 60, TimeUnit.SECONDS);
             }
         }
 

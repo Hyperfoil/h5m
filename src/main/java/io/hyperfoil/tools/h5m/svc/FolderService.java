@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqNull;
 import io.hyperfoil.tools.jjq.value.JqNumber;
@@ -15,15 +14,11 @@ import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
-import io.hyperfoil.tools.h5m.api.ProcessingType;
 import io.hyperfoil.tools.h5m.entity.TeamEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.ViewEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.node.*;
-import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -36,7 +31,6 @@ import org.hibernate.query.NativeQuery;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -57,8 +51,6 @@ public class FolderService implements FolderServiceInterface {
     EntityManager em;
     @Inject
     ValueService valueService;
-    @Inject
-    WorkService workService;
 
     @Inject
     ProcessingService processingService;
@@ -240,97 +232,6 @@ public class FolderService implements FolderServiceInterface {
             }
         }
         return merged;
-    }
-
-
-    @Override
-    public RecalculationTracker recalculateNode(long nodeId) {
-        return processingService.recalculateNode(nodeId);
-    }
-
-    /**
-     * Uploads data and returns an Upload containing the upload ID and a future
-     * that completes when all processing finishes. The DB work runs in a new
-     * transaction via {@link WorkService#callInNewTransaction}; the post-processing
-     * callback is wired outside the transaction since it only needs the future.
-     */
-    @Override
-    public Upload upload(long folderId, JqValue data) {
-        Upload upload = workService.callInNewTransaction(() -> {
-            FolderEntity folder = em.createQuery(
-                    "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :id",
-                    FolderEntity.class
-            ).setParameter("id", folderId).getSingleResult();
-            ValueEntity newValue = valueService.create(new ValueEntity(folder, folder.group.root, data));
-
-            // Track this upload for crash recovery — marked completed when all work finishes
-            ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folder.id, newValue.id);
-            tracking.persist();
-
-            //only queue the top level and let new values queue the remaining
-            //that matches the re-calculation workflow
-            List<Work> works = folder.group.getTopLevelNodes().stream()
-                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue.id)))
-                    .toList();
-
-            if (works.isEmpty()) {
-                tracking.completed = true;
-                return new Upload(newValue.id, CompletableFuture.completedFuture(null));
-            }
-
-            CompletableFuture<Void> future = workService.createTracked(works, Set.of(newValue.id));
-            // Mark completed and null out ephemeral data when all work finishes
-            future.whenComplete((v, t) -> {
-                QuarkusTransaction.requiringNew().run(() -> {
-                    ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
-                            "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, newValue.id).firstResult();
-                    if (entity != null) {
-                        if (t != null) {
-                            Log.errorf(t, "Upload %d failed during processing", newValue.id);
-                        } else {
-                            entity.completed = true;
-                        }
-                    }
-                    // Null out data for ephemeral nodes to reclaim storage
-                    int nullified = valueService.nullifyEphemeralData(newValue.id);
-                    if (nullified > 0) {
-                        Log.debugf("Nullified data for %d ephemeral values (upload %d)", nullified, newValue.id);
-                        // Evict cached ValueEntity instances since data was nullified via native SQL
-                        em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
-                    }
-                });
-            });
-            return new Upload(newValue.id, future);
-        });
-
-        if (upload.future.isDone()) {
-            return upload;
-        }
-
-        // Use handle() (not whenComplete) so the returned future only completes
-        // after the tracker DB update commits — callers awaiting the future can
-        // rely on the upload tracker being marked completed by then.
-        return new Upload(upload.uploadId, upload.future.handle((v, t) -> {
-            workService.runInNewTransaction(() -> {
-                ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
-                        "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, upload.uploadId).firstResult();
-                if (entity != null) {
-                    if (t != null) {
-                        Log.errorf(t, "Upload %d failed during processing", upload.uploadId);
-                    } else {
-                        entity.completed = true;
-                    }
-                }
-                // Null out data for ephemeral nodes to reclaim storage
-                int nullified = valueService.nullifyEphemeralData(upload.uploadId);
-                if (nullified > 0) {
-                    Log.debugf("Nullified data for %d ephemeral values (upload %d)", nullified, upload.uploadId);
-                    // Evict cached ValueEntity instances since data was nullified via native SQL
-                    em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
-                }
-            });
-            return null;
-        }));
     }
 
     /**

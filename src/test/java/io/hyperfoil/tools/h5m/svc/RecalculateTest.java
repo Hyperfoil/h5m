@@ -6,15 +6,13 @@ import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
-import io.hyperfoil.tools.h5m.api.ProcessingType;
-import io.hyperfoil.tools.h5m.api.RecalculationStatus;
-import io.hyperfoil.tools.h5m.svc.RecalculationTracker;
+
+import io.hyperfoil.tools.h5m.api.Processing;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
+import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
-import io.hyperfoil.tools.h5m.svc.RecalculationService;
 import jakarta.persistence.EntityManager;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -26,7 +24,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -56,9 +53,6 @@ public class RecalculateTest extends FreshDb {
 
     @Inject
     EntityManager em;
-
-    @Inject
-    RecalculationService recalculationService;
 
     @Inject
     ChangeEventObserver eventObserver;
@@ -119,8 +113,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}")), 30, TimeUnit.SECONDS);
 
         // Verify values exist
         tm.begin();
@@ -131,9 +124,12 @@ public class RecalculateTest extends FreshDb {
         assertEquals("\"hello_done\"", transformValues.get(0).data.toString());
         tm.commit();
 
-        CompletableFuture.allOf(folder.group.getTopLevelNodes().stream().map(n->
-                folderService.recalculateNode(n.id).getFuture()
-                ).toList().toArray(new CompletableFuture[]{})).orTimeout(30, TimeUnit.SECONDS).join();
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.recalculateNode(n.id);
+        }
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.awaitRecalculation(n.id, 30, TimeUnit.SECONDS);
+        }
         // Recalculate and wait for completion
 
         // Verify values are unchanged (dedup should preserve identical values)
@@ -176,8 +172,7 @@ public class RecalculateTest extends FreshDb {
 
         // Upload a value that exceeds the threshold
         eventObserver.clear();
-        folderService.upload(folderId, JqValues.parse("{\"y\": 100, \"fp\": \"default\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse("{\"y\": 100, \"fp\": \"default\"}")), 30, TimeUnit.SECONDS);
 
         // Upload should dispatch notifications
         List<ChangeDetectedEvent> uploadEvents = new ArrayList<>(eventObserver.getEvents());
@@ -186,10 +181,12 @@ public class RecalculateTest extends FreshDb {
 
         // Recalculate — should suppress notifications
         eventObserver.clear();
-        CompletableFuture.allOf(folder.group.getTopLevelNodes().stream().map(n->
-                folderService.recalculateNode(n.id).getFuture()
-        ).toList().toArray(new CompletableFuture[]{})).orTimeout(30, TimeUnit.SECONDS).join();
-
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.recalculateNode(n.id);
+        }
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.awaitRecalculation(n.id, 30, TimeUnit.SECONDS);
+        }
 
         List<ChangeDetectedEvent> recalcEvents = eventObserver.getEvents();
         boolean hasNonDispatchedEvent = recalcEvents.stream().anyMatch(e -> !e.dispatch());
@@ -229,10 +226,9 @@ public class RecalculateTest extends FreshDb {
         long nodeCId = nodeC.id;
         tm.commit();
 
-        // Upload
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify initial values — nodeA is intermediate (AUTO), so its data
         // is nullified by ephemeral cleanup. nodeB and nodeC are leaves, data preserved.
@@ -243,9 +239,9 @@ public class RecalculateTest extends FreshDb {
         assertEquals("world", ValueEntity.find("node.id", nodeCId).<ValueEntity>list().get(0).data.asText());
         tm.commit();
 
-        // Selective recalculate node A
-        folderService.recalculateNode(nodeAId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        // Selective recalculate node A — afterCleanup includes processing AND ephemeral nullification
+        processingService.recalculateNode(nodeAId);
+        processingService.getByNodeId(nodeAId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // nodeA data is nullified again after recalculation (AUTO ephemeral cleanup).
         // nodeB and nodeC should be unchanged (dedup preserves identical values).
@@ -266,9 +262,12 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Recalculate empty folder — should complete immediately
-        CompletableFuture.allOf(folder.group.getTopLevelNodes().stream().map(n->
-                folderService.recalculateNode(n.id).getFuture()
-        ).toList().toArray(new CompletableFuture[]{})).orTimeout(30, TimeUnit.SECONDS).join();
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.recalculateNode(n.id);
+        }
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.awaitRecalculation(n.id, 30, TimeUnit.SECONDS);
+        }
 
         // No exception = success
     }
@@ -308,9 +307,8 @@ public class RecalculateTest extends FreshDb {
 
         // Upload 3 values that all exceed the threshold
         for (int i = 0; i < 3; i++) {
-            folderService.upload(folderId,
-                    JqValues.parse(String.format("{\"y\": %d, \"fp\": \"default\"}", 100 + i * 10)))
-                    .future.orTimeout(30, TimeUnit.SECONDS).join();
+            processingService.awaitIngestion(valueService.createRootValue(folderId,
+                    JqValues.parse(String.format("{\"y\": %d, \"fp\": \"default\"}", 100 + i * 10))), 30, TimeUnit.SECONDS);
         }
 
         // Count change detection values after uploads
@@ -323,10 +321,12 @@ public class RecalculateTest extends FreshDb {
                 "Each upload with y > 50 should produce a change detection");
 
         // Recalculate
-        CompletableFuture.allOf(folder.group.getTopLevelNodes().stream().map(n->
-                folderService.recalculateNode(n.id).getFuture()
-        ).toList().toArray(new CompletableFuture[]{})).orTimeout(30, TimeUnit.SECONDS).join();
-
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.recalculateNode(n.id);
+        }
+        for (NodeEntity n : folder.group.getTopLevelNodes()) {
+            processingService.awaitRecalculation(n.id, 30, TimeUnit.SECONDS);
+        }
 
         // Verify change detection count is the same after recalculation
         tm.begin();
@@ -355,9 +355,8 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId,
+                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}")), 30, TimeUnit.SECONDS);
 
         // Verify initial value
         tm.begin();
@@ -376,8 +375,8 @@ public class RecalculateTest extends FreshDb {
         // Explicitly trigger recalculation AFTER the update transaction committed.
         // This ensures recalculateNode sees the committed operation change.
         // In production, the REST endpoint or CLI would handle this sequencing.
-        folderService.recalculateNode(extractId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.recalculateNode(extractId);
+        processingService.awaitRecalculation(extractId, 30, TimeUnit.SECONDS);
 
         // Verify value changed to reflect new operation
         tm.begin();
@@ -405,36 +404,29 @@ public class RecalculateTest extends FreshDb {
 
         // Upload 3 values
         for (int i = 0; i < 3; i++) {
-            folderService.upload(folderId,
-                    JqValues.parse(String.format("{\"key\": \"value_%d\"}", i)))
-                    .future.orTimeout(30, TimeUnit.SECONDS).join();
+            processingService.awaitIngestion(valueService.createRootValue(folderId,
+                    JqValues.parse(String.format("{\"key\": \"value_%d\"}", i))), 30, TimeUnit.SECONDS);
         }
 
-        // Start recalculation — returns tracker immediately
-        RecalculationTracker tracker = folderService.recalculateNode(extract.id);
+        // Start recalculation — returns status snapshot immediately
+        Processing before = processingService.recalculateNode(extract.id);
 
-        assertNotNull(tracker, "Should return a recalculation tracker");
-        assertNotNull(tracker.getId(), "Tracker should have an ID");
-        assertEquals("progress-test", tracker.getFolderName());
-        assertEquals(extract.id, tracker.getNodeId(), "Full recalculate should have nodeId=-1");
-
-        // Snapshot before completion
-        RecalculationStatus before = tracker.toStatus();
-        assertEquals(3, before.totalRoots(), "Should track 3 root values");
+        assertNotNull(before, "Should return a work tracker");
+        assertEquals("progress-test", before.folderName());
+        assertEquals(extract.id, before.nodeId());
+        assertEquals(3, before.total(), "Should track 3 root values");
 
         // Wait for completion
-        tracker.getFuture().orTimeout(30, TimeUnit.SECONDS).join();
+        ProcessingService.ActivityTracker activeTracker = processingService.getByNodeId(extract.id);
+        assertNotNull(activeTracker, "Active tracker should exist while running");
+        processingService.awaitRecalculation(extract.id, 30, TimeUnit.SECONDS);
 
         // After completion, snapshot should show all roots completed
-        RecalculationStatus after = tracker.toStatus();
-        assertEquals(RecalculationStatus.State.COMPLETED, after.state());
-        assertEquals(3, after.completedRoots(), "All 3 roots should be completed");
-
-        // Tracker should be retrievable via the service
-        RecalculationTracker retrieved = recalculationService.get(tracker.getId());
-        assertNotNull(retrieved, "Tracker should be retrievable by ID");
-        assertEquals(RecalculationStatus.State.COMPLETED, retrieved.getState());
-        assertTrue(retrieved.toStatus().durationMs() >= 0, "Duration should be non-negative");
+        Processing after = processingService.getRecalculationStatus(extract.id);
+        assertNotNull(after, "Tracker should be retrievable after completion");
+        assertEquals(Processing.State.COMPLETED, after.state());
+        assertEquals(3, after.completed(), "All 3 roots should be completed");
+        assertTrue(after.durationMs() >= 0, "Duration should be non-negative");
     }
 
     @Test
@@ -468,9 +460,8 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload data with 2 items (datasets) per upload
-        folderService.upload(folderId, JqValues.parse(
-                "{\"items\": [{\"v\": 10}, {\"v\": 20}]}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse(
+                "{\"items\": [{\"v\": 10}, {\"v\": 20}]}")), 30, TimeUnit.SECONDS);
 
         // Verify the JQ .items[] produced 2 values
         tm.begin();
@@ -483,9 +474,8 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Upload a second data point
-        folderService.upload(folderId, JqValues.parse(
-                "{\"items\": [{\"v\": 30}, {\"v\": 40}]}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse(
+                "{\"items\": [{\"v\": 30}, {\"v\": 40}]}")), 30, TimeUnit.SECONDS);
 
         // Verify we now have 4 values (2 per upload × 2 uploads)
         tm.begin();
@@ -494,8 +484,8 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         // Recalculate
-        folderService.recalculateNode(valueNodeId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.recalculateNode(valueNodeId);
+        processingService.awaitRecalculation(valueNodeId, 30, TimeUnit.SECONDS);
 
         // Verify values are preserved — same count, same data
         tm.begin();
@@ -550,9 +540,9 @@ public class RecalculateTest extends FreshDb {
         long transformId = transform.id;
         tm.commit();
 
-        // Upload data
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload data — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify: extract data should be NULL (ephemeral), transform data should be present
         tm.begin();
@@ -570,8 +560,9 @@ public class RecalculateTest extends FreshDb {
         // Recalculate — this must work even though extract.data is NULL.
         // The pipeline should re-extract from root.data → recompute extract → 
         // recompute transform → nullify extract again.
-        folderService.recalculateNode(transformId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        // afterCleanup includes processing AND ephemeral nullification
+        processingService.recalculateNode(transformId);
+        processingService.getByNodeId(transformId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify: transform data should still be correct after recalculation
         tm.begin();
@@ -623,9 +614,9 @@ public class RecalculateTest extends FreshDb {
         long nodeCId = nodeC.id;
         tm.commit();
 
-        // Upload data
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload data — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify after upload: A and B are nullified, C has data
         tm.begin();
@@ -651,8 +642,9 @@ public class RecalculateTest extends FreshDb {
                 "Start nodes: " + startNodes.stream().map(n -> n.name).toList());
 
         // Selective recalculate of C — must walk up past B and A
-        folderService.recalculateNode(nodeCId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        // afterCleanup includes processing AND ephemeral nullification
+        processingService.recalculateNode(nodeCId);
+        processingService.getByNodeId(nodeCId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify after recalculation: C data should still be correct
         tm.begin();
@@ -705,10 +697,9 @@ public class RecalculateTest extends FreshDb {
         long nodeCId = nodeC.id;
         tm.commit();
 
-        // Upload data
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload data — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify after upload: A has data (KEEP), B is NULL (DISCARD)
         tm.begin();
@@ -731,8 +722,9 @@ public class RecalculateTest extends FreshDb {
                 "Start nodes should include B (ephemeral source that needs recomputation). " +
                 "Start nodes: " + startNodes.stream().map(n -> n.name).toList());
 
-        folderService.recalculateNode(nodeCId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        // afterCleanup includes processing AND ephemeral nullification
+        processingService.recalculateNode(nodeCId);
+        processingService.getByNodeId(nodeCId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify: B should have been recomputed (data restored temporarily, then nullified)
         tm.begin();
@@ -760,15 +752,14 @@ public class RecalculateTest extends FreshDb {
         long nodeAId = nodeA.id;
         tm.commit();
 
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}")), 30, TimeUnit.SECONDS);
 
         tm.begin();
         assertEquals("hello", ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data.asText());
         tm.commit();
 
-        folderService.recalculateNode(nodeAId).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.recalculateNode(nodeAId);
+        processingService.awaitRecalculation(nodeAId, 30, TimeUnit.SECONDS);
 
         tm.begin();
         assertEquals("hello", ValueEntity.find("node.id", nodeAId).<ValueEntity>list().get(0).data.asText(),
@@ -870,7 +861,7 @@ public class RecalculateTest extends FreshDb {
 
     @Test
     public void recalculate_creates_tracking_entity() throws Exception {
-        // Verify that recalculate() creates a ProcessingTrackerEntity
+        // Verify that recalculate() creates a ProcessingEntity
         // and marks it completed when processing finishes.
         tm.begin();
         long folderId = folderService.create("tracking-test").id();
@@ -882,20 +873,19 @@ public class RecalculateTest extends FreshDb {
         folder.group.persist();
         tm.commit();
 
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}")), 30, TimeUnit.SECONDS);
 
         // Recalculate and wait
-        folderService.recalculateNode(extract.id).getFuture()
-                .orTimeout(30, TimeUnit.SECONDS).join();
+        processingService.recalculateNode(extract.id);
+        processingService.awaitRecalculation(extract.id, 30, TimeUnit.SECONDS);
 
         // Verify tracking entity exists and is completed
         tm.begin();
-        ProcessingTrackerEntity tracker = ProcessingTrackerEntity.find(
-                "type = ?1 and folderId = ?2", ProcessingType.RECALCULATE_NODE, folderId).firstResult();
+        ProcessingEntity tracker = ProcessingEntity.find(
+                "nodeId is not null and folderId = ?1", folderId).firstResult();
         assertNotNull(tracker, "Recalculation should create a tracking entity");
         assertTrue(tracker.completed, "Tracking entity should be marked completed");
-        assertEquals(extract.id, tracker.referenceId, "Full recalculate should have referenceId=-1");
+        assertEquals(extract.id, tracker.nodeId, "Full recalculate should track node ID");
         tm.commit();
     }
 
@@ -915,14 +905,13 @@ public class RecalculateTest extends FreshDb {
         long extractId = extract.id;
         tm.commit();
 
-        // Upload data
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload data — wait on afterCleanup so the ingestion tracker is marked completed before recovery
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Simulate crash: create incomplete recalculation tracker
         tm.begin();
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, folderId, extractId);
+        ProcessingEntity tracker = new ProcessingEntity(folderId, extractId, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -935,7 +924,7 @@ public class RecalculateTest extends FreshDb {
 
         // Verify: old tracker should be completed
         tm.begin();
-        ProcessingTrackerEntity oldTracker = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity oldTracker = ProcessingEntity.findById(trackerId);
         assertNotNull(oldTracker, "Old tracker should still exist");
         assertTrue(oldTracker.completed, "Old tracker should be marked completed by recovery");
 
@@ -979,9 +968,9 @@ public class RecalculateTest extends FreshDb {
         long nodeBId = nodeB.id;
         tm.commit();
 
-        // Upload data
-        folderService.upload(folderId, JqValues.parse("{\"key\": \"hello\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload data — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify: A and B nullified, C has data
         tm.begin();
@@ -992,8 +981,7 @@ public class RecalculateTest extends FreshDb {
 
         // Simulate crash: create incomplete selective recalculation tracker for node C
         tm.begin();
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, folderId, nodeCId);
+        ProcessingEntity tracker = new ProcessingEntity(folderId, nodeCId, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -1003,10 +991,14 @@ public class RecalculateTest extends FreshDb {
 
         // Wait for work to complete
         awaitIdle(30_000);
+        ProcessingService.ActivityTracker recalcTracker = processingService.getByNodeId(nodeCId);
+        if (recalcTracker != null && recalcTracker.afterCleanup != null) {
+            recalcTracker.afterCleanup.get(30, TimeUnit.SECONDS);
+        }
 
         // Verify: old tracker completed
         tm.begin();
-        ProcessingTrackerEntity oldTracker = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity oldTracker = ProcessingEntity.findById(trackerId);
         assertTrue(oldTracker.completed, "Old tracker should be completed by recovery");
 
         // Verify: C should still have correct data (recovery walked up ephemeral chain)
@@ -1061,10 +1053,10 @@ public class RecalculateTest extends FreshDb {
         long nodeCId = nodeC.id;
         tm.commit();
 
-        // Upload initial data
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload initial data — wait on afterCleanup so the ingestion tracker is marked completed before recovery
+        long uploadId = valueService.createRootValue(folderId,
+                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify initial values
         tm.begin();
@@ -1089,8 +1081,7 @@ public class RecalculateTest extends FreshDb {
                 .executeUpdate();
 
         // Create incomplete tracker (simulating crash before B and C were processed)
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, folderId, nodeAId);
+        ProcessingEntity tracker = new ProcessingEntity(folderId, nodeAId, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -1104,7 +1095,7 @@ public class RecalculateTest extends FreshDb {
 
         // Verify: recovery should have re-processed A and cascaded to B and C
         tm.begin();
-        ProcessingTrackerEntity oldTracker = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity oldTracker = ProcessingEntity.findById(trackerId);
         assertTrue(oldTracker.completed, "Old tracker should be completed");
 
         // A should still be "world" (the new operation extracts .other)
@@ -1161,10 +1152,9 @@ public class RecalculateTest extends FreshDb {
         long nodeCId = nodeC.id;
         tm.commit();
 
-        // Upload initial data
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"))
-                .future.orTimeout(30, TimeUnit.SECONDS).join();
+        // Upload initial data — afterCleanup includes processing AND ephemeral nullification
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"hello\", \"other\": \"world\"}"));
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         // Verify: A and B nullified, C has data
         tm.begin();
@@ -1181,8 +1171,7 @@ public class RecalculateTest extends FreshDb {
         em.flush();
 
         // Create incomplete tracker for selective recalculation of A
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, folderId, nodeAId);
+        ProcessingEntity tracker = new ProcessingEntity(folderId, nodeAId, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -1190,10 +1179,14 @@ public class RecalculateTest extends FreshDb {
         // Trigger recovery
         processingService.recoverIncompleteProcessing(null);
         awaitIdle(30_000);
+        ProcessingService.ActivityTracker recalcTracker = processingService.getByNodeId(nodeAId);
+        if (recalcTracker != null && recalcTracker.afterCleanup != null) {
+            recalcTracker.afterCleanup.get(30, TimeUnit.SECONDS);
+        }
 
         // Verify: recovery should recompute the chain with the new operation
         tm.begin();
-        ProcessingTrackerEntity oldTracker = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity oldTracker = ProcessingEntity.findById(trackerId);
         assertTrue(oldTracker.completed, "Old tracker should be completed");
 
         // C should now reflect the new operation: .other → "world" → "world_b" → "world_b_c"
@@ -1221,7 +1214,7 @@ public class RecalculateTest extends FreshDb {
 
         // Non-existent node
         assertThrows(IllegalArgumentException.class,
-                () -> folderService.recalculateNode(999999L),
+                () -> processingService.recalculateNode(999999L),
                 "Should reject non-existent node ID");
     }
 
@@ -1237,7 +1230,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         assertThrows(IllegalArgumentException.class,
-                () -> folderService.recalculateNode(orphanId),
+                () -> processingService.recalculateNode(orphanId),
                 "Should reject node that has no group");
     }
 
@@ -1291,8 +1284,7 @@ public class RecalculateTest extends FreshDb {
     @Test
     public void recovery_with_deleted_folder_cleans_up_tracker() throws Exception {
         tm.begin();
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, 999999L, -1);
+        ProcessingEntity tracker = new ProcessingEntity(999999L, -1L, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -1300,7 +1292,7 @@ public class RecalculateTest extends FreshDb {
         processingService.recoverIncompleteProcessing(null);
 
         tm.begin();
-        ProcessingTrackerEntity deleted = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity deleted = ProcessingEntity.findById(trackerId);
         assertNull(deleted, "Tracker for nonexistent folder should be deleted during recovery");
         tm.commit();
     }
@@ -1312,8 +1304,7 @@ public class RecalculateTest extends FreshDb {
         tm.commit();
 
         tm.begin();
-        ProcessingTrackerEntity tracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, folderId, 999999L);
+        ProcessingEntity tracker = new ProcessingEntity(folderId, 999999L, null);
         tracker.persist();
         long trackerId = tracker.id;
         tm.commit();
@@ -1321,7 +1312,7 @@ public class RecalculateTest extends FreshDb {
         processingService.recoverIncompleteProcessing(null);
 
         tm.begin();
-        ProcessingTrackerEntity deleted = ProcessingTrackerEntity.findById(trackerId);
+        ProcessingEntity deleted = ProcessingEntity.findById(trackerId);
         assertNull(deleted, "Tracker for nonexistent node should be deleted during recovery");
         tm.commit();
     }

@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 interface EditNodeModalProps {
   node: ApiNode | null;
   onClose: () => void;
-  onRecalculation?: (id: string) => void;
+  onRecalculation?: (id: number) => void;
 }
 
 const DETECTION_TYPES = ['FIXED_THRESHOLD', 'RELATIVE_DIFFERENCE', 'STDDEV_ANOMALY', 'EDIVISIVE'];
@@ -42,10 +42,10 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
 
   const updateNode = useMutation({
     ...updateMutation(),
-    onSuccess: (data) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries();
-      if (data.recalculation?.id) {
-        onRecalculation?.(data.recalculation.id);
+      if (operation.trim() !== (node?.operation ?? '') && node?.id) {
+        onRecalculation?.(node.id);
       }
       onClose();
     },
@@ -80,7 +80,7 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
     if (nameOrOpChanged) {
       updateNode.mutate({
         path: { id: node.id },
-        body: { name: name.trim(), operation: operation.trim() || undefined },
+        query: { name: name.trim(), operation: operation.trim() || undefined },
       });
     }
 

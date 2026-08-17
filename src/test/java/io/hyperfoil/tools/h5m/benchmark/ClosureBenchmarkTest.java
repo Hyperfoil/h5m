@@ -4,6 +4,8 @@ import io.hyperfoil.tools.jjq.value.*;
 import io.agroal.api.AgroalDataSource;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.svc.FolderService;
+import io.hyperfoil.tools.h5m.svc.ProcessingService;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -45,6 +47,12 @@ public class ClosureBenchmarkTest extends FreshDb {
     FolderService folderService;
 
     @Inject
+    ValueService valueService;
+
+    @Inject
+    ProcessingService processingService;
+
+    @Inject
     WorkService workService;
 
     @Inject
@@ -75,8 +83,7 @@ public class ClosureBenchmarkTest extends FreshDb {
             int fileIndex = i % RHIVOS_FILES.length;
             long uploadStart = System.currentTimeMillis();
 
-            folderService.upload(folderId, runData[fileIndex])
-                    .future.orTimeout(120, TimeUnit.SECONDS).join();
+            processingService.awaitIngestion(valueService.createRootValue(folderId, runData[fileIndex]), 120, TimeUnit.SECONDS);
 
             long uploadEnd = System.currentTimeMillis();
             System.out.printf("[BENCHMARK] Upload %d/%d (%s): %d ms%n",

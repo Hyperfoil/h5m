@@ -12,6 +12,16 @@ import java.util.Map;
 public interface ValueServiceInterface {
 
     /**
+     * Creates a root value in a folder and kicks off the calculation pipeline.
+     * Use {@link ProcessingServiceInterface#awaitIngestion} to wait for ingestion to complete.
+     *
+     * @param folderId The ID of the folder.
+     * @param data The JSON data.
+     * @return the root value ID
+     */
+    long createRootValue(long folderId, JqValue data);
+
+    /**
      * Purges all values.
      */
     void purgeValues();

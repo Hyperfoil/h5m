@@ -240,7 +240,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
         // Upload data — let @Transactional handle the commit so work queue
         // threads can see the persisted data before starting execution
-        folderService.upload(folderId,
+        valueService.createRootValue(folderId,
                 JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 
@@ -264,7 +264,7 @@ public class EdgeTableBenchmarkTest extends FreshDb {
 
         graphBuilder.buildDiamondInGroup(groupId, rootId, layers, width);
 
-        folderService.upload(folderId,
+        valueService.createRootValue(folderId,
                 JqValues.parse("{\"data\": 42}"));
         awaitWorkQueue();
 

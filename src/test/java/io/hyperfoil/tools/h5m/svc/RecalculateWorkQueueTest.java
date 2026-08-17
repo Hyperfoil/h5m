@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
-import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -37,6 +36,8 @@ public class RecalculateWorkQueueTest {
     NodeService nodeService;
     @Inject
     ValueService valueService;
+    @Inject
+    ProcessingService processingService;
 
     private String printQueue(){
         return workService.getQueue().stream().toList().stream().map(Object::toString).collect(Collectors.joining("\n"));
@@ -62,7 +63,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -75,13 +76,14 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        RecalculationTracker aTracker = folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
+        ProcessingService.ActivityTracker aTracker = processingService.getByNodeId(found.id);
 
         //TODO should aTracker be done because it doesn't queue any work or should it be one when upload is done?
         assertFalse(aTracker.getFuture().isDone());
         assertFalse(aTracker.getFuture().isCancelled());
-        assertFalse(uploaded.future.isDone());
-        assertFalse(uploaded.future.isCancelled());
+        assertFalse(processingService.getByRootValueId(uploadId).getFuture().isDone());
+        assertFalse(processingService.getByRootValueId(uploadId).getFuture().isCancelled());
 
         assertEquals(1,workService.getQueue().size(),"only a should be queued by upload\n"+printQueue());
 
@@ -97,8 +99,8 @@ public class RecalculateWorkQueueTest {
 
         assertFalse(aTracker.getFuture().isDone());
         assertFalse(aTracker.getFuture().isCancelled());
-        assertFalse(uploaded.future.isDone());
-        assertFalse(uploaded.future.isCancelled());
+        assertFalse(processingService.getByRootValueId(uploadId).getFuture().isDone());
+        assertFalse(processingService.getByRootValueId(uploadId).getFuture().isCancelled());
 
         assertEquals(1,workService.getQueue().size(),"b should be queued by a\n"+printQueue());
         //check the value before it is removed by ephemeral
@@ -121,8 +123,8 @@ public class RecalculateWorkQueueTest {
 
         assertTrue(aTracker.getFuture().isDone());
         assertFalse(aTracker.getFuture().isCancelled());
-        assertTrue(uploaded.future.isDone());
-        assertFalse(uploaded.future.isCancelled());
+        // upload tracker is removed from the map on completion
+        assertNull(processingService.getByRootValueId(uploadId), "upload should be complete");
 
 
         List<Value> bValues = valueService.getNodeValues(b.id);
@@ -155,7 +157,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
             """
             { "a" : 1  }
             """
@@ -174,7 +176,8 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        RecalculationTracker bTracker = folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
+        ProcessingService.ActivityTracker bTracker = processingService.getByNodeId(found.id);
         //the changed node is already in the work queue and should not cause a new work to be queued
         assertEquals(1,workService.getQueue().size());
         todo = workService.getQueue().poll();
@@ -215,7 +218,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -240,7 +243,7 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
 
         assertEquals(0,workService.getQueue().size());
         //the changed node is already in the work queue and should not cause a new work to be queued
@@ -280,7 +283,7 @@ public class RecalculateWorkQueueTest {
         b.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -302,7 +305,7 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
         assertEquals(1,workService.getQueue().size(),"a should be queued");
         Runnable pending =  workService.getQueue().peek();
         assertNotNull(pending);
@@ -365,7 +368,7 @@ public class RecalculateWorkQueueTest {
 
         assertTrue(nodeService.isEphemeral(a),"a should be ephemeral");
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
                 """
                 { "a" : 1  }
                 """
@@ -388,9 +391,10 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        assertTrue(uploaded.future.isDone(),"upload should be complete");
+        assertNull(processingService.getByRootValueId(uploadId), "upload should be complete");
 
-        RecalculationTracker bTracker = folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
+        ProcessingService.ActivityTracker bTracker = processingService.getByNodeId(found.id);
 
         assertEquals(2,workService.getQueue().size(),"queue should have a and b because a is ephemeral:\n"+printQueue());
         todo = workService.getQueue().poll();
@@ -409,7 +413,8 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
 
-        RecalculationTracker aTracker = folderService.recalculateNode(found.id);
+        processingService.recalculateNode(found.id);
+        ProcessingService.ActivityTracker aTracker = processingService.getByNodeId(found.id);
 
         assertFalse(bTracker.getFuture().isDone());
         assertFalse(bTracker.getFuture().isCancelled());
@@ -480,7 +485,7 @@ public class RecalculateWorkQueueTest {
         t.persist();
         tm.commit();
 
-        Upload uploaded = folderService.upload(folderId,JqValues.parse(
+        long uploadId = valueService.createRootValue(folderId,JqValues.parse(
                 """
                 { "a" : 1 }
                 """
@@ -500,8 +505,9 @@ public class RecalculateWorkQueueTest {
         found.persist();
         tm.commit();
         //
-        assertFalse(uploaded.future.isDone(),"upload should be active");
-        RecalculationTracker tTracker = folderService.recalculateNode(found.id);
+        assertFalse(processingService.getByRootValueId(uploadId).getFuture().isDone(),"upload should be active");
+        processingService.recalculateNode(found.id);
+        ProcessingService.ActivityTracker tTracker = processingService.getByNodeId(found.id);
         //should add aaa ahead of t in queue
 
         //using a loop because right now work for t is duplicating

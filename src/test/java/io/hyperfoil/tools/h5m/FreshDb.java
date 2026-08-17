@@ -42,7 +42,7 @@ public class FreshDb {
         }
         try(Connection conn = ds.getConnection()){
             try(Statement stmt = conn.createStatement()){
-                stmt.executeUpdate("DELETE from processing_tracker");
+                stmt.executeUpdate("DELETE from processing");
                 stmt.executeUpdate("DELETE from folder_view_component");
                 stmt.executeUpdate("DELETE from folder_view");
                 stmt.executeUpdate("DELETE from notification_log");

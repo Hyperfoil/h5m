@@ -1,13 +1,10 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.JqValues;
-import io.hyperfoil.tools.h5m.api.NodeType;
-import io.hyperfoil.tools.h5m.api.ProcessingState;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.hyperfoil.tools.h5m.queue.UploadTracker;
 import io.hyperfoil.tools.h5m.queue.WorkQueue;
 import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -36,8 +33,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -129,6 +124,9 @@ public class WorkService implements WorkServiceInterface {
     @Inject
     DatabaseEngine db;
 
+    @Inject
+    ProcessingService processingService;
+
     @ConfigProperty(name = "h5m.worker.core", defaultValue = "1")
     int corePoolSize;
 
@@ -139,47 +137,6 @@ public class WorkService implements WorkServiceInterface {
     Duration keepAlive;
 
     private WorkQueueExecutor workExecutor;
-
-    private final ConcurrentHashMap<Long, UploadTracker> trackers = new ConcurrentHashMap<>();
-
-    /**
-     * Finds trackers associated with the work's source values.
-     * A tracker exists for each root value ID that was registered via createTracked().
-     * This derives the association from sourceValues rather than duplicating state on Work.
-     */
-    private List<UploadTracker> findTrackers(Work work) {
-        if (work.getSourceValueIds() == null || trackers.isEmpty()) {
-            return List.of();
-        }
-        List<UploadTracker> found = new ArrayList<>();
-        for (Long valueId : work.getSourceValueIds()) {
-            if (valueId != null) {
-                UploadTracker tracker = trackers.get(valueId);
-                if (tracker != null) {
-                    found.add(tracker);
-                }
-            }
-        }
-        return found;
-    }
-
-    private void incrementTrackers(Work work, int count) {
-        for (UploadTracker tracker : findTrackers(work)) {
-            tracker.increment(count);
-        }
-    }
-
-    private void decrementTrackers(Work work) {
-        for (UploadTracker tracker : findTrackers(work)) {
-            tracker.decrement();
-        }
-    }
-
-    private void failTrackers(Work work, Throwable t) {
-        for (UploadTracker tracker : findTrackers(work)) {
-            tracker.fail(t);
-        }
-    }
 
     /**
      * Eagerly initializes the NodeEntity.sources chains for all active nodes
@@ -247,7 +204,7 @@ public class WorkService implements WorkServiceInterface {
                 // (outside the session) and needs these for O(1) dependency checks.
                 work.precomputeAncestors();
                 // Increment trackers for each work item (before afterCompletion decrement)
-                incrementTrackers(work, 1);
+                processingService.incrementTrackers(work);
             }
             workQueue.incrementDeferred(toQueue.size());
             try {
@@ -264,7 +221,7 @@ public class WorkService implements WorkServiceInterface {
                             // counted in the increment but will never be executed
                             for (Work work : toQueue) {
                                 if (!accepted.contains(work)) {
-                                    decrementTrackers(work);
+                                    processingService.decrementTrackers(work);
                                 }
                             }
                         } else {
@@ -272,7 +229,7 @@ public class WorkService implements WorkServiceInterface {
                                     status, toQueue.size());
                             // Decrement trackers for rolled-back work
                             for (Work work : toQueue) {
-                                decrementTrackers(work);
+                                processingService.decrementTrackers(work);
                             }
                         }
                         workQueue.decrementDeferred(toQueue.size());
@@ -282,65 +239,12 @@ public class WorkService implements WorkServiceInterface {
                 workQueue.decrementDeferred(toQueue.size());
                 // Undo tracker increments
                 for (Work work : toQueue) {
-                    decrementTrackers(work);
+                    processingService.decrementTrackers(work);
                 }
                 throw new IllegalStateException(
                         "Failed to register transaction synchronization; refusing to queue before commit", e);
             }
         }
-    }
-
-    /**
-     * Creates work items with upload completion tracking.
-     * Trackers are keyed by root value IDs. The association between Work
-     * and trackers is derived from Work.sourceValues — no duplicated state.
-     * For cross-upload Work, a single Work can have source values from
-     * multiple uploads, and all relevant trackers are updated automatically.
-     * Returns a CompletableFuture that completes when all trackers complete.
-     */
-    public CompletableFuture<Void> createTracked(List<Work> works, Set<Long> rootValueIds) {
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        for (long rootValueId : rootValueIds) {
-            UploadTracker tracker = trackers.computeIfAbsent(rootValueId, UploadTracker::new);
-            // Clean up tracker when its future completes
-            tracker.getFuture().whenComplete((v, t) -> trackers.remove(rootValueId));
-            futures.add(tracker.getFuture());
-        }
-        create(works);
-        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
-    }
-
-    /**
-     * Returns the tracker for the given root value ID, if one exists.
-     */
-    public Optional<UploadTracker> getTracker(long rootValueId) {
-        return Optional.ofNullable(trackers.get(rootValueId));
-    }
-
-    /**
-     * Returns the processing status for an upload by its root value ID.
-     * Checks in-memory trackers first (active processing), then falls back
-     * to a DB query to determine if the upload completed previously.
-     */
-    @Override
-    @Transactional
-    public ProcessingState getProcessingStatus(long rootValueId) {
-        Optional<UploadTracker> tracker = getTracker(rootValueId);
-        if (tracker.isPresent()) {
-            if (tracker.get().getFuture().isDone()) {
-                return tracker.get().getFuture().isCompletedExceptionally()
-                        ? ProcessingState.FAILED
-                        : ProcessingState.COMPLETED;
-            }
-            return ProcessingState.PROCESSING;
-        }
-        // Tracker already cleaned up — check if root value exists in DB
-        ValueEntity rootValue = ValueEntity.findById(rootValueId);
-        if (rootValue != null && rootValue.node != null
-                && rootValue.node.type() == NodeType.ROOT) {
-            return ProcessingState.COMPLETED;
-        }
-        return ProcessingState.NOT_FOUND;
     }
 
     public WorkQueue getQueue(){return workExecutor.getWorkQueue();}
@@ -392,7 +296,7 @@ public class WorkService implements WorkServiceInterface {
             }
             if(activeNodes.isEmpty() || sourceValues.isEmpty()){
                 // Nothing to process — still need to decrement trackers
-                decrementTrackers(w);
+                processingService.decrementTrackers(w);
                 return;
             }
 
@@ -511,7 +415,7 @@ public class WorkService implements WorkServiceInterface {
                     @Override public void beforeCompletion() {}
                     @Override public void afterCompletion(int status) {
                         workQueue.decrement(w);
-                        decrementTrackers(w);
+                        processingService.decrementTrackers(w);
                         w.releaseReferences();
                     }
                 });
@@ -527,12 +431,12 @@ public class WorkService implements WorkServiceInterface {
                 decrementDeferred = true;
             } else {
                 // Fail trackers so CompletableFutures complete exceptionally
-                failTrackers(w, e);
+                processingService.failTrackers(w, e);
             }
         } finally {
             if(!decrementDeferred && w.getActiveNodes() != null && !w.getActiveNodes().isEmpty()){
                 workQueue.decrement(w);
-                decrementTrackers(w);
+                processingService.decrementTrackers(w);
                 w.releaseReferences();
             }
         }

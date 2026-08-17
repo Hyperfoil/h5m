@@ -1,11 +1,13 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
-import io.hyperfoil.tools.h5m.api.ProcessingType;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.Processing;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
+import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.quarkus.logging.Log;
@@ -21,25 +23,44 @@ import jakarta.transaction.Transactional;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Handles pipeline processing lifecycle: recalculation, selective node
- * recalculation, and crash recovery. Owns all {@link ProcessingTrackerEntity}
- * management for recalculation and recovery operations.
+ * recalculation, crash recovery, and in-memory tracker management.
  *
- * <p>Upload processing remains in {@link FolderService} because it is tightly
- * coupled to root value creation. The recalculation methods here are exposed
- * via {@link FolderService} delegation to keep the {@code FolderServiceInterface}
- * contract stable.</p>
+ * <p>Manages mutable {@link ActivityTracker} state and produces immutable
+ * {@link Processing} snapshots on demand. Trackers are indexed by root
+ * value ID for work-item accounting and by node ID for recalculation
+ * status queries.</p>
+ *
+ * <p>Ingestion starts in {@link ValueService#createRootValue} which delegates
+ * tracker creation and lifecycle to this service. Recalculation is exposed
+ * directly via {@link io.hyperfoil.tools.h5m.rest.NodeResource}.</p>
  */
 @ApplicationScoped
-public class ProcessingService {
+public class ProcessingService implements ProcessingServiceInterface {
 
-    private static final String FOLDER_FETCH =
-            "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root";
+    private static final String FOLDER_FETCH = "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root";
 
-    private static final CompletableFuture<Void> COMPLETED = CompletableFuture.completedFuture(null);
+    private static final long RETENTION_MS = 10 * 60 * 1000;
+
+    /**
+     * Per-root-value trackers for work-item accounting. Each root value ID maps
+     * to a tracker whose pendingCount is incremented/decremented as work items
+     * are created and completed. For recalculations, sub-trackers are created
+     * per root value and their completion drives the main tracker's progress.
+     */
+    private final ConcurrentHashMap<Long, ActivityTracker> byRootValueId = new ConcurrentHashMap<>();
+
+    /**
+     * Per-node trackers for recalculation status queries.
+     * Keyed by the target node ID being recalculated.
+     */
+    private final ConcurrentHashMap<Long, ActivityTracker> byNodeId = new ConcurrentHashMap<>();
 
     @Inject
     EntityManager em;
@@ -48,14 +69,177 @@ public class ProcessingService {
     @Inject
     WorkService workService;
     @Inject
-    RecalculationService recalculationService;
-    @Inject
     NodeService nodeService;
+
+    // --- Tracker lifecycle ---
+
+    /**
+     * Creates a tracker for ingestion of a root value through the pipeline.
+     * The tracker is indexed by root value ID for both work-item accounting
+     * and status queries.
+     *
+     * @return the activity tracker (callers can get the future from it)
+     */
+    ActivityTracker createForIngestion(long nodeId, long rootValueId, String folderName) {
+        ActivityTracker tracker = byRootValueId.computeIfAbsent(rootValueId, _ -> new ActivityTracker(nodeId, List.of(rootValueId), folderName, 1));
+        tracker.afterCleanup = tracker.future.whenComplete((_, t) -> {
+            byRootValueId.remove(rootValueId);
+            workService.runInNewTransaction(() -> completeIngestion(rootValueId, t));
+        });
+        return tracker;
+    }
+
+    private void completeIngestion(long rootValueId, Throwable error) {
+        ProcessingEntity entity = ProcessingEntity.find("valueId = ?1 and completed = false", rootValueId).firstResult();
+        if (entity != null) {
+            if (error != null) {
+                Log.errorf(error, "Ingestion failed for root value %d", rootValueId);
+            } else {
+                entity.completed = true;
+            }
+        }
+        int nullified = valueService.nullifyEphemeralData(rootValueId);
+        if (nullified > 0) {
+            Log.debugf("Nullified data for %d ephemeral values (root value %d)", nullified, rootValueId);
+            em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
+        }
+    }
+
+    /**
+     * Creates a tracker for a node recalculation (multiple root values).
+     * Internally creates per-root-value sub-trackers for work-item accounting,
+     * and a main tracker (indexed by node ID) that aggregates progress.
+     *
+     * @return the main tracker (callers can get the future and status from it)
+     */
+    ActivityTracker createForRecalculation(long nodeId, Set<Long> rootValueIds, String folderName) {
+        List<CompletableFuture<Void>> subFutures = new ArrayList<>(rootValueIds.size());
+        for (long rootValueId : rootValueIds) {
+            ActivityTracker sub = byRootValueId.computeIfAbsent(rootValueId, _ -> new ActivityTracker(nodeId, List.of(rootValueId), folderName, 1));
+            sub.future.whenComplete((_, _) -> byRootValueId.remove(rootValueId));
+            subFutures.add(sub.future);
+        }
+
+        CompletableFuture<Void> combinedFuture = CompletableFuture.allOf(subFutures.toArray(CompletableFuture[]::new));
+        ActivityTracker main = new ActivityTracker(nodeId, List.copyOf(rootValueIds), folderName, rootValueIds.size(), combinedFuture);
+
+        for (CompletableFuture<Void> subFuture : subFutures) {
+            subFuture.whenComplete((_, _) -> main.incrementCompleted());
+        }
+
+        byNodeId.put(nodeId, main);
+        return main;
+    }
+
+    // --- Work-item accounting (called by WorkService) ---
+
+    List<ActivityTracker> findTrackers(Work work) {
+        if (work.getSourceValueIds() == null || byRootValueId.isEmpty()) {
+            return List.of();
+        }
+        List<ActivityTracker> found = new ArrayList<>();
+        for (Long valueId : work.getSourceValueIds()) {
+            if (valueId != null) {
+                ActivityTracker tracker = byRootValueId.get(valueId);
+                if (tracker != null && !found.contains(tracker)) {
+                    found.add(tracker);
+                }
+            }
+        }
+        return found;
+    }
+
+    void incrementTrackers(Work work) {
+        for (ActivityTracker tracker : findTrackers(work)) {
+            tracker.increment();
+        }
+    }
+
+    void decrementTrackers(Work work) {
+        for (ActivityTracker tracker : findTrackers(work)) {
+            tracker.decrement();
+        }
+    }
+
+    void failTrackers(Work work, Throwable t) {
+        for (ActivityTracker tracker : findTrackers(work)) {
+            tracker.fail(t);
+        }
+    }
+
+    // --- Status queries ---
+
+    @Override
+    @Transactional
+    public Processing getIngestionStatus(long rootValueId) {
+        ActivityTracker tracker = byRootValueId.get(rootValueId);
+        if (tracker != null) {
+            return tracker.toStatus();
+        }
+        ValueEntity rootValue = ValueEntity.findById(rootValueId);
+        if (rootValue != null && rootValue.node != null && rootValue.node.type() == NodeType.ROOT) {
+            return new Processing(rootValue.node.id, List.of(rootValueId), null, 1, 1, Processing.State.COMPLETED, null, 0);
+        }
+        return null;
+    }
+
+    @Override
+    public Processing getRecalculationStatus(long nodeId) {
+        ActivityTracker tracker = getByNodeId(nodeId);
+        return tracker != null ? tracker.toStatus() : null;
+    }
+
+    @Override
+    public boolean awaitIngestion(long rootValueId, long timeout, TimeUnit unit) {
+        ActivityTracker tracker = getByRootValueId(rootValueId);
+        if (tracker == null) {
+            return true;
+        }
+        try {
+            tracker.getFuture().get(timeout, unit);
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    @Override
+    public boolean awaitRecalculation(long nodeId, long timeout, TimeUnit unit) {
+        ActivityTracker tracker = getByNodeId(nodeId);
+        if (tracker == null) {
+            return true;
+        }
+        try {
+            tracker.getFuture().get(timeout, unit);
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    ActivityTracker getByNodeId(long nodeId) {
+        ActivityTracker tracker = byNodeId.get(nodeId);
+        if (tracker != null && tracker.state != Processing.State.RUNNING) {
+            if (tracker.completedAt > 0 && System.currentTimeMillis() - tracker.completedAt > RETENTION_MS) {
+                byNodeId.remove(nodeId);
+                return null;
+            }
+        }
+        return tracker;
+    }
+
+    ActivityTracker getByRootValueId(long rootValueId) {
+        return byRootValueId.get(rootValueId);
+    }
 
     // --- Recovery ---
 
     /**
-     * On startup, re-trigger processing for any uploads or recalculations that
+     * On startup, re-trigger processing for any ingestions or recalculations that
      * were interrupted (e.g., by a crash). Uses all source nodes (not just
      * top-level) so that mid-cascade crashes are recovered correctly — the
      * deduplication logic in execute() skips already-computed values while
@@ -78,13 +262,16 @@ public class ProcessingService {
         if(!ConfigUtils.getProfiles().contains("cli") || ev == null) {
             List<Runnable> deferred = new ArrayList<>();
             QuarkusTransaction.requiringNew().run(() -> {
-                List<ProcessingTrackerEntity> incomplete = ProcessingTrackerEntity.find("completed", false).list();
+                List<ProcessingEntity> incomplete = ProcessingEntity.find("completed", false).list();
                 if (!incomplete.isEmpty()) {
                     Log.infof("Found %d incomplete processing operations to recover", incomplete.size());
-                    for (ProcessingTrackerEntity tracking : incomplete) {
-                        switch (tracking.type) {
-                            case UPLOAD -> recoverUpload(tracking, deferred);
-                            case RECALCULATE_NODE -> recoverRecalculateNode(tracking, deferred);
+                    for (ProcessingEntity tracking : incomplete) {
+                        if (tracking.isIngestion()) {
+                            recoverIngestion(tracking, deferred);
+                        } else if (tracking.isRecalculation()) {
+                            recoverRecalculateNode(tracking, deferred);
+                        } else {
+                            Log.warnf("Unknown processing record %d (no valueId or nodeId), skipping", tracking.id);
                         }
                     }
                 }
@@ -94,31 +281,31 @@ public class ProcessingService {
     }
 
     @Transactional
-    public List<ProcessingTrackerEntity> getIncompleteProcessing() {
-        return ProcessingTrackerEntity.find("completed", false).list();
+    public List<ProcessingEntity> getIncompleteProcessing() {
+        return ProcessingEntity.find("completed", false).list();
     }
 
     @Transactional
     public int removeIncompleteProcessing(){
-        List<ProcessingTrackerEntity> incomplete = getIncompleteProcessing();
-        incomplete.forEach(ProcessingTrackerEntity::delete);
+        List<ProcessingEntity> incomplete = getIncompleteProcessing();
+        incomplete.forEach(ProcessingEntity::delete);
         return incomplete.size();
     }
 
-    private void recoverUpload(ProcessingTrackerEntity tracking, List<Runnable> deferred) {
-        ValueEntity rootValue = ValueEntity.findById(tracking.referenceId);
+    private void recoverIngestion(ProcessingEntity tracking, List<Runnable> deferred) {
+        ValueEntity rootValue = ValueEntity.findById(tracking.valueId);
         if (rootValue == null) {
-            Log.warnf("Root value %d not found for incomplete upload, removing tracking record", tracking.referenceId);
+            Log.warnf("Root value %d not found for incomplete ingestion, removing tracking record", tracking.valueId);
             tracking.delete();
             return;
         }
         FolderEntity folder = findFolderById(tracking.folderId);
         if (folder == null) {
-            Log.warnf("Folder %d not found for incomplete upload, removing tracking record", tracking.folderId);
+            Log.warnf("Folder %d not found for incomplete ingestion, removing tracking record", tracking.folderId);
             tracking.delete();
             return;
         }
-        Log.infof("Re-triggering processing for upload %d in folder %d", tracking.referenceId, tracking.folderId);
+        Log.infof("Re-triggering ingestion for root value %d in folder %d", tracking.valueId, tracking.folderId);
         // Use all source nodes (not just top-level) to handle mid-cascade crashes
         List<Work> works = List.copyOf(folder.group.sources).stream()
                 .map(node -> {
@@ -132,34 +319,25 @@ public class ProcessingService {
                 })
                 .toList();
         if (!works.isEmpty()) {
-            // Defer work creation until after the recovery transaction commits — createTracked opens its own transaction via afterCompletion
-            deferred.add(() ->
-                workService.createTracked(works, Set.of(rootValue.id)).whenComplete((_, _) -> workService.runInNewTransaction(() -> {
-                    ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
-                            "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, rootValue.id).firstResult();
-                    if (entity != null) {
-                        entity.completed = true;
-                    }
-                    valueService.nullifyEphemeralData(rootValue.id);
-                    // Evict cached ValueEntity instances since data was nullified via native SQL
-                    em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
-                }))
-            );
+            deferred.add(() -> {
+                createForIngestion(folder.group.root.id, rootValue.id, folder.name);
+                workService.create(works);
+            });
         } else {
             tracking.completed = true;
         }
     }
 
-    private void recoverRecalculateNode(ProcessingTrackerEntity tracking, List<Runnable> deferred) {
+    private void recoverRecalculateNode(ProcessingEntity tracking, List<Runnable> deferred) {
         FolderEntity folder = findFolderById(tracking.folderId);
         if (folder == null) {
             Log.warnf("Folder %d not found for incomplete node recalculation, removing tracking record", tracking.folderId);
             tracking.delete();
             return;
         }
-        NodeEntity node = NodeEntity.findById(tracking.referenceId);
+        NodeEntity node = NodeEntity.findById(tracking.nodeId);
         if (node == null) {
-            Log.warnf("Node %d not found for incomplete recalculation, removing tracking record", tracking.referenceId);
+            Log.warnf("Node %d not found for incomplete recalculation, removing tracking record", tracking.nodeId);
             tracking.delete();
             return;
         }
@@ -175,17 +353,16 @@ public class ProcessingService {
         // Same dedup issue — if the tracked node's value already matches, cascade
         // doesn't fire for its dependents.
         //
-        // Solution: queue Work for EVERY node in the graph (same as upload recovery).
+        // Solution: queue Work for EVERY node in the graph (same as ingestion recovery).
         // Each node gets its own Work item. The dedup logic skips nodes whose values
         // are already correct but processes any that need updating. This ensures the
         // entire pipeline reaches a consistent state regardless of where the crash
         // interrupted processing.
-        Log.infof("Re-triggering processing for all nodes in folder %d (node %d was in progress)", tracking.folderId, tracking.referenceId);
+        Log.infof("Re-triggering processing for all nodes in folder %d (node %d was in progress)", tracking.folderId, tracking.nodeId);
 
         // Create a new tracker for this recovery work — if recovery itself crashes,
         // the new tracker ensures it's re-triggered on next startup.
-        ProcessingTrackerEntity recoveryTracker = new ProcessingTrackerEntity(
-                ProcessingType.RECALCULATE_NODE, tracking.folderId, tracking.referenceId);
+        ProcessingEntity recoveryTracker = new ProcessingEntity(tracking.folderId, tracking.nodeId, null);
         recoveryTracker.persist();
         tracking.completed = true;
 
@@ -210,8 +387,10 @@ public class ProcessingService {
             long recoveryTrackerId = recoveryTracker.id;
             // Defer work creation until after the recovery transaction commits — createTracked opens its own transaction via afterCompletion
             deferred.add(() -> {
-                workService.createTracked(works, rootValueIds).whenComplete((_, _) -> workService.runInNewTransaction(() -> {
-                    ProcessingTrackerEntity entity = ProcessingTrackerEntity.findById(recoveryTrackerId);
+                ActivityTracker tracker = createForRecalculation(node.id, rootValueIds, folder.name);
+                workService.create(works);
+                tracker.afterCleanup = tracker.getFuture().whenComplete((_, _) -> workService.runInNewTransaction(() -> {
+                    ProcessingEntity entity = ProcessingEntity.findById(recoveryTrackerId);
                     if (entity != null) {
                         entity.completed = true;
                     }
@@ -259,10 +438,10 @@ public class ProcessingService {
      *
      * @param nodeId the node to recalculate
      * @return recalculation status with progress tracking
-     * @throws IllegalStateException if uploads are in progress for this folder
+     * @throws IllegalStateException if ingestion is in progress for this folder
      * @throws IllegalArgumentException if the node is not found or has no group
      */
-    public RecalculationTracker recalculateNode(long nodeId){
+    public Processing recalculateNode(long nodeId){
         return workService.callInNewTransaction(() -> {
             NodeEntity targetNode = NodeEntity.findById(nodeId);
             if(targetNode == null){
@@ -274,9 +453,9 @@ public class ProcessingService {
             FolderEntity folder = findFolderByGroupId(targetNode.group.id);
             List<ValueEntity> rootValues = valueService.getValues(targetNode.group.root);
             if (rootValues.isEmpty()) {
-                return recalculationService.create(folder.name, nodeId, 0, COMPLETED);
+                return new Processing(nodeId, List.of(), folder.name, 0, 0, Processing.State.COMPLETED, null, 0);
             }
-            rootValues.forEach(ValueEntity::getPath); // initialize lazy proxies
+            rootValues.forEach(ValueEntity::getPath);
 
             Set<Long> rootValueIds = new HashSet<>(rootValues.size());
             Set<NodeEntity> ephemeralSources = nodeService.getEphemeralSources(targetNode);
@@ -298,27 +477,27 @@ public class ProcessingService {
             }
 
             if(todo.isEmpty()){
-                return recalculationService.create(folder.name, nodeId, 0, COMPLETED);
+                return new Processing(nodeId, List.of(), folder.name, 0, 0, Processing.State.COMPLETED, null, 0);
             }
 
             // Track for crash recovery
-            ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.RECALCULATE_NODE, folder.id, nodeId);
+            ProcessingEntity tracking = new ProcessingEntity(folder.id, nodeId, null);
             tracking.persist();
 
-            CompletableFuture<Void> future = workService.createTracked(todo, rootValueIds);
+            ActivityTracker tracker = createForRecalculation(nodeId, rootValueIds, folder.name);
+            workService.create(todo);
 
             // Mark completed and null out ephemeral data after recalculation finishes.
-            // Use handle() (not whenComplete) so the returned future only completes
-            // after the tracker DB update commits — callers awaiting getFuture().join()
-            // can rely on the tracker being marked completed by then.
-            CompletableFuture<Void> finalFuture = future.handle((_, t) -> {
+            // The cleanup future is stored in afterCleanup so that awaitRecalculation
+            // can wait for both the processing AND the cleanup to finish.
+            tracker.afterCleanup = tracker.future.whenComplete((_, t) -> {
                 if (t != null) {
                     Log.errorf(t, "Recalculation failed for folder '%s' (nodeId=%d)", folder.name, nodeId);
                 }
                 // Mark tracker completed even on failure to prevent infinite retry on restart.
                 // On success, also nullify ephemeral data and evict the 2LC.
                 workService.runInNewTransaction(() -> {
-                    ProcessingTrackerEntity entity = ProcessingTrackerEntity.findById(tracking.id);
+                    ProcessingEntity entity = ProcessingEntity.findById(tracking.id);
                     if (entity != null) {
                         entity.completed = true;
                     }
@@ -329,24 +508,11 @@ public class ProcessingService {
                                 Log.debugf("Nullified data for %d ephemeral values (root %d)", nullified, rootValue.id);
                             }
                         }
-                        // Evict cached ValueEntity instances since data was nullified via native SQL
                         em.getEntityManagerFactory().getCache().evict(ValueEntity.class);
                     }
                 });
-                return null;
             });
-
-            // Create status tracker with per-root progress callbacks.
-            // This wiring is safe from races: createTracked() defers work queue insertion
-            // to afterCompletion (transaction commit), so no work has started yet.
-            RecalculationTracker status = recalculationService.create(folder.name, nodeId, rootValues.size(), finalFuture);
-            for (Long rootId : rootValueIds) {
-                workService.getTracker(rootId).ifPresent(tracker ->
-                    tracker.getFuture().whenComplete((_, _) -> status.incrementCompleted())
-                );
-            }
-            return status;
-
+            return tracker.toStatus();
         });
     }
 
@@ -443,7 +609,84 @@ public class ProcessingService {
     }
 
     public void deleteForFolder(long folderId) {
-        em.createNativeQuery("DELETE FROM processing_tracker WHERE folder_id = :fid")
+        em.createNativeQuery("DELETE FROM processing WHERE folder_id = :fid")
                 .setParameter("fid", folderId).executeUpdate();
+    }
+
+    // --- Activity tracker (mutable internal state) ---
+
+    static class ActivityTracker {
+        private final long nodeId;
+        private final List<Long> valueIds;
+        private final String folderName;
+        private final int total;
+        private final AtomicInteger pendingCount = new AtomicInteger(0);
+        private final AtomicInteger completedCount = new AtomicInteger(0);
+        private final CompletableFuture<Void> future;
+        private final long startedAt;
+        private volatile Processing.State state = Processing.State.RUNNING;
+        private volatile String error;
+        private volatile long completedAt;
+        volatile CompletableFuture<Void> afterCleanup;
+
+        ActivityTracker(long nodeId, List<Long> valueIds, String folderName, int total) {
+            this(nodeId, valueIds, folderName, total, new CompletableFuture<>());
+        }
+
+        ActivityTracker(long nodeId, List<Long> valueIds, String folderName, int total, CompletableFuture<Void> future) {
+            this.nodeId = nodeId;
+            this.valueIds = valueIds;
+            this.folderName = folderName;
+            this.total = total;
+            this.startedAt = System.currentTimeMillis();
+            this.future = future;
+
+            future.whenComplete((_, t) -> {
+                completedAt = System.currentTimeMillis();
+                if (t != null) {
+                    state = Processing.State.FAILED;
+                    error = t.getMessage();
+                } else {
+                    state = Processing.State.COMPLETED;
+                }
+            });
+        }
+
+        public CompletableFuture<Void> getFuture() {
+            return future;
+        }
+
+        public void increment() {
+            pendingCount.incrementAndGet();
+        }
+
+        public void decrement() {
+            int remaining = pendingCount.decrementAndGet();
+            Log.debugf("Processing[node=%d]: decrement -> %d remaining", nodeId, remaining);
+            if (remaining == 0) {
+                future.complete(null);
+            } else if (remaining < 0) {
+                Log.warnf("Processing[node=%d]: over-decremented to %d", nodeId, remaining);
+            }
+        }
+
+        public void fail(Throwable t) {
+            Log.errorf(t, "Processing[node=%d]: work failed", nodeId);
+            pendingCount.set(Integer.MIN_VALUE);
+            future.completeExceptionally(t);
+        }
+
+        public void incrementCompleted() {
+            completedCount.incrementAndGet();
+        }
+
+        public Processing toStatus() {
+            return new Processing(nodeId, valueIds, folderName, total, completedCount.get(), state, error, System.currentTimeMillis() - startedAt);
+        }
+
+        @Override
+        public String toString() {
+            return "ActivityTracker[node=" + nodeId + ", pending=" + pendingCount.get() + ", completed=" + completedCount.get() + "/" + total + "]";
+        }
     }
 }

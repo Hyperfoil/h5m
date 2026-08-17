@@ -8,8 +8,8 @@ import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.entity.NotificationLog;
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
-import io.hyperfoil.tools.h5m.api.ProcessingType;
+import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
+
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.notification.NotificationMethod;
@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -82,7 +83,7 @@ public class FolderServiceTest extends FreshDb {
                 JqValues.parse("{\"key\": \"recovered\"}")));
 
         // Create an incomplete tracking record (simulating crash before completion)
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
+        ProcessingEntity tracking = new ProcessingEntity(folderId, null, rootValue.id);
         tracking.persist();
         tm.commit();
 
@@ -104,7 +105,7 @@ public class FolderServiceTest extends FreshDb {
                 "Recovered value should match the uploaded data");
 
         // Verify the tracking record is now completed
-        ProcessingTrackerEntity updatedTracking = ProcessingTrackerEntity.find("referenceId", rootValue.id).firstResult();
+        ProcessingEntity updatedTracking = ProcessingEntity.find("valueId", rootValue.id).firstResult();
         assertTrue(updatedTracking.completed, "Tracking record should be marked completed after recovery");
         tm.commit();
     }
@@ -113,7 +114,7 @@ public class FolderServiceTest extends FreshDb {
     public void recovery_skips_missing_root_value() throws Exception {
         // Create an incomplete tracking record pointing to a non-existent root value
         tm.begin();
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, 999999L, 999999L);
+        ProcessingEntity tracking = new ProcessingEntity(999999L, null, 999999L);
         tracking.persist();
         long trackingId = tracking.id;
         tm.commit();
@@ -123,7 +124,7 @@ public class FolderServiceTest extends FreshDb {
 
         // Verify the tracking record was deleted
         tm.begin();
-        ProcessingTrackerEntity deleted = ProcessingTrackerEntity.findById(trackingId);
+        ProcessingEntity deleted = ProcessingEntity.findById(trackingId);
         assertNull(deleted, "Tracking record should be deleted when root value is missing");
         tm.commit();
     }
@@ -138,7 +139,7 @@ public class FolderServiceTest extends FreshDb {
                 JqValues.parse("{\"key\": \"orphaned\"}")));
         long rootValueId = rootValue.id;
 
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, 888888L, rootValueId);
+        ProcessingEntity tracking = new ProcessingEntity(888888L, null, rootValueId);
         tracking.persist();
         long trackingId = tracking.id;
         tm.commit();
@@ -148,7 +149,7 @@ public class FolderServiceTest extends FreshDb {
 
         // Verify the tracking record was deleted
         tm.begin();
-        ProcessingTrackerEntity deleted = ProcessingTrackerEntity.findById(trackingId);
+        ProcessingEntity deleted = ProcessingEntity.findById(trackingId);
         assertNull(deleted, "Tracking record should be deleted when folder is missing");
         tm.commit();
     }
@@ -192,7 +193,7 @@ public class FolderServiceTest extends FreshDb {
         valValue = valueService.create(valValue);
 
         // But tracking was never marked completed (crash happened here)
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
+        ProcessingEntity tracking = new ProcessingEntity(folderId, null, rootValue.id);
         tracking.persist();
         long rootValueId = rootValue.id;
         tm.commit();
@@ -213,7 +214,7 @@ public class FolderServiceTest extends FreshDb {
                 "No new values should be created when all work was already computed");
 
         // Verify tracking is now completed
-        ProcessingTrackerEntity updatedTracking = ProcessingTrackerEntity.find("referenceId", rootValueId).firstResult();
+        ProcessingEntity updatedTracking = ProcessingEntity.find("valueId", rootValueId).firstResult();
         assertTrue(updatedTracking.completed,
                 "Tracking record should be marked completed even when all values were already computed");
         tm.commit();
@@ -235,9 +236,9 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"k1\"}"))
-                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"k1\"}"));
+        // afterCleanup includes processing AND ephemeral nullification
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         tm.begin();
         List<ValueEntity> values = ValueEntity.find("node.id", nodeId).list();
@@ -260,9 +261,8 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = node.id;
         tm.commit();
 
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"k1\"}"))
-                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId,
+                JqValues.parse("{\"key\": \"k1\"}")), 30, TimeUnit.SECONDS);
 
         tm.begin();
         List<ValueEntity> values = ValueEntity.find("node.id", nodeId).list();
@@ -300,9 +300,9 @@ public class FolderServiceTest extends FreshDb {
         // No need to call markAutoEphemeral — the inlined AUTO logic in
         // nullifyEphemeralData resolves AUTO nodes based on graph structure
 
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"k1\"}"))
-                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        long uploadId = valueService.createRootValue(folderId, JqValues.parse("{\"key\": \"k1\"}"));
+        // afterCleanup includes processing AND ephemeral nullification
+        processingService.getByRootValueId(uploadId).afterCleanup.get(30, TimeUnit.SECONDS);
 
         tm.begin();
         // Parent (intermediate, auto) should have data nulled
@@ -332,9 +332,8 @@ public class FolderServiceTest extends FreshDb {
         long leafId = leaf.id;
         tm.commit();
 
-        folderService.upload(folderId,
-                JqValues.parse("{\"key\": \"k1\"}"))
-                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId,
+                JqValues.parse("{\"key\": \"k1\"}")), 30, TimeUnit.SECONDS);
 
         tm.begin();
         List<ValueEntity> values = ValueEntity.find("node.id", leafId).list();
@@ -373,7 +372,7 @@ public class FolderServiceTest extends FreshDb {
         ValueEntity rootValue = valueService.create(new ValueEntity(f, f.group.root,
                 JqValues.parse("{\"key\": \"k1\", \"value\": \"v1\"}")));
 
-        ProcessingTrackerEntity tracking = new ProcessingTrackerEntity(ProcessingType.UPLOAD, folderId, rootValue.id);
+        ProcessingEntity tracking = new ProcessingEntity(folderId, null, rootValue.id);
         tracking.persist();
         long rootValueId = rootValue.id;
         tm.commit();
@@ -393,7 +392,7 @@ public class FolderServiceTest extends FreshDb {
         assertEquals("v1", valValues.get(0).data.asText());
 
         // Verify tracking completed
-        ProcessingTrackerEntity updatedTracking = ProcessingTrackerEntity.find("referenceId", rootValueId).firstResult();
+        ProcessingEntity updatedTracking = ProcessingEntity.find("valueId", rootValueId).firstResult();
         assertTrue(updatedTracking.completed, "Tracking record should be marked completed after recovery");
         tm.commit();
     }
@@ -404,8 +403,8 @@ public class FolderServiceTest extends FreshDb {
         long folderId = folderService.create("upload-root-match-test").id();
         tm.commit();
 
-        long uploadId = folderService.upload(folderId,
-                JqValues.parse("{\"cpu\": 95}")).uploadId;
+        long uploadId = valueService.createRootValue(folderId,
+                JqValues.parse("{\"cpu\": 95}"));
 
         tm.begin();
         ValueEntity rootValue = ValueEntity.findById(uploadId);
@@ -415,19 +414,19 @@ public class FolderServiceTest extends FreshDb {
     }
 
     @Test
-    public void upload_creates_processing_tracker() throws Exception {
+    public void upload_creates_processing() throws Exception {
         tm.begin();
         long folderId = folderService.create("upload-tracker-svc-test").id();
         tm.commit();
 
-        long uploadId = folderService.upload(folderId,
-                JqValues.parse("{\"cpu\": 95}")).uploadId;
+        long uploadId = valueService.createRootValue(folderId,
+                JqValues.parse("{\"cpu\": 95}"));
 
         tm.begin();
-        ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
-                "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, uploadId).firstResult();
-        assertNotNull(entity, "ProcessingTrackerEntity should be created on upload");
-        assertEquals(uploadId, entity.referenceId);
+        ProcessingEntity entity = ProcessingEntity.find(
+                "valueId", uploadId).firstResult();
+        assertNotNull(entity, "ProcessingEntity should be created on upload");
+        assertEquals(uploadId, entity.valueId);
         tm.commit();
     }
 
@@ -437,10 +436,10 @@ public class FolderServiceTest extends FreshDb {
         long folderId = folderService.create("upload-unique-svc-test").id();
         tm.commit();
 
-        long id1 = folderService.upload(folderId,
-                JqValues.parse("{\"cpu\": 95}")).uploadId;
-        long id2 = folderService.upload(folderId,
-                JqValues.parse("{\"cpu\": 99}")).uploadId;
+        long id1 = valueService.createRootValue(folderId,
+                JqValues.parse("{\"cpu\": 95}"));
+        long id2 = valueService.createRootValue(folderId,
+                JqValues.parse("{\"cpu\": 99}"));
 
         assertNotEquals(id1, id2, "Each upload should return a unique ID");
     }
@@ -477,9 +476,8 @@ public class FolderServiceTest extends FreshDb {
         long logId = log.id;
         tm.commit();
 
-        folderService.upload(folderId,
-                JqValues.parse("{\"cpu\": 95}"))
-                .future.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        processingService.awaitIngestion(valueService.createRootValue(folderId,
+                JqValues.parse("{\"cpu\": 95}")), 30, TimeUnit.SECONDS);
 
         folderService.delete(folderId);
 

@@ -4,16 +4,15 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
 import jakarta.persistence.NoResultException;
 
 import io.hyperfoil.tools.h5m.api.Folder;
-import io.hyperfoil.tools.h5m.api.Upload;
 import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
@@ -27,8 +26,13 @@ import org.aesh.command.option.Option;
 @CommandDefinition(name = "upload", description = "Upload JSON files to a folder for processing through its computation node graph", generateHelp = true)
 public class UploadCmd implements Command<H5mCommandInvocation> {
 
+    private static final long TIMEOUT_MINUTES = 5;
+
     @Inject
     FolderServiceInterface folderService;
+
+    @Inject
+    ProcessingServiceInterface processingService;
 
     @Inject
     ValueService valueService;
@@ -68,19 +72,19 @@ public class UploadCmd implements Command<H5mCommandInvocation> {
         List<File> todo = pathFile.isDirectory()
                 ? List.of(pathFile.listFiles(s -> s.toString().endsWith(".json") && !s.getName().startsWith(".")))
                 : List.of(pathFile);
-        List<Upload> uploads = new ArrayList<>();
+        List<Long> uploadIds = new ArrayList<>();
         for (File f : todo) {
             if (Thread.interrupted()) throw new InterruptedException("Upload interrupted");
             try {
                 JqValue read = JqValues.parse(new String(java.nio.file.Files.readAllBytes(f.toPath())));
                 if (read != null) {
                     try {
-                        Upload upload = folderService.upload(folder.id(), read);
-                        uploads.add(upload);
+                        long uploadId = valueService.createRootValue(folder.id(), read);
+                        uploadIds.add(uploadId);
                         if (todo.size() > 1) {
-                            invocation.println(f.getName() + " -> processing id: " + upload.uploadId);
+                            invocation.println(f.getName() + " -> processing id: " + uploadId);
                         } else {
-                            invocation.println("Processing id: " + upload.uploadId);
+                            invocation.println("Processing id: " + uploadId);
                         }
                     } catch (NoResultException e) {
                         invocation.println("Folder '" + folderName + "' not found");
@@ -101,25 +105,19 @@ public class UploadCmd implements Command<H5mCommandInvocation> {
         }
 
         // Synchronous mode — wait for all uploads to complete, then show detection results
-        if (!uploads.isEmpty()) {
-            try {
-                CompletableFuture.allOf(uploads.stream()
-                                .map(u -> u.future)
-                                .toArray(CompletableFuture[]::new))
-                        .orTimeout(5, TimeUnit.MINUTES)
-                        .join();
-            } catch (Exception e) {
-                invocation.println("Upload processing failed: " + e.getMessage());
+        for (long uploadId : uploadIds) {
+            if (!processingService.awaitIngestion(uploadId, TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                invocation.println("Upload processing timed out for: " + uploadId);
                 return CommandResult.FAILURE;
             }
-
-            // Query for detection results across all uploads
-            List<Value> allChanges = new ArrayList<>();
-            for (Upload upload : uploads) {
-                allChanges.addAll(valueService.getDetectionDescendants(upload.uploadId));
-            }
-            invocation.println("Processing complete. " + ChangeFormatter.formatSummary(allChanges));
         }
+
+        // Query for detection results across all uploads
+        List<Value> allChanges = new ArrayList<>();
+        for (long uploadId : uploadIds) {
+            allChanges.addAll(valueService.getDetectionDescendants(uploadId));
+        }
+        invocation.println("Processing complete. " + ChangeFormatter.formatSummary(allChanges));
         return CommandResult.SUCCESS;
     }
 }

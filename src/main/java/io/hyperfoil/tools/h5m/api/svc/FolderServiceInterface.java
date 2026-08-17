@@ -3,9 +3,6 @@ package io.hyperfoil.tools.h5m.api.svc;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
-import io.hyperfoil.tools.h5m.api.Upload;
-import io.hyperfoil.tools.h5m.svc.RecalculationTracker;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -52,26 +49,6 @@ public interface FolderServiceInterface {
      * @param id The ID of the folder to delete.
      */
     void delete(long id);
-
-    /**
-     * Uploads data to a folder.
-     * Returns immediately with an {@link Upload} containing the upload ID and a future
-     * that completes when all processing finishes.
-     *
-     * @param folderId The ID of the folder.
-     * @param data The JSON data to upload.
-     * @return an Upload with the upload ID (safe to return to callers) and
-     *         a future (for callers that need to await completion).
-     */
-    Upload upload(long folderId, JqValue data);
-
-    /**
-     * Selectively recalculates values for a specific node and its dependents.
-     *
-     * @param nodeId The ID of the node to recalculate.
-     * @return tracker with progress and completion future
-     */
-    RecalculationTracker recalculateNode(long nodeId);
 
     /**
      * Retrieves the structural representation of a folder.

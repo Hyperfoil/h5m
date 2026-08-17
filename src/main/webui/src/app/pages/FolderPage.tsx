@@ -37,12 +37,12 @@ const NodesTab = ({ groupId }: { groupId: number }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [nodeToDelete, setNodeToDelete] = useState<ApiNode | null>(null);
   const [nodeToEdit, setNodeToEdit] = useState<ApiNode | null>(null);
-  const [recalculationId, setRecalculationId] = useState<string | null>(null);
+  const [recalculationId, setRecalculationId] = useState<number | null>(null);
 
   const { data: recalcStatus } = useQuery({
-    ...getRecalculationStatusOptions({ path: { id: recalculationId ?? '' } }),
+    ...getRecalculationStatusOptions({ path: { id: recalculationId ?? 0 } }),
     enabled: recalculationId !== null,
-    refetchInterval: (query) => query.state.data?.state === 'RUNNING' ? 2000 : false,
+    refetchInterval: (query) => (query.state.data?.state === 'RUNNING' ? 2000 : false),
   });
 
   useEffect(() => {
@@ -65,7 +65,7 @@ const NodesTab = ({ groupId }: { groupId: number }) => {
       {recalcStatus?.state === 'RUNNING' && (
         <div style={{ margin: '0 var(--cds-spacing-05)' }}>
           <InlineLoading
-            description={`Recalculating… ${recalcStatus.completedRoots ?? 0}/${recalcStatus.totalRoots ?? 0} values`}
+            description={`Recalculating… ${recalcStatus.completed ?? 0}/${recalcStatus.total ?? 0} values`}
             status="active"
           />
         </div>

@@ -1,8 +1,7 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import io.hyperfoil.tools.h5m.api.ProcessingState;
-import io.hyperfoil.tools.h5m.api.ProcessingStatus;
-import io.hyperfoil.tools.h5m.svc.WorkService;
+import io.hyperfoil.tools.h5m.api.Processing;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -12,24 +11,34 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 @Path("/api/processing")
 @Produces(MediaType.APPLICATION_JSON)
-@Tag(name = "Processing", description = "Track upload processing status")
+@Tag(name = "Processing", description = "Track processing status for uploads and recalculations")
 public class ProcessingResource {
 
     @Inject
-    WorkService workService;
+    ProcessingServiceInterface processingService;
 
     @GET
-    @Path("{id}")
+    @Path("upload/{id}")
     @PermitAll
-    @Operation(description = "Get the processing status of an upload. Returns state (PROCESSING, COMPLETED, FAILED).")
-    public ProcessingStatus getStatus(@PathParam("id") long id) {
-        ProcessingState state = workService.getProcessingStatus(id);
-        return switch (state) {
-            case PROCESSING -> new ProcessingStatus(id, ProcessingState.PROCESSING, null);
-            case COMPLETED -> new ProcessingStatus(id, ProcessingState.COMPLETED, null);
-            case FAILED -> new ProcessingStatus(id, ProcessingState.FAILED, "Processing failed");
-            case NOT_FOUND -> throw new NotFoundException("Upload not found: " + id);
-        };
+    @Operation(description = "Get the processing status of an upload by root value ID.")
+    public Processing getUploadStatus(@PathParam("id") long valueId) {
+        Processing status = processingService.getIngestionStatus(valueId);
+        if (status == null) {
+            throw new NotFoundException("Upload not found: " + valueId);
+        }
+        return status;
+    }
+
+    @GET
+    @Path("node/{id}")
+    @PermitAll
+    @Operation(description = "Get the processing status of a node recalculation.")
+    public Processing getRecalculationStatus(@PathParam("id") long nodeId) {
+        Processing status = processingService.getRecalculationStatus(nodeId);
+        if (status == null) {
+            throw new NotFoundException("Recalculation not found: " + nodeId);
+        }
+        return status;
     }
 
 }

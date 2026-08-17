@@ -2,9 +2,11 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import jakarta.inject.Inject;
@@ -24,7 +26,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @CommandDefinition(name = "load-runs", description = "Import run data from a legacy Horreum PostgreSQL database and process through the node graph", generateHelp = true)
@@ -32,6 +33,12 @@ public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
 
     @Inject
     FolderService folderService;
+
+    @Inject
+    ValueService valueService;
+
+    @Inject
+    ProcessingServiceInterface processingService;
 
     @Inject
     WorkService workService;
@@ -141,7 +148,7 @@ public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
                     }
                     int count = 0;
                     int batchCount = 0;
-                    List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
+                    List<Long> batchUploadIds = new ArrayList<>();
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             if (Thread.interrupted()) throw new InterruptedException("Import interrupted");
@@ -152,16 +159,16 @@ public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
                             // getCharacterStream() path required.
                             byte[] bytes = rs.getBytes("data");
                             JqValue data = JqValues.parse(bytes);
-                            batchFutures.add(folderService.upload(folder.id(), data).future);
+                            batchUploadIds.add(valueService.createRootValue(folder.id(), data));
                             count++;
                             batchCount++;
                             if (batch > 0 && batchCount >= batch) {
                                 invocation.println("waiting for batch of " + batchCount + " to complete");
-                                CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
-                                        .orTimeout(10, TimeUnit.MINUTES)
-                                        .join();
+                                for (long uid : batchUploadIds) {
+                                    processingService.awaitIngestion(uid, 10, TimeUnit.MINUTES);
+                                }
                                 invocation.println("batch complete");
-                                batchFutures.clear();
+                                batchUploadIds.clear();
                                 if (pause) {
                                     invocation.getShell().readLine(new Prompt("Press Enter to continue..."));
                                 }
@@ -170,11 +177,11 @@ public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
                         }
                     }
                     // Wait for any remaining uploads
-                    if (!batchFutures.isEmpty()) {
-                        invocation.println("waiting for final " + batchFutures.size() + " uploads to complete");
-                        CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
-                                .orTimeout(10, TimeUnit.MINUTES)
-                                .join();
+                    if (!batchUploadIds.isEmpty()) {
+                        invocation.println("waiting for final " + batchUploadIds.size() + " uploads to complete");
+                        for (long uid : batchUploadIds) {
+                            processingService.awaitIngestion(uid, 10, TimeUnit.MINUTES);
+                        }
                     }
                     invocation.println("loaded " + count + " runs");
                 } finally {

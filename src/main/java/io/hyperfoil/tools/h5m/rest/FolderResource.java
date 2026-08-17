@@ -4,11 +4,10 @@ import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
-import io.hyperfoil.tools.h5m.api.RecalculationStatus;
+import io.hyperfoil.tools.h5m.api.Processing;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
-import io.hyperfoil.tools.h5m.svc.RecalculationService;
-import io.hyperfoil.tools.h5m.svc.RecalculationTracker;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 import io.quarkus.runtime.configuration.MemorySize;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
@@ -51,7 +50,7 @@ public class FolderResource {
     ValueServiceInterface valueService;
 
     @Inject
-    RecalculationService recalculationService;
+    ProcessingServiceInterface processingService;
 
     @GET
     @PermitAll
@@ -138,29 +137,15 @@ public class FolderResource {
             } else {
                 bytes = raw.getBytes(StandardCharsets.UTF_8);
             }
-        } catch (BadRequestException e) {
-            throw e;
         } catch (IOException e) {
             throw new BadRequestException("Failed to read upload data: " + e.getMessage());
         }
 
         try {
-            return folderService.upload(id, JqValues.parse(bytes)).uploadId;
+            return valueService.createRootValue(id, JqValues.parse(bytes));
         } catch (Exception e) {
             throw new BadRequestException("Invalid JSON: " + e.getMessage());
         }
-    }
-
-    @GET
-    @Path("/recalculation/{id}")
-    @Authenticated
-    @Operation(description = "Get the progress of a recalculation operation.")
-    public RecalculationStatus getRecalculationStatus(@PathParam("id") String id) {
-        RecalculationTracker tracker = recalculationService.get(id);
-        if (tracker == null) {
-            throw new NotFoundException("Recalculation not found: " + id);
-        }
-        return tracker.toStatus();
     }
 
     @GET

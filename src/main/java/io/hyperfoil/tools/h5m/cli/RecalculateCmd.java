@@ -1,8 +1,6 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
@@ -14,24 +12,25 @@ import org.aesh.command.option.Argument;
 
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeGroup;
-import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.NodeGroupServiceInterface;
-import io.hyperfoil.tools.h5m.svc.RecalculationTracker;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 
 @CommandDefinition(name = "recalculate", description = "Recalculate all computed values in a folder by reprocessing through the node graph", generateHelp = true)
 public class RecalculateCmd implements Command<H5mCommandInvocation> {
 
-    @Inject
-    FolderServiceInterface folderService;
+    private static final long TIMEOUT_MINUTES = 10;
 
     @Inject
     NodeGroupServiceInterface nodeGroupService;
+
+    @Inject
+    ProcessingServiceInterface processingService;
 
     @Argument(description = "folder name", completer = FolderCompleter.class)
     String folderName;
 
     @Override
-    public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
+    public CommandResult execute(H5mCommandInvocation invocation) {
         if (folderName == null && invocation.hasFolderContext()) folderName = invocation.getFolderName();
         if (folderName == null) {
             invocation.println("folder name is required");
@@ -47,18 +46,14 @@ public class RecalculateCmd implements Command<H5mCommandInvocation> {
             invocation.println("No nodes to recalculate in " + folderName);
             return CommandResult.SUCCESS;
         }
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (Node node : topLevelNodes) {
-            RecalculationTracker tracker = folderService.recalculateNode(node.id());
-            futures.add(tracker.getFuture());
+            processingService.recalculateNode(node.id());
         }
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .orTimeout(10, TimeUnit.MINUTES)
-                    .join();
-        } catch (Exception e) {
-            invocation.println("Recalculation failed: " + e.getMessage());
-            return CommandResult.FAILURE;
+        for (Node node : topLevelNodes) {
+            if (!processingService.awaitRecalculation(node.id(), TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                invocation.println("Recalculation timed out for node: " + node.id());
+                return CommandResult.FAILURE;
+            }
         }
         return CommandResult.SUCCESS;
     }

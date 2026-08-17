@@ -6,8 +6,10 @@ import io.hyperfoil.tools.h5m.api.Value;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
+import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
@@ -47,6 +49,10 @@ public class ValueService implements ValueServiceInterface {
     DatabaseEngine db;
     @Inject
     NodeService nodeService;
+    @Inject
+    ProcessingService processingService;
+    @Inject
+    WorkService workService;
 
     // ---- Detection value cache ----
     // In-memory cache of detection values keyed by root value ID (upload ID).
@@ -105,7 +111,32 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public void purgeValues(){
         em.createNativeQuery("delete from Value").executeUpdate();
+    }
 
+    @Override
+    public long createRootValue(long folderId, JqValue data) {
+        return workService.callInNewTransaction(() -> {
+            FolderEntity folder = em.createQuery(
+                    "SELECT f FROM folder f JOIN FETCH f.group g LEFT JOIN FETCH g.sources LEFT JOIN FETCH g.root WHERE f.id = :id",
+                    FolderEntity.class
+            ).setParameter("id", folderId).getSingleResult();
+            ValueEntity newValue = create(new ValueEntity(folder, folder.group.root, data));
+
+            ProcessingEntity tracking = new ProcessingEntity(folder.id, null, newValue.id);
+            tracking.persist();
+
+            List<Work> works = folder.group.getTopLevelNodes().stream()
+                    .map(node -> new Work(node, new ArrayList<>(node.sources), List.of(newValue.id)))
+                    .toList();
+
+            if (works.isEmpty()) {
+                tracking.completed = true;
+            } else {
+                processingService.createForIngestion(folder.group.root.id, newValue.id, folder.name);
+                workService.create(works);
+            }
+            return newValue.id;
+        });
     }
 
     @Transactional

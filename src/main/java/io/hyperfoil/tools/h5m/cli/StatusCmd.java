@@ -1,7 +1,7 @@
 package io.hyperfoil.tools.h5m.cli;
 
-import io.hyperfoil.tools.h5m.api.ProcessingState;
-import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
+import io.hyperfoil.tools.h5m.api.Processing;
+import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
 import jakarta.inject.Inject;
 
 import org.aesh.command.Command;
@@ -15,7 +15,7 @@ import java.util.List;
 public class StatusCmd implements Command<H5mCommandInvocation> {
 
     @Inject
-    WorkServiceInterface workService;
+    ProcessingServiceInterface processingService;
 
     @Arguments(description = "processing ID(s) to check")
     List<String> ids;
@@ -34,12 +34,11 @@ public class StatusCmd implements Command<H5mCommandInvocation> {
                 invocation.println(idStr + ": invalid ID");
                 continue;
             }
-            ProcessingState state = workService.getProcessingStatus(id);
-            switch (state) {
-                case PROCESSING -> invocation.println(id + ": PROCESSING");
-                case COMPLETED -> invocation.println(id + ": COMPLETED");
-                case FAILED -> invocation.println(id + ": FAILED");
-                case NOT_FOUND -> invocation.println(id + ": not found");
+            Processing status = processingService.getIngestionStatus(id);
+            if (status == null) {
+                invocation.println(id + ": not found");
+            } else {
+                invocation.println(id + ": " + status.state());
             }
         }
         return CommandResult.SUCCESS;

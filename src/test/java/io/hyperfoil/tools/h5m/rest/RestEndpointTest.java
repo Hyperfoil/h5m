@@ -3,13 +3,15 @@ package io.hyperfoil.tools.h5m.rest;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.FreshDb;
-import io.hyperfoil.tools.h5m.api.ProcessingType;
+
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.entity.ProcessingTrackerEntity;
+import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.svc.FolderService;
+import io.hyperfoil.tools.h5m.svc.ProcessingService;
+import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
 import io.restassured.specification.RequestSpecification;
 import io.quarkus.test.junit.QuarkusTest;
@@ -57,6 +59,12 @@ public class RestEndpointTest extends FreshDb {
 
     @Inject
     FolderService folderService;
+
+    @Inject
+    ValueService valueService;
+
+    @Inject
+    ProcessingService processingService;
 
     private long createFolder(String name) {
         return given()
@@ -248,14 +256,14 @@ public class RestEndpointTest extends FreshDb {
         Long groupId = getGroupId("node-update-test");
         Long nodeId = createNode(groupId, "updatable", ".foo");
 
-        // Update operation — should return nodeId and null recalculation (no data uploaded)
+        // Update operation — should return the updated Node
         given()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"operation\": \".bar\", \"name\": \"updatable\"}")
+                .queryParam("operation", ".bar")
+                .queryParam("name", "updatable")
                 .when().put("/api/node/" + nodeId)
                 .then()
                 .statusCode(200)
-                .body("nodeId", equalTo(nodeId.intValue()));
+                .body("id", equalTo(nodeId.intValue()));
     }
 
     // -- NodeGroup endpoints --
@@ -306,9 +314,9 @@ public class RestEndpointTest extends FreshDb {
         JqNode jqNode = new JqNode("child", ".foo");
         jqNode.sources = List.of(rootNode);
         jqNode.persist();
-        ValueEntity rootValue = new ValueEntity(null, rootNode, io.hyperfoil.tools.jjq.value.JqValues.parse("{\"foo\": \"bar\"}"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse("{\"foo\": \"bar\"}"));
         rootValue.persist();
-        ValueEntity childValue = new ValueEntity(null, jqNode, io.hyperfoil.tools.jjq.value.JqValues.parse("\"bar\""));
+        ValueEntity childValue = new ValueEntity(null, jqNode, JqValues.parse("\"bar\""));
         childValue.sources = List.of(rootValue);
         childValue.persist();
         tm.commit();
@@ -325,7 +333,7 @@ public class RestEndpointTest extends FreshDb {
         tm.begin();
         RootNode rootNode = new RootNode();
         rootNode.persist();
-        ValueEntity rootValue = new ValueEntity(null, rootNode, io.hyperfoil.tools.jjq.value.JqValues.parse("{\"a\": 1}"));
+        ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse("{\"a\": 1}"));
         rootValue.persist();
         tm.commit();
 
@@ -474,9 +482,8 @@ public class RestEndpointTest extends FreshDb {
         long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload(rhivosFolderId, runData)
-                    .future.orTimeout(30, TimeUnit.SECONDS).join();
+            JqValue runData = JqValues.parse(is.readAllBytes());
+            processingService.awaitIngestion(valueService.createRootValue(rhivosFolderId, runData), 30, TimeUnit.SECONDS);
         }
 
         given()
@@ -498,9 +505,8 @@ public class RestEndpointTest extends FreshDb {
 
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
-                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload(rhivosFolderId, runData)
-                        .future.orTimeout(30, TimeUnit.SECONDS).join();
+                JqValue runData = JqValues.parse(is.readAllBytes());
+                processingService.awaitIngestion(valueService.createRootValue(rhivosFolderId, runData), 30, TimeUnit.SECONDS);
             }
         }
 
@@ -520,9 +526,8 @@ public class RestEndpointTest extends FreshDb {
         long rhivosFolderId = folderService.find("rhivos-perf-comprehensive").id();
 
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload(rhivosFolderId, runData)
-                    .future.orTimeout(30, TimeUnit.SECONDS).join();
+            JqValue runData = JqValues.parse(is.readAllBytes());
+            processingService.awaitIngestion(valueService.createRootValue(rhivosFolderId, runData), 30, TimeUnit.SECONDS);
         }
 
         // Find the root value ID — the upload itself
@@ -830,9 +835,8 @@ public class RestEndpointTest extends FreshDb {
         // Upload a run — ephemeral nullification will skip start_time/end_time
         // because they are referenced by the view
         try (InputStream is = getClass().getResourceAsStream("/rhivos/40375.json")) {
-            io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-            folderService.upload(rhivosFolderId, runData)
-                    .future.orTimeout(30, TimeUnit.SECONDS).join();
+            JqValue runData = JqValues.parse(is.readAllBytes());
+            processingService.awaitIngestion(valueService.createRootValue(rhivosFolderId, runData), 30, TimeUnit.SECONDS);
         }
 
         // Get view data — should return filtered results with only start_time and end_time columns
@@ -875,9 +879,8 @@ public class RestEndpointTest extends FreshDb {
         // Upload two runs — start_time data preserved because it's in a view
         for (String runFile : List.of("/rhivos/40375.json", "/rhivos/40376.json")) {
             try (InputStream is = getClass().getResourceAsStream(runFile)) {
-                io.hyperfoil.tools.jjq.value.JqValue runData = io.hyperfoil.tools.jjq.value.JqValues.parse(is.readAllBytes());
-                folderService.upload(rhivosFolderId, runData)
-                        .future.orTimeout(30, TimeUnit.SECONDS).join();
+                JqValue runData = JqValues.parse(is.readAllBytes());
+                processingService.awaitIngestion(valueService.createRootValue(rhivosFolderId, runData), 30, TimeUnit.SECONDS);
             }
         }
 
@@ -1006,11 +1009,11 @@ public class RestEndpointTest extends FreshDb {
         assertTrue(uploadId > 0, "uploadId should be a positive number");
 
         tm.begin();
-        ProcessingTrackerEntity entity = ProcessingTrackerEntity
-                .find("type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, uploadId)
+        ProcessingEntity entity = ProcessingEntity
+                .find("valueId", uploadId)
                 .firstResult();
-        assertNotNull(entity, "ProcessingTrackerEntity should exist for the returned uploadId");
-        assertEquals(uploadId, entity.referenceId, "referenceId in DB should match the returned uploadId");
+        assertNotNull(entity, "ProcessingEntity should exist for the returned uploadId");
+        assertEquals(uploadId, entity.valueId, "valueId in DB should match the returned uploadId");
         tm.commit();
 
     }
@@ -1036,8 +1039,7 @@ public class RestEndpointTest extends FreshDb {
                 .extract().as(Long.class);
 
         tm.begin();
-        ProcessingTrackerEntity entity = ProcessingTrackerEntity.find(
-                "type = ?1 and referenceId = ?2", ProcessingType.UPLOAD, uploadId).firstResult();
+        ProcessingEntity entity = ProcessingEntity.find("valueId", uploadId).firstResult();
         tm.commit();
         assertNotNull(entity);
         assertTrue(entity.completed);
@@ -1089,7 +1091,7 @@ public class RestEndpointTest extends FreshDb {
         // The upload should complete quickly (no nodes to process)
         // Poll the processing status endpoint
         given()
-                .when().get("/api/processing/" + uploadId)
+                .when().get("/api/processing/upload/" + uploadId)
                 .then()
                 .statusCode(200)
                 .body("state", equalTo("COMPLETED"));
@@ -1121,7 +1123,7 @@ public class RestEndpointTest extends FreshDb {
         try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         given()
-                .when().get("/api/processing/" + uploadId)
+                .when().get("/api/processing/upload/" + uploadId)
                 .then()
                 .statusCode(200)
                 .body("state", equalTo("COMPLETED"));
@@ -1164,7 +1166,7 @@ public class RestEndpointTest extends FreshDb {
                 .extract().as(Long.class);
 
         // Poll processing status until COMPLETED (async processing)
-        awaitUploadCompleted(uploadId);
+        awaitIngestionCompleted(uploadId);
 
         // Verify detection values via the descendants endpoint
         given()
@@ -1208,7 +1210,7 @@ public class RestEndpointTest extends FreshDb {
                 .extract().as(Long.class);
 
         // Poll processing status until COMPLETED
-        awaitUploadCompleted(uploadId);
+        awaitIngestionCompleted(uploadId);
 
         // Verify no detection values — value is within threshold
         given()
@@ -1254,11 +1256,11 @@ public class RestEndpointTest extends FreshDb {
                 .statusCode(200)
                 .extract().as(Long.class);
 
-        awaitUploadCompleted(uploadId);
+        awaitIngestionCompleted(uploadId);
 
         // Verify processing status is COMPLETED
         given()
-                .when().get("/api/processing/" + uploadId)
+                .when().get("/api/processing/upload/" + uploadId)
                 .then()
                 .statusCode(200)
                 .body("state", equalTo("COMPLETED"));
@@ -1274,15 +1276,15 @@ public class RestEndpointTest extends FreshDb {
                 .body("[0].data", notNullValue());
     }
 
-    private void awaitUploadCompleted(Long uploadId) throws InterruptedException {
+    private void awaitIngestionCompleted(Long uploadId) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 30_000;
         while (System.currentTimeMillis() < deadline) {
             String state = given()
-                    .when().get("/api/processing/" + uploadId)
+                    .when().get("/api/processing/upload/" + uploadId)
                     .then()
                     .statusCode(200)
                     .extract().path("state");
-            if (!"PROCESSING".equals(state)) {
+            if (!"RUNNING".equals(state)) {
                 return;
             }
             Thread.sleep(100);
