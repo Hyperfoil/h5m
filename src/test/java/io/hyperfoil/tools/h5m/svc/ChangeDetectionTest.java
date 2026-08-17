@@ -4,6 +4,7 @@ import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
+import io.hyperfoil.tools.h5m.entity.node.FingerprintNode;
 import io.hyperfoil.tools.h5m.entity.node.FixedThreshold;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
@@ -44,16 +45,17 @@ public class ChangeDetectionTest extends FreshDb {
      * Sets up a FixedThreshold node with min=10, max=100 and a single root value
      * with the given range value. Persists everything in one transaction.
      *
-     * Nodes are persisted in order fingerprint, groupBy, range so that their IDs
-     * match the positional order FixedThreshold.setNodes() expects — working around
-     * a Hibernate @OrderColumn issue where sources load in ID order.
+     * Nodes are persisted in dependency order: root first, then extractors
+     * that depend on it, then composite nodes wrapping those extractors.
      */
     private ThresholdFixture setupThreshold(double rangeValue) throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
-        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fingerprint");
-        fingerprintNode.persist();
         NodeEntity rootNode = new RootNode();
         rootNode.persist();
+        JqNode fpExtractor = new JqNode("fpExtractor", ".fingerprint", rootNode);
+        fpExtractor.persist();
+        FingerprintNode fingerprintNode = new FingerprintNode("fingerprint", "", List.of(fpExtractor));
+        fingerprintNode.persist();
         NodeEntity rangeNode = new JqNode("range", ".y");
         rangeNode.persist();
 

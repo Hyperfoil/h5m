@@ -568,7 +568,9 @@ public class EDivisiveTest extends FreshDb {
         rangeNode.persist();
         NodeEntity domainNode = new JqNode("domain", ".d", splitNode);
         domainNode.persist();
-        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fp", splitNode);
+        JqNode fpExtractor = new JqNode("fpExtractor", ".fp", splitNode);
+        fpExtractor.persist();
+        FingerprintNode fingerprintNode = new FingerprintNode("fingerprint", "", List.of(fpExtractor));
         fingerprintNode.persist();
 
         EDivisive ed = new EDivisive();
