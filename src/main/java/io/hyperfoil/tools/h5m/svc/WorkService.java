@@ -29,7 +29,6 @@ import jakarta.transaction.Synchronization;
 import jakarta.transaction.Transactional;
 import jakarta.transaction.TransactionManager;
 import io.hyperfoil.tools.h5m.provided.DatabaseEngine;
-import static io.hyperfoil.tools.h5m.provided.DatabaseEngine.Kind.*;
 import io.quarkus.logging.Log;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -39,40 +38,68 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
+import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class WorkService implements WorkServiceInterface {
 
-    private static final int RETRY_LIMIT = 3;
+    private static final int RETRY_LIMIT = 5;
+    private static final long RETRY_BASE_MS = 5;
 
     private static boolean isPessimisticLock(Throwable t) {
-        for (; t != null; t = t.getCause()) {
-            if (t instanceof PessimisticLockException) return true;
+        for (Throwable cause = t; cause != null; cause = cause.getCause()) {
+            if (cause instanceof PessimisticLockException) return true;
         }
         return false;
+    }
+
+    private static void backoffSleep(int attempt) {
+        // exponential backoff to spread out SQLite writer contention
+        // in each attempt the value increases: from RETRY_BASE_MS to RETRY_BASE_MS * 2, 4, 8, 16 ... -> (5-9, 5-19, 5-39, 5-79 ... ms)
+        // enough to spread the load without being too aggressive
+        long jitter = ThreadLocalRandom.current().nextLong(RETRY_BASE_MS, RETRY_BASE_MS * (1L << attempt));
+        Log.infof("Database busy (retry %d/%d), retrying in %dms", attempt, RETRY_LIMIT - 1, jitter);
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(jitter));
     }
 
     /**
      * Runs an action in a new transaction, independent of the caller's
      * transactional context. On SQLite, transparently retries on
-     * {@link jakarta.persistence.PessimisticLockException} (SQLITE_BUSY)
-     * up to {@link #RETRY_LIMIT} times to handle single-writer contention.
+     * {@link jakarta.persistence.PessimisticLockException} (SQLITE_BUSY /
+     * SQLITE_BUSY_SNAPSHOT) up to {@link #RETRY_LIMIT} times with
+     * exponential backoff and jitter to handle single-writer contention.
+     * <p>
+     * The action is wrapped to capture the original exception before Quarkus
+     * transaction management can lose it during rollback (e.g., if rollback
+     * itself hits SQLITE_BUSY, the original PessimisticLockException is
+     * replaced by a QuarkusTransactionException wrapping SystemException).
      */
     <T> T callInNewTransaction(Callable<T> action) {
         if (!db.isSQLite()) {
             return QuarkusTransaction.requiringNew().call(action);
         }
         for (int attempt = 1; ; attempt++) {
+            AtomicReference<Throwable> actionFailure = new AtomicReference<>();
             try {
-                return QuarkusTransaction.requiringNew().call(action);
+                return QuarkusTransaction.requiringNew().call(() -> {
+                    try {
+                        return action.call();
+                    } catch (Throwable t) {
+                        actionFailure.set(t);
+                        throw t;
+                    }
+                });
             } catch (Throwable t) {
-                if (attempt >= RETRY_LIMIT || !isPessimisticLock(t)) {
+                Throwable rootCause = actionFailure.get();
+                if (attempt >= RETRY_LIMIT || !isPessimisticLock(rootCause != null ? rootCause : t)) {
                     throw t;
                 }
-                Log.debugf("Database busy (attempt %d/%d), retrying", attempt, RETRY_LIMIT);
+                backoffSleep(attempt);
             }
         }
     }
@@ -493,7 +520,7 @@ public class WorkService implements WorkServiceInterface {
             Log.debugf(e, "WorkRunner caught: %s\n work=%s", e.getMessage(), w);
             w.incrementRetryCount();
             if(db.isSQLite() && w.getRetryCount() < RETRY_LIMIT){
-                Log.infof("Retry work %s due to: %s", w, e.getMessage());
+                backoffSleep(w.getRetryCount());
                 workQueue.add(w);
                 // Skip decrement in finally — work is re-queued and will be
                 // decremented when the retry completes
