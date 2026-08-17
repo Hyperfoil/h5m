@@ -76,7 +76,7 @@
         <quarkiverse.quinoa>2.8.1</quarkiverse.quinoa>
 
         <!-- quarkus (quarkus.platform.version defined in .mvn/maven.config) -->
-        <quarkus.graalvm.version>25.0.2</quarkus.graalvm.version>
+        <quarkus.graalvm.version>25.2.4</quarkus.graalvm.version>
         <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:jdk-25</quarkus.native.builder-image>
         <quarkus.native.container-build>true</quarkus.native.container-build>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
