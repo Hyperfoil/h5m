@@ -614,11 +614,6 @@
                                         <quarkus.native.enabled>${h5m.cli.native}</quarkus.native.enabled>
                                         <quarkus.profile>cli</quarkus.profile>
                                         <quarkus.package.output-directory>cli</quarkus.package.output-directory>
-                                        <!-- CLI uses uber-jar for single-file distribution.
-                                             Truffle Multi-Release check is disabled since uber-jar
-                                             merging loses the Multi-Release manifest attribute. -->
-                                        <quarkus.package.jar.type>uber-jar</quarkus.package.jar.type>
-                                        <quarkus.package.jar.add-runner-suffix>false</quarkus.package.jar.add-runner-suffix>
                                     </properties>
                                 </configuration>
                             </execution>
