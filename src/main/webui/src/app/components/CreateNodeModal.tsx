@@ -1,5 +1,6 @@
 import type { Direction, Node as ApiNode, NodeType } from '@client/types.gen.ts';
 
+import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useNotification } from '@app/context/useNotification.tsx';
 import {
   Button,
@@ -124,8 +125,8 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
     notifications.success('Node created');
     handleClose();
   };
-  const onError = (e: Error) => {
-    setSubmitError(e.message || 'Failed to create node');
+  const onError = (e: unknown) => {
+    setSubmitError(extractErrorMessage(e) ?? 'Failed to create node');
   };
 
   const createNode = useMutation({ ...createNodeMutation(), onSuccess, onError });

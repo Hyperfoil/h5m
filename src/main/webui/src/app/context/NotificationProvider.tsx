@@ -21,8 +21,8 @@ function reducer(state: Notification[], action: Action): Notification[] {
   }
 }
 
-// extracts message from Axios-like errors (response.data.detail, response.data.message) without coupling to Axios
-function extractErrorMessage(reason: unknown): string | undefined {
+// extracts message from HTTP-Problems and Axios-like errors (response.data.detail for RFC 9457 Problem details, response.data.message) without coupling to Axios
+export function extractErrorMessage(reason: unknown): string | undefined {
   if (typeof reason === 'string') return reason;
   if (typeof reason !== 'object' || reason === null) return undefined;
 

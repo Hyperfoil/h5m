@@ -1,9 +1,9 @@
 import { Modal } from '@carbon/react';
 import { deleteNodeMutation } from '@client/@tanstack/react-query.gen.ts';
 import type { Node as ApiNode } from '@client/types.gen.ts';
+import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AxiosError } from 'axios';
 
 interface DeleteNodeModalProps {
   node: ApiNode | null;
@@ -20,13 +20,9 @@ export const DeleteNodeModal = ({ node, onClose }: DeleteNodeModalProps) => {
       void queryClient.invalidateQueries();
       onClose();
     },
-    onError: (e: AxiosError<Error>) => {
-        if (e.response?.status === 500) {
-          setError('Cannot delete node');
-        } else {
-          setError(e.message ?? 'Failed to Delete Node');
-        }
-      },
+    onError: (e) => {
+      setError(extractErrorMessage(e) ?? 'Failed to delete node');
+    },
   });
 
   const handleSubmit = () => {

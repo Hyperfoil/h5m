@@ -70,7 +70,7 @@ public class FolderService implements FolderServiceInterface {
     @Transactional
     public Folder create(String name){
         if(FolderEntity.find("name",name).firstResult() !=null){
-            throw new WebApplicationException("Folder already exists:" + name, 409);
+            throw new WebApplicationException("Folder already exists: " + name, 409);
         }
         FolderEntity entity = new FolderEntity();
         entity.name = name;

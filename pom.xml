@@ -53,6 +53,7 @@
         <h5m.benchmark.warmup>5</h5m.benchmark.warmup>
 
         <h5m.cli.native>true</h5m.cli.native>
+
         <!-- dependencies -->
         <lib.jdbi>3.41.3</lib.jdbi>
         <lib.jhunter>0.1.0</lib.jhunter>
@@ -71,6 +72,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- quarkiverse -->
+        <quarkiverse.http-problem>3.38.2</quarkiverse.http-problem>
         <quarkiverse.jdbc-sqlite>3.0.11</quarkiverse.jdbc-sqlite>
         <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
         <quarkiverse.quinoa>2.8.1</quarkiverse.quinoa>
@@ -129,6 +131,11 @@
             <groupId>io.hyperfoil.tools</groupId>
             <artifactId>yaup-core</artifactId>
             <version>${lib.yaup}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkiverse.httpproblem</groupId>
+            <artifactId>quarkus-http-problem</artifactId>
+            <version>${quarkiverse.http-problem}</version>
         </dependency>
         <dependency>
             <groupId>io.quarkiverse.jdbc</groupId>

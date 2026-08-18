@@ -11,8 +11,8 @@ import {
 } from '@carbon/react';
 import { setEphemeralMutation, updateMutation } from '@client/@tanstack/react-query.gen.ts';
 import type { EphemeralMode, Node as ApiNode } from '@client/types.gen.ts';
+import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 
 interface EditNodeModalProps {
@@ -49,8 +49,8 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
       }
       onClose();
     },
-    onError: (e: AxiosError<Error>) => {
-      setError(e.message ?? 'Failed to update node');
+    onError: (e) => {
+      setError(extractErrorMessage(e) ?? 'Failed to update node');
     },
   });
 
@@ -60,8 +60,8 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
       void queryClient.invalidateQueries();
       onClose();
     },
-    onError: (e: AxiosError<Error>) => {
-      setError(e.message ?? 'Failed to update ephemeral mode');
+    onError: (e) => {
+      setError(extractErrorMessage(e) ?? 'Failed to update ephemeral mode');
     },
   });
 

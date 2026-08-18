@@ -12,6 +12,7 @@ import {
 import { ArrowUp, ArrowDown, Close } from '@carbon/icons-react';
 import { byIdOptions } from '@client/@tanstack/react-query.gen.ts';
 import { ViewService } from '@client/sdk.gen.ts';
+import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
@@ -106,8 +107,8 @@ export const ViewConfigModal = ({ open, onClose, folderId, groupId, view }: View
       }});
       onClose();
     },
-    onError: (e: Error) => {
-      setSaveError(e.message ?? 'Failed to create view');
+    onError: (e) => {
+      setSaveError(extractErrorMessage(e) ?? 'Failed to create view');
     },
   });
 
@@ -126,8 +127,8 @@ export const ViewConfigModal = ({ open, onClose, folderId, groupId, view }: View
       }});
       onClose();
     },
-    onError: (e: Error) => {
-      setSaveError(e.message ?? 'Failed to update view');
+    onError: (e) => {
+      setSaveError(extractErrorMessage(e) ?? 'Failed to update view');
     },
   });
 

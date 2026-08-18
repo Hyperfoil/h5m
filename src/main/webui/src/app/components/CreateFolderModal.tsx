@@ -7,9 +7,9 @@ import {
   TextInput,
 } from '@carbon/react';
 import { createFolderMutation } from '@client/@tanstack/react-query.gen.ts';
+import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AxiosError } from 'axios';
 
 interface CreateFolderModalProps {
   open: boolean;
@@ -29,12 +29,8 @@ export const CreateFolderModal = ({ open, onClose }: CreateFolderModalProps) => 
       setError(null);
       onClose();
     },
-    onError: (e: AxiosError<Error>) => {
-      if (e.response?.status === 409) {
-        setError('A folder with same name already exists');
-      } else {
-        setError(e.message ?? 'Failed to create folder');
-      }
+    onError: (e) => {
+      setError(extractErrorMessage(e) ?? 'Failed to create folder');
     },
   });
 
