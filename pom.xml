@@ -33,6 +33,7 @@
         <build.build-helper-maven-plugin>3.6.1</build.build-helper-maven-plugin>
         <build.buildnumber-maven-plugin>3.2.1</build.buildnumber-maven-plugin>
         <build.exec-maven-plugin>3.6.2</build.exec-maven-plugin>
+        <build.jandex-maven-plugin>3.1.6</build.jandex-maven-plugin>
         <build.maven-compiler-plugin>3.14.0</build.maven-compiler-plugin>
         <build.maven-enforcer-plugin>3.6.2</build.maven-enforcer-plugin>
         <build.maven-failsafe-plugin>3.2.5</build.maven-failsafe-plugin>
@@ -58,7 +59,6 @@
         <lib.jhunter>0.1.0</lib.jhunter>
         <lib.jjq>0.1.9</lib.jjq>
         <lib.jmh>1.37</lib.jmh>
-
         <lib.mapstruct>1.6.3</lib.mapstruct>
         <lib.math3>3.6.1</lib.math3>
         <lib.yaup>0.9.11</lib.yaup>
@@ -326,7 +326,7 @@
             <plugin>
                 <groupId>io.smallrye</groupId>
                 <artifactId>jandex-maven-plugin</artifactId>
-                <version>3.1.6</version>
+                <version>${build.jandex-maven-plugin}</version>
                 <executions>
                     <execution>
                         <id>make-index</id>
