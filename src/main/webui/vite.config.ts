@@ -1,4 +1,5 @@
-import react from '@vitejs/plugin-react-swc';
+import { devtools } from '@tanstack/devtools-vite';
+import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
@@ -24,7 +25,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [devtools(), react()],
   resolve: {
     alias: [
       {
