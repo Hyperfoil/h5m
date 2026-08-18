@@ -1,3 +1,4 @@
+import { AuthActions } from '@app/layout/AuthActions.tsx';
 import {
   ErrorBoundary,
   Header,
@@ -45,7 +46,9 @@ export const AppHeader = () => {
           <SkipToContent />
           <HeaderMenuButton aria-label="Hamburger menu" onClick={toggleSideNav} isActive={sideNavOpen} isCollapsible={true} />
           <HeaderName href="/" prefix="h5m">Horreum</HeaderName>
-          <HeaderGlobalBar />
+          <HeaderGlobalBar>
+            <AuthActions />
+          </HeaderGlobalBar>
         </Header>
         <SideNav aria-label="Side navigation" expanded={sideNavOpen} isPersistent={false} isFixedNav={false}>
           <ErrorBoundary

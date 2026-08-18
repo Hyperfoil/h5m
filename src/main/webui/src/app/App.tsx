@@ -1,3 +1,5 @@
+import { AuthorizationProvider } from '@app/context/AuthorizationProvider.tsx';
+import { navigateSigninLocation, navigateSignoutLocation } from '@app/context/navigation.tsx';
 import { NotificationProvider } from '@app/context/NotificationProvider.tsx';
 import router from '@app/routes.ts';
 import { GlobalTheme } from '@carbon/react';
@@ -30,6 +32,7 @@ const oidcConfig: AuthProviderProps = {
   monitorSession: true,
   post_logout_redirect_uri: `${window.location.origin}/`,
   redirect_uri: `${window.location.origin}/`,
+  scope: 'openid',
   silent_redirect_uri: `${window.location.origin}/oidc-silent-renew.html`,
 };
 
@@ -44,14 +47,16 @@ export const App: FunctionComponent = () => {
     <GlobalTheme theme={carbonTheme}>
       <QueryClientProvider client={queryClient}>
         <NotificationProvider>
-          <AuthProvider {...oidcConfig}>
-            <RouterProvider router={router} />
-            <TanStackDevtools
+          <AuthProvider {...oidcConfig} onRemoveUser={navigateSignoutLocation} onSigninCallback={navigateSigninLocation}>
+            <AuthorizationProvider>
+              <RouterProvider router={router} />
+              <TanStackDevtools
               plugins={[
                 formDevtoolsPlugin(),
                 { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> },
               ]}
             />
+            </AuthorizationProvider>
           </AuthProvider>
         </NotificationProvider>
       </QueryClientProvider>
