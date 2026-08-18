@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<extensions>
-    <extension>
-        <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-maven-plugin</artifactId>
-        <version>${quarkus.platform.version}</version>
-    </extension>
-</extensions>

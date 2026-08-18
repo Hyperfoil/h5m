@@ -75,12 +75,13 @@
         <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
         <quarkiverse.quinoa>2.8.1</quarkiverse.quinoa>
 
-        <!-- quarkus (quarkus.platform.version defined in .mvn/maven.config) -->
+        <!-- quarkus -->
         <quarkus.graalvm.version>25.2.4</quarkus.graalvm.version>
         <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:jdk-25</quarkus.native.builder-image>
         <quarkus.native.container-build>true</quarkus.native.container-build>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.version>3.38.1</quarkus.platform.version>
 
         <skipITs>true</skipITs>
 
@@ -282,19 +283,6 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>${quarkus.platform.group-id}</groupId>
-                <artifactId>quarkus-maven-plugin</artifactId>
-                <version>${quarkus.platform.version}</version>
-                <extensions>true</extensions>
-                <executions>
-                    <execution>
-                        <id>default-build</id>
-                        <!-- this removes the default execution. use cli / web profiles to build h5m -->
-                        <phase>none</phase>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
                 <version>${build.spotless-maven-plugin}</version>
@@ -319,6 +307,19 @@
                                 </sortPom>
                             </pom>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <id>default-build</id>
+                        <!-- this removes the default execution. use cli / web profiles to build h5m -->
+                        <phase>none</phase>
                     </execution>
                 </executions>
             </plugin>
@@ -592,7 +593,7 @@
             <build>
                 <plugins>
                     <plugin>
-                        <groupId>${quarkus.platform.group-id}</groupId>
+                        <groupId>io.quarkus</groupId>
                         <artifactId>quarkus-maven-plugin</artifactId>
                         <version>${quarkus.platform.version}</version>
                         <extensions>true</extensions>
@@ -633,7 +634,7 @@
             <build>
                 <plugins>
                     <plugin>
-                        <groupId>${quarkus.platform.group-id}</groupId>
+                        <groupId>io.quarkus</groupId>
                         <artifactId>quarkus-maven-plugin</artifactId>
                         <version>${quarkus.platform.version}</version>
                         <extensions>true</extensions>
