@@ -291,6 +291,19 @@ public class NodeServiceTest extends FreshDb {
     public void renameParameter_tertiary_refernece(){
         assertEquals("(_a,_b,_c)=> _a ? _b: _c",nodeService.renameParameters("(a,b,c)=> a ? b: c",Map.of("a","_a","b","_b","c","_c")));
     }
+    @Test
+    public void renameParameter_filter_miss(){
+        assertEquals("value => value === \"true\"",nodeService.renameParameters("value => value === \"true\"",Map.of("before","after")));
+    }
+    @Test
+    public void renameParameter_filter_array_access(){
+        assertEquals("value => (value[\"Fun ID\"].match(/^gitlab-ci-nightly/))",nodeService.renameParameters("value => (value[\"Run ID\"].match(/^gitlab-ci-nightly/))",Map.of("Run ID","Fun ID")));
+    }
+    @Test
+    public void renameParameter_filter_property_access(){
+        assertEquals("value => value.after",nodeService.renameParameters("value => value.before",Map.of("before","after")));
+    }
+
 
     @Test
     public void update_changes_javascript_argument_name() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
@@ -306,6 +319,34 @@ public class NodeServiceTest extends FreshDb {
         nodeService.update(n);
         NodeEntity found = NodeEntity.findById(js.id);
         assertEquals("(newName)=>newName", found.operation,"the change should update method");
+
+    }
+    @Test
+    public void update_changes_detection_node_filter_through_fingerprint() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity root = new RootNode();
+        root.persist();
+        NodeEntity n = new JqNode("oldName", "operation",root);
+        n.persist();
+        FingerprintNode fingerprintNode = new FingerprintNode("fp","",List.of(n));
+        fingerprintNode.persist();
+        JqNode range = new JqNode("range",".range",root);
+        range.persist();
+        JqNode domain = new  JqNode("domain","domain",root);
+        domain.persist();
+        RelativeDifference detectionNode = new RelativeDifference("detect","");
+        detectionNode.setFingerprintFilter("value=>value.oldName == 'foo'");
+        detectionNode.setNodes(fingerprintNode,root,range,domain);
+        detectionNode.persist();
+        tm.commit();
+
+        n.name = "newName";
+
+        nodeService.update(n);
+        NodeEntity found = NodeEntity.findById(detectionNode.id);
+        assertInstanceOf(RelativeDifference.class,found);
+        RelativeDifference relativeDifference = (RelativeDifference) found;
+        assertEquals("value=>value.newName == 'foo'", relativeDifference.getFingerprintFilter(),"the change should update method");
 
     }
 
@@ -1185,7 +1226,7 @@ public class NodeServiceTest extends FreshDb {
         // the last value wins in the TreeMap sort. The important thing is that
         // both values were accessible — not silently lost before reaching the builder.
         assertNotNull(fpObject, "fingerprint should be built from both sources");
-        assertTrue(fpObject.has("platform"), "fingerprint should contain the 'platform' key");
+        assertTrue(fpObject.has(""+sourceB.id), "fingerprint should contain the 'platform' node id key");
     }
 
     @Test
@@ -1471,6 +1512,59 @@ public class NodeServiceTest extends FreshDb {
     }
 
     @Test
+    public void calculateFpValues_consistent_across_source_mutation() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        JqNode aNode = new JqNode("a",".a", rootNode);
+        aNode.persist();
+        JqNode bNode = new JqNode("b",".b", rootNode);
+        bNode.persist();
+        FingerprintNode fp = new FingerprintNode("fp","",List.of(aNode,bNode));
+        fp.persist();
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse(
+                """
+                { "a" : 1, "b": 1}
+                """
+        ));
+        rootValue.persist();
+        ValueEntity aValue = new ValueEntity(null,aNode,rootValue.data.getField("a"));
+        aValue.persist();
+        ValueEntity bValue = new ValueEntity(null,bNode,rootValue.data.getField("b"));
+        bValue.persist();
+        tm.commit();
+        List<ValueEntity> found = nodeService.calculateFpValues(fp,Map.of(aNode.id,aValue,bNode.id,bValue),0);
+        assertNotNull(found);
+        assertEquals(1,found.size());
+        JqValue before = found.getFirst().data;
+        assertNotNull(before);
+
+        //mutate a source
+        tm.begin();
+        NodeEntity readA = nodeService.read(aNode.id);
+        readA.name="Z";
+        readA.persist();
+
+        ValueEntity readAValue = valueService.byId(aValue.id);
+        ValueEntity readBValue = valueService.byId(bValue.id);
+
+        NodeEntity readFp =  nodeService.read(fp.id);
+
+        found = nodeService.calculateFpValues((FingerprintNode) readFp,Map.of(readA.id,readAValue,bNode.id,readBValue),0);
+
+        tm.commit();
+
+
+        assertNotNull(found);
+        assertEquals(1,found.size());
+        JqValue after = found.getFirst().data;
+        assertNotNull(after);
+
+        assertEquals(before,after);
+
+    }
+
+    @Test
     public void calculateFpValues_structured_json() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
@@ -1497,10 +1591,10 @@ public class NodeServiceTest extends FreshDb {
         assertNotNull(fpValue.data);
         assertTrue(fpValue.data instanceof JqObject, "fingerprint data should be a JqObject, not a hash: " + fpValue.data.getClass());
         JqObject fpObject = (JqObject) fpValue.data;
-        assertTrue(fpObject.has("platform"), "fingerprint should contain 'platform' key");
-        assertTrue(fpObject.has("buildType"), "fingerprint should contain 'buildType' key");
-        assertEquals("x86", fpObject.get("platform").asText());
-        assertEquals("release", fpObject.get("buildType").asText());
+        assertTrue(fpObject.has(""+platformNode.id), "fingerprint should contain 'platform' key");
+        assertTrue(fpObject.has(""+buildTypeNode.id), "fingerprint should contain 'buildType' key");
+        assertEquals("x86", fpObject.get(""+platformNode.id).asText());
+        assertEquals("release", fpObject.get(""+buildTypeNode.id).asText());
     }
 
     @Test
@@ -1530,35 +1624,36 @@ public class NodeServiceTest extends FreshDb {
         JqObject fpObject = (JqObject) result.getFirst().data;
         // verify keys are sorted alphabetically: buildType before platform
         List<String> keys = new ArrayList<>(fpObject.objectValue().keySet());
-        assertEquals("buildType", keys.get(0), "first key should be 'buildType' (alphabetical order)");
-        assertEquals("platform", keys.get(1), "second key should be 'platform' (alphabetical order)");
+        for(int i=1; i<keys.size(); i++) {
+            assertEquals(1,keys.get(i).compareTo(keys.get(i-1)));
+        }
     }
 
     @Test
     public void evaluateFingerprintFilter_matching() throws IOException {
         JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
-        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\"", fingerprint);
+        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\"", fingerprint,null);
         assertTrue(result, "filter should match when platform is x86");
     }
 
     @Test
     public void evaluateFingerprintFilter_non_matching() throws IOException {
         JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
-        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"arm\"", fingerprint);
+        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"arm\"", fingerprint,null);
         assertFalse(result, "filter should not match when platform is x86 but filter expects arm");
     }
 
     @Test
     public void evaluateFingerprintFilter_null_passes_all() throws IOException {
         JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
-        boolean result = nodeService.evaluateFingerprintFilter(null, fingerprint);
+        boolean result = nodeService.evaluateFingerprintFilter(null, fingerprint,null);
         assertTrue(result, "null filter should pass all fingerprints");
     }
 
     @Test
     public void evaluateFingerprintFilter_compound_filter() throws IOException {
         JqValue fingerprint = JqValues.parse("{\"platform\":\"x86\",\"buildType\":\"release\"}");
-        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\" && fp.buildType === \"release\"", fingerprint);
+        boolean result = nodeService.evaluateFingerprintFilter("(fp) => fp.platform === \"x86\" && fp.buildType === \"release\"", fingerprint,null);
         assertTrue(result, "compound filter should match when both conditions are true");
     }
 
@@ -1604,10 +1699,11 @@ public class NodeServiceTest extends FreshDb {
 
         // verify sorted keys and real data values
         List<String> keys = new ArrayList<>(fpObject.objectValue().keySet());
-        assertEquals("JAVA_VERSION", keys.get(0), "first key should be JAVA_VERSION (sorted)");
-        assertEquals("QUARKUS_VERSION", keys.get(1), "second key should be QUARKUS_VERSION (sorted)");
-        assertEquals("22.3.r17-grl", fpObject.get("JAVA_VERSION").asText());
-        assertEquals("3.0.0.Alpha5", fpObject.get("QUARKUS_VERSION").asText());
+        for(int i=1; i<keys.size(); i++) {
+            assertEquals(1,keys.get(i).compareTo(keys.get(i-1)));
+        }
+        assertEquals("22.3.r17-grl", fpObject.get(""+javaVersionNode.id).asText());
+        assertEquals("3.0.0.Alpha5", fpObject.get(""+quarkusVersionNode.id).asText());
     }
 
     @Test

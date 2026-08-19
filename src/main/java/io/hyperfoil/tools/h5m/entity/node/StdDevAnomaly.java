@@ -174,6 +174,7 @@ public class StdDevAnomaly extends NodeEntity implements DetectionNode {
         return config.getString(FINGERPRINT_FILTER);
     }
 
+    @Override
     public void setFingerprintFilter(String fingerprintFilter) {
         config.set(FINGERPRINT_FILTER, fingerprintFilter);
         operation = config.toString();

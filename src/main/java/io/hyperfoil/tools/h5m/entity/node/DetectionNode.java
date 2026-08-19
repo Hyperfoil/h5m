@@ -11,4 +11,5 @@ public interface DetectionNode {
     NodeEntity getGroupByNode();
     NodeEntity getRangeNode();
     String getFingerprintFilter();
+    void setFingerprintFilter(String fingerprintFilter);
 }

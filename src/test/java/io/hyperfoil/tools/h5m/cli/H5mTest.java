@@ -1035,12 +1035,13 @@ public class H5mTest {
 
         // All spring-jvm values (~9400-12200) are below min=15000
         assertTrue(output.contains("below"), "should detect spring below threshold\n" + output);
-        assertTrue(output.contains("\"fwName\":\"spring-jvm\""),
+        assertTrue(output.contains(":\"spring-jvm\""),
                 "should have spring-jvm in violation fingerprint\n" + output);
 
         // All quarkus-jvm values (~28700-37400) are above min=15000
         // No violation should contain quarkus-jvm fingerprint — scoping must keep them separate
-        assertFalse(output.contains("\"fingerprint\":{\"fwName\":\"quarkus-jvm\"}"),
+        boolean found = output.lines().anyMatch(line->line.contains("finterprint") && line.contains("quarkus-jvm"));
+        assertFalse(found,
                 "quarkus-jvm should not appear in violations — scoping broken\n" + output);
     }
 

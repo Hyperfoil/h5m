@@ -170,13 +170,23 @@ public class NodeService implements NodeServiceInterface {
         }else{
             NodeEntity existing = NodeEntity.findById(node.id);
             if(!existing.name.equals(node.name)){
-                List<NodeEntity> toChange = em.createNativeQuery(
-                        "select n.* from node n join node_edge ne on n.id = ne.child_id where ne.parent_id=? and n.type='ecma'"
-                , NodeEntity.class).setParameter(1,node.id).getResultList();
                 Map<String,String> changes = Map.of(existing.name,node.name);
-                for(NodeEntity n : toChange){
-                    n.operation = renameParameters(n.operation, changes);
-                    em.merge(n);
+                //change ecma
+                for(NodeEntity dependent : getDependentNodes(existing)){
+                    if(dependent.type().equals(NodeType.JS)){
+                        dependent.operation = renameParameters(dependent.operation,changes);
+                        em.merge(dependent);
+                    }else if (dependent.type().equals(NodeType.FINGERPRINT)){
+                        //the name passed to the fingerprint changed so we check for filters
+                        for(NodeEntity fingerprintDependent : getDependentNodes(dependent)){
+                            if(fingerprintDependent instanceof DetectionNode detectionNode){
+                                String newFilter = renameParameters(detectionNode.getFingerprintFilter(),changes);
+                                detectionNode.setFingerprintFilter(newFilter);
+                                em.merge(detectionNode);
+                            }
+                        }
+                    }
+                    //not checking for direct DetectionNode dependency because that would not result in filters operating on value keys
                 }
             }
             em.merge(node);
@@ -490,7 +500,7 @@ public class NodeService implements NodeServiceInterface {
             String fpFilter = relDiff.getFingerprintFilter();
             for(int fIdx=0; fIdx<fingerprintValues.size(); fIdx++) {
                 ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
-                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
                     continue;
                 }
                 if (relDiff.getDomainNode() != null) {
@@ -669,7 +679,7 @@ public class NodeService implements NodeServiceInterface {
 
             for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
                 ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
-                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
                     continue;
                 }
 
@@ -762,7 +772,7 @@ public class NodeService implements NodeServiceInterface {
             int maxSeriesLength = ed.getMaxSeriesLength();
             for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
                 ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
-                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
                     continue;
                 }
 
@@ -893,7 +903,7 @@ public class NodeService implements NodeServiceInterface {
 
             for (int fIdx = 0; fIdx < fingerprintValues.size(); fIdx++) {
                 ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
-                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data)) {
+                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
                     continue;
                 }
 
@@ -1119,7 +1129,7 @@ public class NodeService implements NodeServiceInterface {
                 if(
                     previous.matches("[a-zA-Z_\\$]") || //part of another name
                     following.matches("[a-zA-Z_\\$0-9]") || //part of another name
-                    previous.equals(".") || //method call
+                    (previous.equals(".") && following.equals("(")) || //method call
                             (following.equals(":") && !previous.equals("?")) // key in an object, not a tertiary expression
                 ){
                     //skip it
@@ -1276,7 +1286,7 @@ public class NodeService implements NodeServiceInterface {
         TreeMap<String, JqValue> sorted = new TreeMap<>();
         for (NodeEntity source : node.sources) {
             if (sourceValues.containsKey(source.getId())) {
-                sorted.put(source.name, sourceValues.get(source.getId()).data);
+                sorted.put(""+source.id, sourceValues.get(source.getId()).data);
             }
         }
         sorted.forEach(fpBuilder::put);
@@ -1287,10 +1297,23 @@ public class NodeService implements NodeServiceInterface {
         newValue.sources = node.sources.stream().filter(n->sourceValues.containsKey(n.getId())).map(n -> sourceValues.get(n.getId())).collect(Collectors.toList());
         return List.of(newValue);
     }
-    public boolean evaluateFingerprintFilter(String filter, JqValue fingerprint) {
+    public JqValue createNamedFingerprintValue(NodeEntity node,JqObject value){
+        if(! (node instanceof FingerprintNode)){
+            return value;
+        }
+        JqObject.Builder builder = JqObject.builder();
+        for(NodeEntity source : node.sources){
+            if(value.has(""+source.id)){
+                builder.put(source.name,value.get(""+source.id));
+            }
+        }
+        return builder.build();
+    }
+    public boolean evaluateFingerprintFilter(String filter, JqValue fingerprint, NodeEntity node) {
         if (filter == null || filter.isBlank()) {
             return true;
         }
+        fingerprint = fingerprint.isObject() && node!=null ? createNamedFingerprintValue(node,(JqObject) fingerprint) : fingerprint;
         try (Context context = Context.newBuilder("js")
                 .engine(JS_ENGINE)
                 .allowExperimentalOptions(true)

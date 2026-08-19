@@ -152,7 +152,7 @@ public class FixedThreshold extends NodeEntity implements DetectionNode {
     public String getFingerprintFilter() {
         return config.has(FINGERPRINT_FILTER) ? config.get(FINGERPRINT_FILTER).asString(null) : null;
     }
-
+    @Override
     public void setFingerprintFilter(String fingerprintFilter) {
         config = config.with(FINGERPRINT_FILTER, io.hyperfoil.tools.jjq.value.JqString.of(fingerprintFilter));
         operation = config.toJsonString();
