@@ -1,6 +1,7 @@
 import { devtools } from '@tanstack/devtools-vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
+import devtoolsJson from 'vite-plugin-devtools-json';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -25,7 +26,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [devtools(), react()],
+  plugins: [devtools({ consolePiping: { enabled: false } }), devtoolsJson(), react()],
   resolve: {
     alias: [
       {
