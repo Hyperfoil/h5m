@@ -9,7 +9,11 @@ public interface UserServiceInterface {
 
     long create(String username, Role role);
 
+    long create(String sub, String iss, String username, Role role);
+
     User byUsername(String username);
+
+    User bySub(String sub, String iss);
 
     List<User> list();
 

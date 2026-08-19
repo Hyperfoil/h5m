@@ -27,8 +27,23 @@ public class UserService implements UserServiceInterface {
 
     @Override
     @Transactional
+    public long create(String sub, String iss, String username, Role role) {
+        UserEntity user = new UserEntity(sub, iss, username, role);
+        user.persist();
+        return user.id;
+    }
+
+    @Override
+    @Transactional
     public User byUsername(String username) {
         UserEntity entity = UserEntity.find("username", username).firstResult();
+        return apiMapper.toUser(entity);
+    }
+
+    @Override
+    @Transactional
+    public User bySub(String sub, String iss) {
+        UserEntity entity = UserEntity.find("sub = ?1 and iss = ?2", sub, iss).firstResult();
         return apiMapper.toUser(entity);
     }
 

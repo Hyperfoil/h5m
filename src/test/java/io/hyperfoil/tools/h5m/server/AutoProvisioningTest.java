@@ -12,9 +12,13 @@ import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -22,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 @TestProfile(SecurityEnabledProfile.class)
 public class AutoProvisioningTest extends FreshDb {
+
+    private static final String TEST_ISS = "https://test-issuer";
 
     @Inject
     OidcUserProvisioner provisioner;
@@ -42,11 +48,17 @@ public class AutoProvisioningTest extends FreshDb {
                 .build();
     }
 
+    private SecurityIdentity oidcIdentity(String sub, String username) {
+        return QuarkusSecurityIdentity.builder()
+                .setPrincipal(new TestJwt(sub, TEST_ISS, username))
+                .build();
+    }
+
     @Test
     void first_user_gets_admin_role() {
         assertEquals(0, userService.count());
         provisioner.augment(identityFor("first-user"), testContext)
-                .subscribe().withSubscriber(io.smallrye.mutiny.helpers.test.UniAssertSubscriber.create())
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
         User user = userService.byUsername("first-user");
@@ -59,7 +71,7 @@ public class AutoProvisioningTest extends FreshDb {
         userService.create("existing-admin", Role.ADMIN);
 
         provisioner.augment(identityFor("new-user"), testContext)
-                .subscribe().withSubscriber(io.smallrye.mutiny.helpers.test.UniAssertSubscriber.create())
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
         User user = userService.byUsername("new-user");
@@ -73,9 +85,47 @@ public class AutoProvisioningTest extends FreshDb {
         assertEquals(1, userService.count());
 
         provisioner.augment(identityFor("alice"), testContext)
-                .subscribe().withSubscriber(io.smallrye.mutiny.helpers.test.UniAssertSubscriber.create())
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
         assertEquals(1, userService.count());
+    }
+
+    @Test
+    void oidc_user_gets_provisioned_with_sub_and_iss() {
+        userService.create("existing-admin", Role.ADMIN);
+
+        provisioner.augment(oidcIdentity("sub-oidc", "oidc-user"), testContext)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+
+        User user = userService.bySub("sub-oidc", TEST_ISS);
+        assertNotNull(user);
+        assertEquals("oidc-user", user.username());
+        assertEquals(Role.USER, user.role());
+    }
+
+    private record TestJwt(String sub, String iss, String preferredUsername) implements JsonWebToken {
+
+        @Override
+        public String getName() {
+            return sub;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <T> T getClaim(String claimName) {
+            return (T) switch (claimName) {
+                case "sub" -> sub;
+                case "iss" -> iss;
+                case "preferred_username" -> preferredUsername;
+                default -> null;
+            };
+        }
+
+        @Override
+        public Set<String> getClaimNames() {
+            return Set.of("sub", "iss", "preferred_username");
+        }
     }
 }

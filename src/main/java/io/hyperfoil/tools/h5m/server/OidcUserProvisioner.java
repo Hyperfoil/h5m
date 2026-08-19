@@ -11,6 +11,7 @@ import io.quarkus.security.identity.AuthenticationRequestContext;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.SecurityIdentityAugmentor;
 import io.smallrye.mutiny.Uni;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 @ApplicationScoped
 @Priority(1)
@@ -28,6 +29,32 @@ public class OidcUserProvisioner implements SecurityIdentityAugmentor {
     }
 
     private SecurityIdentity provisionIfNeeded(SecurityIdentity identity) {
+        return switch (identity.getPrincipal()) {
+            case JsonWebToken jwt -> provisionOidc(identity, jwt);
+            default -> provisionByUsername(identity);
+        };
+    }
+
+    private SecurityIdentity provisionOidc(SecurityIdentity identity, JsonWebToken jwt) {
+        String sub = jwt.getSubject();
+        String iss = jwt.getIssuer();
+        if (userService.bySub(sub, iss) != null) {
+            return identity;
+        }
+        String username = jwt.getClaim("preferred_username");
+        if (username == null) {
+            username = jwt.getClaim("upn");
+        }
+        if (username == null) {
+            username = sub;
+        }
+        Role role = userService.count() == 0 ? Role.ADMIN : Role.USER;
+        userService.create(sub, iss, username, role);
+        Log.infof("Auto-provisioned OIDC user %s with role %s", username, role);
+        return identity;
+    }
+
+    private SecurityIdentity provisionByUsername(SecurityIdentity identity) {
         String username = identity.getPrincipal().getName();
         if (userService.byUsername(username) != null) {
             return identity;

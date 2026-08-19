@@ -10,16 +10,23 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity(name = "h5m_user")
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"sub", "iss"}))
 public class UserEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
+
+    public String sub;
+
+    public String iss;
 
     @Column(unique = true)
     public String username;
@@ -33,6 +40,13 @@ public class UserEntity extends PanacheEntityBase {
     public UserEntity() {}
 
     public UserEntity(String username, Role role) {
+        this.username = username;
+        this.role = role;
+    }
+
+    public UserEntity(String sub, String iss, String username, Role role) {
+        this.sub = sub;
+        this.iss = iss;
         this.username = username;
         this.role = role;
     }

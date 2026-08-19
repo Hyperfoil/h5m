@@ -11,6 +11,7 @@ import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.SecurityIdentityAugmentor;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import io.smallrye.mutiny.Uni;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 @ApplicationScoped
 public class H5mRolesAugmentor implements SecurityIdentityAugmentor {
@@ -27,8 +28,10 @@ public class H5mRolesAugmentor implements SecurityIdentityAugmentor {
     }
 
     private SecurityIdentity addRoles(SecurityIdentity identity) {
-        String username = identity.getPrincipal().getName();
-        User user = userService.byUsername(username);
+        User user = switch (identity.getPrincipal()) {
+            case JsonWebToken jwt -> userService.bySub(jwt.getSubject(), jwt.getIssuer());
+            default -> userService.byUsername(identity.getPrincipal().getName());
+        };
         if (user == null) {
             return identity;
         }
