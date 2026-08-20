@@ -1,4 +1,4 @@
-baseURL = 'https://h5m-docs.example.com/'
+baseURL = '/site/'
 title = 'h5m Documentation'
 
 contentDir = "content/en"
@@ -8,6 +8,7 @@ enableMissingTranslationPlaceholders = true
 
 enableRobotsTXT = true
 enableGitInfo = true
+canonifyURLs = true
 
 pygmentsCodeFences = true
 pygmentsUseClasses = false
@@ -37,6 +38,7 @@ pygmentsStyle = "tango"
 
 [params]
   github_repo = "https://github.com/hyperfoil/h5m"
+  github_subdir = "docs/site"
   github_project_repo = "https://github.com/hyperfoil/h5m"
   github_branch = "main"
   offlineSearch = true

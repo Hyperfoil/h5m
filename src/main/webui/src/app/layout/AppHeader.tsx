@@ -1,7 +1,10 @@
 import { AuthActions } from '@app/layout/AuthActions.tsx';
+import { Help } from '@carbon/icons-react';
 import {
+  Content,
   ErrorBoundary,
   Header,
+  HeaderGlobalAction,
   HeaderGlobalBar,
   HeaderMenuButton,
   HeaderName,
@@ -16,7 +19,7 @@ import {
 import { listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useState } from 'react';
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet, useNavigate, useParams } from 'react-router-dom';
 
 const NavFolders = () => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
@@ -35,6 +38,7 @@ const NavFolders = () => {
 
 export const AppHeader = () => {
   const { folderId } = useParams<{ folderId: string }>();
+  const navigate = useNavigate();
   const [sideNavOpen, setSideNavOpen] = useState(!folderId);
   const toggleSideNav = useCallback(() => {
     setSideNavOpen((prev) => !prev);
@@ -45,8 +49,13 @@ export const AppHeader = () => {
         <Header aria-label="Carbon App">
           <SkipToContent />
           <HeaderMenuButton aria-label="Hamburger menu" onClick={toggleSideNav} isActive={sideNavOpen} isCollapsible={true} />
-          <HeaderName href="/" prefix="h5m">Horreum</HeaderName>
+          <HeaderName href="/" prefix="h5m">
+            Horreum
+          </HeaderName>
           <HeaderGlobalBar>
+            <HeaderGlobalAction aria-label="Documentation" onClick={() => void navigate('/help')} tooltipAlignment="end">
+              <Help size={24} />
+            </HeaderGlobalAction>
             <AuthActions />
           </HeaderGlobalBar>
         </Header>
@@ -70,7 +79,9 @@ export const AppHeader = () => {
           </ErrorBoundary>
         </SideNav>
       </Theme>
-      <Outlet />
+      <Content style={{ padding: 0 }}>
+        <Outlet />
+      </Content>
     </>
   );
 };

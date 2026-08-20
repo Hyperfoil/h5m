@@ -27,3 +27,6 @@ chunks-report.html
 *.njsproj
 *.sln
 *.sw?
+
+# generated static site
+/public/site/

@@ -218,7 +218,7 @@ const DashboardContent = () => {
 
 export const DashboardPage = () => {
   return (
-    <div style={{ padding: 'var(--cds-spacing-05)', marginTop: 'var(--cds-spacing-09)' }}>
+    <div style={{ padding: 'var(--cds-spacing-05)' }}>
       <h2 style={{ marginBottom: 'var(--cds-spacing-05)' }}>Dashboard</h2>
       <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load dashboard" />}>
         <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>

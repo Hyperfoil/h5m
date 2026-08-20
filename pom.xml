@@ -33,6 +33,7 @@
         <build.build-helper-maven-plugin>3.6.1</build.build-helper-maven-plugin>
         <build.buildnumber-maven-plugin>3.2.1</build.buildnumber-maven-plugin>
         <build.exec-maven-plugin>3.6.2</build.exec-maven-plugin>
+        <build.hugo-maven-plugin>0.2.20</build.hugo-maven-plugin>
         <build.jandex-maven-plugin>3.1.6</build.jandex-maven-plugin>
         <build.maven-compiler-plugin>3.14.0</build.maven-compiler-plugin>
         <build.maven-enforcer-plugin>3.6.2</build.maven-enforcer-plugin>
@@ -664,6 +665,46 @@
                                 <configuration>
                                     <attachRunnerAsMainArtifact>true</attachRunnerAsMainArtifact>
                                     <attachSboms>true</attachSboms>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>${build.exec-maven-plugin}</version>
+                        <executions>
+                            <execution>
+                                <id>docs-npm-install</id>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <phase>generate-resources</phase>
+                                <configuration>
+                                    <executable>npm</executable>
+                                    <workingDirectory>${project.basedir}/docs/site</workingDirectory>
+                                    <arguments>
+                                        <argument>install</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.echocat.maven.plugins</groupId>
+                        <artifactId>hugo-maven-plugin</artifactId>
+                        <version>${build.hugo-maven-plugin}</version>
+                        <executions>
+                            <execution>
+                                <id>generate-hugo-site</id>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <phase>generate-resources</phase>
+                                <configuration>
+                                    <workingDirectory>${project.basedir}/docs/site</workingDirectory>
+                                    <config>${project.basedir}/docs/site/hugo.toml</config>
+                                    <output>${project.basedir}/src/main/webui/public/site</output>
                                 </configuration>
                             </execution>
                         </executions>
