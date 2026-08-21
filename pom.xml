@@ -210,6 +210,17 @@
             <artifactId>quarkus-smallrye-openapi</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.aesh</groupId>
+            <artifactId>aesh-charts</artifactId>
+            <version>3.17-dev</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.aesh</groupId>
+                    <artifactId>aesh</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
             <version>${lib.math3}</version>
