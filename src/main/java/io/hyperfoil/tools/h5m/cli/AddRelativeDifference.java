@@ -36,8 +36,8 @@ public class AddRelativeDifference extends AddDetectionNode {
 
     @Option(name = "filter", acceptNameWithoutDashes = true,
             description = "Function used to aggregate datapoints from the floating window.",
-            defaultValue = {RelativeDifference.DEFAULT_FILTER})
-    String filter;
+            defaultValue = {"MEAN"})
+    RelativeDifferenceConfig.Filter filter;
 
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {

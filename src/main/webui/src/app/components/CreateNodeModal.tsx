@@ -1,7 +1,8 @@
-import type { Direction, Node as ApiNode, NodeType } from '@client/types.gen.ts';
+import type { Direction, Filter, Node as ApiNode, NodeType } from '@client/types.gen.ts';
 
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useNotification } from '@app/context/useNotification.tsx';
+import { fieldError } from '@app/validation.ts';
 import {
   Button,
   ComposedModal,
@@ -21,9 +22,11 @@ import {
   TextInput,
 } from '@carbon/react';
 import { byIdOptions, createConfiguredMutation, createNodeMutation } from '@client/@tanstack/react-query.gen.ts';
+import { zCreateNodeQuery } from '@client/zod.gen.ts';
 import { useForm, useSelector } from '@tanstack/react-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { z } from 'zod';
 
 import { DETECTION_SOURCES, DetectionConfigStep, buildConfig } from './DetectionConfigStep';
 
@@ -85,10 +88,16 @@ export interface FormValues {
   srcGroupBy: string;
   srcRange: string;
   srcDomain: string;
-  ftConfig: { min: string; max: string; minInclusive: boolean; maxInclusive: boolean; fingerprintFilter: string };
-  rdConfig: { filter: string; threshold: string; window: string; minPrevious: string; fingerprintFilter: string };
-  sdConfig: { windowSize: string; deviations: string; direction: Direction; minDataPoints: string; fingerprintFilter: string };
-  edConfig: { windowLen: string; maxPvalue: string; minMagnitude: string; maxSeriesLength: string; fingerprintFilter: string };
+  ftConfig: { min: number | string; max: number | string; minInclusive: boolean; maxInclusive: boolean; fingerprintFilter: string };
+  rdConfig: { filter: Filter; threshold: number | string; window: number | string; minPrevious: number | string; fingerprintFilter: string };
+  sdConfig: { windowSize: number | string; deviations: number | string; direction: Direction; minDataPoints: number | string; fingerprintFilter: string };
+  edConfig: {
+    windowLen: number | string;
+    maxPvalue: number | string;
+    minMagnitude: number | string;
+    maxSeriesLength: number | string;
+    fingerprintFilter: string;
+  };
 }
 
 const DEFAULT_VALUES: FormValues = {
@@ -102,9 +111,9 @@ const DEFAULT_VALUES: FormValues = {
   srcRange: '',
   srcDomain: '',
   ftConfig: { min: '', minInclusive: true, max: '', maxInclusive: true, fingerprintFilter: '' },
-  rdConfig: { filter: 'mean', threshold: '0.2', window: '1', minPrevious: '5', fingerprintFilter: '' },
-  sdConfig: { windowSize: '10', deviations: '2.0', direction: 'BOTH', minDataPoints: '5', fingerprintFilter: '' },
-  edConfig: { windowLen: '50', maxPvalue: '0.001', minMagnitude: '0.0', maxSeriesLength: '500', fingerprintFilter: '' },
+  rdConfig: { filter: 'MEAN', threshold: 0.2, window: 1, minPrevious: 5, fingerprintFilter: '' },
+  sdConfig: { windowSize: 10, deviations: 2.0, direction: 'BOTH', minDataPoints: 5, fingerprintFilter: '' },
+  edConfig: { windowLen: 50, maxPvalue: 0.001, minMagnitude: 0.0, maxSeriesLength: 500, fingerprintFilter: '' },
 };
 
 export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps) => {
@@ -194,34 +203,12 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
   const nodeEntry = NODE_TYPES.find((t) => t.value === nodeType);
   const steps: StepKey[] = ['type', ...(nodeEntry?.extraSteps ?? [])];
 
-  const validateStep = (stepKey: StepKey): boolean => {
-    const values = form.state.values;
-    if (stepKey === 'type') {
-      void form.validateField('name', 'submit');
-      if (!values.name.trim()) return false;
-    }
-    if (stepKey === 'sources') {
-      if (nodeType === 'FINGERPRINT') {
-        void form.validateField('fpSources', 'submit');
-        if (values.fpSources.length === 0) return false;
-      }
-      if (steps.includes('detection')) {
-        let hasError = false;
-        for (const src of DETECTION_SOURCES) {
-          void form.validateField(src.name, 'submit');
-          if (!values[src.name]) hasError = true;
-        }
-        if (hasError) return false;
-      }
-    }
-    return true;
-  };
-
   const handleNext = () => {
-    const step = steps[currentStep];
-    if (step && validateStep(step)) {
-      setCurrentStep((s) => s + 1);
-    }
+    void form.validateAllFields('submit').then(() => {
+      if (form.state.isFieldsValid) {
+        setCurrentStep((s) => s + 1);
+      }
+    });
   };
 
   return (
@@ -241,14 +228,11 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                   setCurrentStep(stepIndex);
                   return;
                 }
-                for (let i = currentStep; i < stepIndex; i++) {
-                  const step = steps[i];
-                  if (!step || !validateStep(step)) {
-                    setCurrentStep(i);
-                    return;
+                void form.validateAllFields('submit').then(() => {
+                  if (form.state.isFieldsValid) {
+                    setCurrentStep(stepIndex);
                   }
-                }
-                setCurrentStep(stepIndex);
+                });
               }}
               spaceEqually
             >
@@ -262,8 +246,8 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                 <form.Field
                   name="name"
                   validators={{
-                    onBlur: ({ value }) => (value.trim() === '' ? 'Node name is required' : undefined),
-                    onSubmit: ({ value }) => (value.trim() === '' ? 'Node name is required' : undefined),
+                    onBlur: zCreateNodeQuery.shape.name,
+                    onSubmit: zCreateNodeQuery.shape.name,
                   }}
                 >
                   {(field) => (
@@ -277,7 +261,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                       }}
                       onBlur={field.handleBlur}
                       invalid={field.state.meta.errors.length > 0}
-                      invalidText={field.state.meta.errors[0]}
+                      invalidText={fieldError(field.state.meta.errors)}
                     />
                   )}
                 </form.Field>
@@ -360,7 +344,8 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                 {nodeType === 'FINGERPRINT' && (
                   <form.Field
                     name="fpSources"
-                    validators={{ onSubmit: ({ value }) => (value.length === 0 ? 'At least one source node is required' : undefined) }}
+                    // workaround for hey-api/hey-api#1802: Zod plugin generates bigint for int64 despite bigInt:false
+                    validators={{ onSubmit: z.array(z.number()).min(1) }}
                   >
                     {(field) => (
                       <MultiSelect
@@ -373,7 +358,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                           .map((n) => ({ id: String(n.id), label: `${n.name ?? '?'} (${n.type ?? '?'})`, nodeId: n.id }))}
                         itemToString={(item) => item.label}
                         invalid={field.state.meta.errors.length > 0}
-                        invalidText={field.state.meta.errors[0]}
+                        invalidText={fieldError(field.state.meta.errors)}
                         onChange={({ selectedItems }) => {
                           field.handleChange((selectedItems ?? []).map((i) => i.nodeId));
                         }}
@@ -385,7 +370,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                 {steps.includes('detection') && (
                   <Stack gap={6}>
                     {DETECTION_SOURCES.map((src) => (
-                      <form.Field key={src.name} name={src.name} validators={{ onSubmit: ({ value }) => (!value ? `${src.label} is required` : undefined) }}>
+                      <form.Field key={src.name} name={src.name} validators={{ onSubmit: src.schema }}>
                         {(field) => (
                           <Select
                             id={src.name}
@@ -396,7 +381,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                             }}
                             disabled={nodesLoading}
                             invalid={field.state.meta.errors.length > 0}
-                            invalidText={field.state.meta.errors[0]}
+                            invalidText={fieldError(field.state.meta.errors)}
                           >
                             <SelectItem value="" text={`Select ${src.label.toLowerCase()}`} />
                             {availableNodes
@@ -436,7 +421,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
             )}
 
             {steps[currentStep] === 'operation' && (
-              <form.Field name="operation" validators={{ onSubmit: ({ value }) => (value.trim() === '' ? 'Operation is required' : undefined) }}>
+              <form.Field name="operation" validators={{ onSubmit: zCreateNodeQuery.shape.operation }}>
                 {(field) => (
                   <TextArea
                     id="node-operation"
@@ -450,7 +435,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                     }}
                     className="type-code"
                     invalid={field.state.meta.errors.length > 0}
-                    invalidText={field.state.meta.errors[0]}
+                    invalidText={fieldError(field.state.meta.errors)}
                   />
                 )}
               </form.Field>

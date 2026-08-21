@@ -562,10 +562,9 @@ public class NodeService implements NodeServiceInterface {
                                 System.err.println("insufficient samples to calculate " + relDiff.name + " need " + (relDiff.getWindow() + minPrevious) + " have " + converted.size());
                             } else {
                                 DoubleBinaryOperator op = switch (relDiff.getFilter()) {
-                                    case "min" -> Double::min;
-                                    case "max" -> Double::max;
-                                    case "mean" -> Double::sum;
-                                    default -> Double::sum;
+                                    case MIN -> Double::min;
+                                    case MAX -> Double::max;
+                                    case MEAN -> Double::sum;
                                 };
                                 SummaryStatistics previousStats = new SummaryStatistics();
                                 converted
@@ -581,7 +580,7 @@ public class NodeService implements NodeServiceInterface {
                                         .mapToDouble(Double::doubleValue)
                                         .reduce(op)
                                         .getAsDouble();
-                                if (relDiff.getFilter().equals("mean")) {
+                                if (relDiff.getFilter() == RelativeDifferenceConfig.Filter.MEAN) {
                                     value = value / (converted.size() - minPrevious);
                                 }
                                 double ratio = value / previousStats.getMean();

@@ -18,8 +18,10 @@ import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.validator.constraints.UniqueElements;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -57,7 +59,7 @@ public class NodeResource {
             @QueryParam("name") @NotEmpty String name,
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,
-            @QueryParam("operation") String operation) {
+            @QueryParam("operation") @NotEmpty String operation) {
         return nodeService.create(name, groupId, type, operation);
     }
 
@@ -70,8 +72,8 @@ public class NodeResource {
             @QueryParam("name") @NotEmpty String name,
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,
-            @QueryParam("sources") @NotNull @NotEmpty List<Long> sources,
-            @RequestBody(required = false) NodeConfiguration configuration) {
+            @QueryParam("sources") @NotNull @NotEmpty @UniqueElements(message = "Duplicate source nodes are not allowed: each source node must serve a unique role") List<Long> sources,
+            @RequestBody(required = false) @Valid NodeConfiguration configuration) {
         try {
             return nodeService.createConfigured(name, groupId, type, sources, configuration);
         } catch (IllegalArgumentException e) {

@@ -377,7 +377,7 @@ public class RestEndpointTest extends FreshDb {
         Long nodeId = createConfiguredNode(groupId, "reldiff", NodeType.RELATIVE_DIFFERENCE.name(),
                 List.of(fpNodeId, rangeNodeId),
                 """
-                {"filter": "max", "threshold": 0.2, "window": 5, "minPrevious": 3, "fingerprintFilter": null}
+                {"filter": "MAX", "threshold": 0.2, "window": 5, "minPrevious": 3, "fingerprintFilter": null}
                 """);
 
         assertTrue(nodeId > 0, "should return a valid node ID");
