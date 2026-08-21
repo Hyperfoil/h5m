@@ -85,7 +85,7 @@
         <quarkus.native.container-build>true</quarkus.native.container-build>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
-        <quarkus.platform.version>3.39.1</quarkus.platform.version>
+        <quarkus.platform.version>3.39.3</quarkus.platform.version>
 
         <skipITs>true</skipITs>
 
@@ -218,6 +218,17 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.aesh</groupId>
+            <artifactId>aesh-charts</artifactId>
+            <version>3.18.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.aesh</groupId>
+                    <artifactId>aesh</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.antlr</groupId>

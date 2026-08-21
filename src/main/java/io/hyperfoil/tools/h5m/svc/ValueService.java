@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.jjq.value.JqNumber;
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Value;
@@ -620,6 +621,266 @@ public class ValueService implements ValueServiceInterface {
     @Transactional
     public List<JqValue> getGroupedValues(Long nodeId, List<Long> filterNodeIds){
         return getGroupedValues(nodeId,null,filterNodeIds,null,null);
+    }
+
+    /**
+     * Values of one node aligned by upload (root ID ascending), each row
+     * carrying range and optional fingerprint values keyed by node name;
+     * there is no domain field. Used for charts without --domain, and by any
+     * consumer needing per-upload series.
+     *
+     * @param rangeNodeId       node ID for Y-axis values
+     * @param folderId          folder ID (reserved for future scoping)
+     * @param fingerprintNodeId optional fingerprint node ID (null to skip)
+     * @return list of JSON objects with range and optional fingerprint values keyed by node name
+     */
+    @Transactional
+    public List<JqValue> getAlignedValues(long rangeNodeId, long folderId, Long fingerprintNodeId) {
+        String ancestorSql = chartAncestorSql();
+        NodeEntity rangeNode = NodeEntity.findById(rangeNodeId);
+        Map<Long, JqValue> rangeByRoot = valuesByRoot(ancestorSql, rangeNodeId);
+
+        Map<Long, JqValue> fpByRoot = Collections.emptyMap();
+        NodeEntity fpNode = null;
+        if (fingerprintNodeId != null && !rangeByRoot.isEmpty()) {
+            fpNode = NodeEntity.findById(fingerprintNodeId);
+            fpByRoot = valuesByRoot(ancestorSql, fingerprintNodeId);
+        }
+
+        // Upload order: root IDs ascend in ingestion order. Note root
+        // createdAt is import time, not run time -- identity comes from the
+        // root payload itself (timing.start, BUILD_ID, else sequence number).
+        List<Long> orderedRoots = new ArrayList<>(rangeByRoot.keySet());
+        Collections.sort(orderedRoots);
+        Map<Long, ValueEntity> rootsById = new HashMap<>();
+        for (ValueEntity root : em.unwrap(Session.class).findMultiple(ValueEntity.class, orderedRoots)) {
+            if (root != null) {
+                rootsById.put(root.getId(), root);
+            }
+        }
+
+        List<JqValue> result = new ArrayList<>();
+        for (int i = 0; i < orderedRoots.size(); i++) {
+            Long rootId = orderedRoots.get(i);
+            io.hyperfoil.tools.jjq.value.JqObject.Builder builder = io.hyperfoil.tools.jjq.value.JqObject.builder();
+            builder.put(rangeNode.name, rangeByRoot.get(rootId));
+            builder.put(ROOT_FIELD, JqNumber.of(rootId));
+            ValueEntity root = rootsById.get(rootId);
+            builder.put(UPLOADED_FIELD,
+                    JqValues.parse("\"" + uploadLabel(root != null ? root.data : null, i + 1) + "\""));
+            if (fpNode != null) {
+                JqValue fpVal = fpByRoot.get(rootId);
+                if (fpVal != null) builder.put(fpNode.name, fpVal);
+            }
+            result.add(builder.build());
+        }
+        return result;
+    }
+
+    /** Row field carrying the short upload identity; see {@link #uploadLabel}. */
+    public static final String UPLOADED_FIELD = "_uploaded";
+
+    /**
+     * Row field carrying the root (upload) value ID. Synthetic underscore
+     * fields could theoretically collide with a user node of the same name;
+     * in practice no chart logic reads user nodes by these names.
+     */
+    public static final String ROOT_FIELD = "_root";
+
+    /**
+     * Short human identity of an upload for X-axis tick labels: the original
+     * run start date (yy-MM-dd) when the payload carries {@code timing.start},
+     * else the build ID ({@code b151}), else the 1-based sequence number.
+     * Pure function.
+     */
+    static String uploadLabel(JqValue rootData, int seq) {
+        if (rootData != null) {
+            JqValue timing = rootData.getField("timing");
+            if (timing != null && !timing.isNull()) {
+                JqValue start = timing.getField("start");
+                if (start != null && !start.isNull()) {
+                    String text = start.asText();
+                    if (text != null && text.length() >= 10) {
+                        return text.substring(2, 10);
+                    }
+                }
+            }
+            JqValue env = rootData.getField("env");
+            if (env != null && !env.isNull()) {
+                JqValue buildId = env.getField("BUILD_ID");
+                if (buildId != null && !buildId.isNull() && buildId.asText() != null) {
+                    return "b" + buildId.asText();
+                }
+            }
+        }
+        return "#" + seq;
+    }
+
+    private String chartAncestorSql() {
+        // Strategy: two separate ancestor queries (one per node), joined in Java by root_id.
+        // Each query walks UP from the node's values to the root values via value_edge.
+        // This avoids the expensive CTE-to-CTE join in SQL (~30ms per query vs 6s+ for joined CTEs).
+        return switch (db.kind()) {
+            case POSTGRESQL -> """
+                WITH RECURSIVE ancestors(vid, root_id) AS (
+                    SELECT v.id, ve.parent_id
+                    FROM value v JOIN value_edge ve ON v.id = ve.child_id
+                    WHERE v.node_id = :nodeId
+                    UNION ALL
+                    SELECT a.vid, ve.parent_id
+                    FROM ancestors a JOIN value_edge ve ON a.root_id = ve.child_id
+                )
+                SELECT DISTINCT ON (a.root_id) a.root_id, convert_from(v.data, 'UTF-8')::jsonb
+                FROM ancestors a
+                JOIN value v ON v.id = a.vid
+                JOIN value rv ON rv.id = a.root_id
+                JOIN node n ON n.id = rv.node_id
+                WHERE n.type = 'root'
+                """;
+            case SQLITE -> """
+                WITH RECURSIVE ancestors(vid, root_id) AS (
+                    SELECT v.id, ve.parent_id
+                    FROM value v JOIN value_edge ve ON v.id = ve.child_id
+                    WHERE v.node_id = :nodeId
+                    UNION ALL
+                    SELECT a.vid, ve.parent_id
+                    FROM ancestors a JOIN value_edge ve ON a.root_id = ve.child_id
+                )
+                SELECT a.root_id, CAST(v.data AS TEXT)
+                FROM ancestors a
+                JOIN value v ON v.id = a.vid
+                JOIN value rv ON rv.id = a.root_id
+                JOIN node n ON n.id = rv.node_id
+                WHERE n.type = 'root'
+                GROUP BY a.root_id
+                """;
+        };
+    }
+
+    /**
+     * Values of one node keyed by root ID. Deduplicates -- the recursive CTE
+     * can find multiple paths to the same root through shared edges (fan-out
+     * in the DAG).
+     */
+    @SuppressWarnings("unchecked")
+    private Map<Long, JqValue> valuesByRoot(String ancestorSql, long nodeId) {
+        List<Object[]> rows = em.createNativeQuery(ancestorSql, Object[].class)
+                .setParameter("nodeId", nodeId)
+                .getResultList();
+        Map<Long, JqValue> byRoot = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            long rootId = ((Number) row[0]).longValue();
+            if (row[1] != null && !byRoot.containsKey(rootId)) {
+                try { byRoot.put(rootId, JqValues.parse(row[1].toString())); }
+                catch (Exception e) { /* skip unparseable */ }
+            }
+        }
+        return byRoot;
+    }
+
+    /**
+     * Lightweight query aligning values from two nodes by their shared root
+     * ancestor, sorted by the domain node's value. Much faster than getGroupedValues
+     * which traverses the entire value DAG (~30ms vs ~22s for 100 uploads).
+     * <p>
+     * Optionally includes fingerprint node values. Fingerprints are fetched in a
+     * separate simple query keyed by root_id to avoid LATERAL recursive joins.
+     *
+     * @param rangeNodeId       node ID for Y-axis values
+     * @param domainNodeId      node ID for X-axis values (used for sorting)
+     * @param folderId          folder ID (used for fingerprint scoping)
+     * @param fingerprintNodeId optional fingerprint node ID (null to skip)
+     * @return list of JSON objects with range, domain, and optional fingerprint values keyed by node name
+     */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public List<JqValue> getAlignedValues(long rangeNodeId, long domainNodeId, long folderId, Long fingerprintNodeId) {
+        String ancestorSql = chartAncestorSql();
+        NodeEntity rangeNode = NodeEntity.findById(rangeNodeId);
+        NodeEntity domainNode = NodeEntity.findById(domainNodeId);
+
+        // Query 1: range values with their root IDs (~30ms)
+        Map<Long, JqValue> rangeByRoot = valuesByRoot(ancestorSql, rangeNodeId);
+
+        // Query 2: domain values with their root IDs (~30ms)
+        List<Object[]> domainRows = em.createNativeQuery(ancestorSql, Object[].class)
+                .setParameter("nodeId", domainNodeId)
+                .getResultList();
+        // Build domain map and sort keys by domain value
+        // Deduplicate by root_id (same reason as range)
+        record DomainEntry(long rootId, JqValue value, String sortKey) {}
+        Map<Long, DomainEntry> domainByRoot = new LinkedHashMap<>();
+        for (Object[] row : domainRows) {
+            long rootId = ((Number) row[0]).longValue();
+            if (row[1] != null && !domainByRoot.containsKey(rootId)) {
+                try {
+                    JqValue val = JqValues.parse(row[1].toString());
+                    domainByRoot.put(rootId, new DomainEntry(rootId, val, row[1].toString()));
+                } catch (Exception e) { /* skip unparseable */ }
+            }
+        }
+        List<DomainEntry> domainEntries = new ArrayList<>(domainByRoot.values());
+        // Sort by domain value (text sort -- handles both numeric and timestamp strings)
+        domainEntries.sort((a, b) -> a.sortKey().compareTo(b.sortKey()));
+
+        // Step 2: Fingerprint values (optional, ~30ms)
+        Map<Long, JqValue> fpByRoot = Collections.emptyMap();
+        NodeEntity fpNode = null;
+        if (fingerprintNodeId != null && !rangeByRoot.isEmpty()) {
+            fpNode = NodeEntity.findById(fingerprintNodeId);
+            fpByRoot = valuesByRoot(ancestorSql, fingerprintNodeId);
+        }
+
+        // Step 3: Join in Java by root_id, ordered by domain
+        List<JqValue> result = new ArrayList<>();
+        for (DomainEntry de : domainEntries) {
+            JqValue rangeVal = rangeByRoot.get(de.rootId());
+            if (rangeVal == null) continue; // no range value for this root
+
+            io.hyperfoil.tools.jjq.value.JqObject.Builder builder = io.hyperfoil.tools.jjq.value.JqObject.builder();
+            builder.put(rangeNode.name, rangeVal);
+            builder.put(ROOT_FIELD, JqNumber.of(de.rootId()));
+            builder.put(domainNode.name, de.value());
+            if (fpNode != null) {
+                JqValue fpVal = fpByRoot.get(de.rootId());
+                if (fpVal != null) builder.put(fpNode.name, fpVal);
+            }
+            result.add(builder.build());
+        }
+        return result;
+    }
+
+    /**
+     * Maps value IDs to their root (upload) value IDs in a single query by
+     * walking up the value DAG to the first root-type ancestor. Used to place
+     * change detection markers on chart rows. Values without a root ancestor
+     * are absent from the result.
+     */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Map<Long, Long> rootIdsForValues(Collection<Long> valueIds) {
+        if (valueIds == null || valueIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Object[]> rows = em.createNativeQuery("""
+                WITH RECURSIVE up(start_id, vid) AS (
+                    SELECT v.id, v.id FROM value v WHERE v.id IN (:ids)
+                    UNION
+                    SELECT up.start_id, ve.parent_id
+                    FROM up JOIN value_edge ve ON ve.child_id = up.vid
+                )
+                SELECT DISTINCT up.start_id, up.vid FROM up
+                JOIN value v ON v.id = up.vid
+                JOIN node n ON n.id = v.node_id
+                WHERE n.type = 'root'
+                """)
+                .setParameter("ids", List.copyOf(valueIds))
+                .getResultList();
+        Map<Long, Long> roots = new HashMap<>();
+        for (Object[] row : rows) {
+            roots.putIfAbsent(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return roots;
     }
 
     @Override
