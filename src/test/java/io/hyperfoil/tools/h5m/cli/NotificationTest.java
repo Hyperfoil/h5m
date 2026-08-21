@@ -31,7 +31,6 @@ public class NotificationTest {
         });
         aeshLauncher = new AeshLauncherImpl(launcher);
         aeshLauncher.launch();
-        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     @AfterEach

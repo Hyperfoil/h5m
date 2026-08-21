@@ -58,12 +58,11 @@ public class H5mTest {
     public static List<String> run(AeshLauncher launcher, String[]... args) {
         List<String> outputs = new ArrayList<>();
         for (String[] arg : args) {
-            // Brief pause before each command to allow aesh's readline cycle
-            // to set up stdinHandler after processing the previous command.
-            // Without this, command bytes may arrive while stdinHandler is null
-            // (between readline cycles) and be silently dropped.
-            // See: https://github.com/aeshell/aesh-readline/issues/233
-            try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            // Minimal pause to let the aesh readline cycle complete between commands.
+            // The EventDecoder in aesh 3.16.8 buffers input when stdinHandler is null
+            // (preventing data loss), but the command still needs the readline cycle
+            // to start before it can be processed.
+            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             String command = toCommand(arg);
             long start = System.currentTimeMillis();
             String output = launcher.executeCommand(command, CMD_TIMEOUT);
@@ -71,8 +70,6 @@ public class H5mTest {
             System.out.printf("run (%dms): %s%n", elapsed, command);
             outputs.add(output);
         }
-        // Additional pause after the last command before Quarkus shuts down
-        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         return outputs;
     }
 
@@ -88,10 +85,6 @@ public class H5mTest {
         });
         aeshLauncher = new AeshLauncherImpl(launcher);
         aeshLauncher.launch();
-        // Brief pause after launch to allow aesh's readline to set up
-        // stdinHandler before the first command is sent.
-        // See: https://github.com/aeshell/aesh-readline/issues/233
-        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     @AfterEach
