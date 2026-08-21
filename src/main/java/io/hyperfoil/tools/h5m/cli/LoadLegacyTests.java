@@ -13,6 +13,7 @@ import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
+import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
@@ -575,7 +576,12 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                 case "relativeDifference"-> {
                     RelativeDifference difference = new RelativeDifference();
                     difference.name="rd."+variableNode.name+"."+changeDetection.id();
-                    difference.setFilter(changeDetection.config().get("filter").asString(RelativeDifference.DEFAULT_FILTER));
+                    try {
+                        String filterStr = changeDetection.config().get("filter").asString(RelativeDifference.DEFAULT_FILTER.name());
+                        difference.setFilter(RelativeDifferenceConfig.Filter.valueOf(filterStr.toUpperCase()));
+                    } catch (IllegalArgumentException ignored) {
+                        difference.setFilter(RelativeDifference.DEFAULT_FILTER);
+                    }
                     difference.setWindow(changeDetection.config().get("window").asInt(RelativeDifference.DEFAULT_WINDOW));
                     difference.setThreshold(changeDetection.config().get("threshold").asDouble(RelativeDifference.DEFAULT_THRESHOLD));
                     difference.setMinPrevious(changeDetection.config().get("minPrevious").asInt(RelativeDifference.DEFAULT_MIN_PREVIOUS));

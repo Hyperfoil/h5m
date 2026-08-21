@@ -32,7 +32,11 @@ export function extractErrorMessage(reason: unknown): string | undefined {
     if (typeof data === 'object' && data !== null) {
       const body = data as Record<string, unknown>;
       if (typeof body.detail === 'string') return body.detail;
+      if (Array.isArray(body.violations)) {
+        return body.violations.map((v: { field?: string; message?: string }) => `${v.field}: ${v.message}`).join('; ');
+      }
       if (typeof body.message === 'string') return body.message;
+      if (typeof body.title === 'string') return body.title;
     }
   }
 

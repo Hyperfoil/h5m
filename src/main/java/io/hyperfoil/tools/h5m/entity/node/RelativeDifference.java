@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.entity.node;
 
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig;
+import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig.Filter;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.jjq.value.*;
 import jakarta.persistence.DiscriminatorValue;
@@ -23,7 +24,7 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     private static final String MIN_PREVIOUS = "minPrevious";
     public static final int DEFAULT_MIN_PREVIOUS = 5;
     private static final String FILTER =  "filter";
-    public static final String DEFAULT_FILTER = "mean";//attribute value must be a constant
+    public static final Filter DEFAULT_FILTER = Filter.MEAN;
     private static final String FINGERPRINT_FILTER = "fingerprintFilter";
 
     @Transient
@@ -41,7 +42,7 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     public RelativeDifference(String name, RelativeDifferenceConfig rd) {
         super(name, "");
         JqObject.Builder b = JqObject.builder();
-        if (rd.filter() != null) b.put("filter", rd.filter());
+        if (rd.filter() != null) b.put("filter", rd.filter().name());
         b.put("threshold", rd.threshold());
         b.put("window", (long) rd.window());
         b.put("minPrevious", (long) rd.minPrevious());
@@ -128,11 +129,15 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
         operation = config.toJsonString();
     }
     @Transient
-    public String getFilter(){
-        return config.get(FILTER).asString(DEFAULT_FILTER);
+    public Filter getFilter(){
+        try {
+            return Filter.valueOf(config.get(FILTER).asString(DEFAULT_FILTER.name()).toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return DEFAULT_FILTER;
+        }
     }
-    public void setFilter(String filter){
-        config = config.with(FILTER, JqString.of(filter));
+    public void setFilter(Filter filter){
+        config = config.with(FILTER, JqString.of(filter.name()));
         operation = config.toJsonString();
     }
     @Transient

@@ -1,5 +1,9 @@
 package io.hyperfoil.tools.h5m.api.node;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
@@ -29,4 +33,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * @param fingerprintFilter optional jq filter to select specific fingerprint values
  */
 @Schema(description = "Configuration for the E-Divisive (Hunter) change detection algorithm")
-public record EDivisiveConfig(int windowLen, double maxPvalue, double minMagnitude, int maxSeriesLength, String fingerprintFilter) implements NodeConfiguration {}
+public record EDivisiveConfig(
+        @Min(3) int windowLen,
+        @DecimalMin("0") @DecimalMax("1") double maxPvalue,
+        @DecimalMin("0") double minMagnitude,
+        @Positive int maxSeriesLength,
+        String fingerprintFilter) implements NodeConfiguration {}

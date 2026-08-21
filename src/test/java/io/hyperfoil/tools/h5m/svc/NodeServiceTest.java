@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
+import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig.Filter;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.api.Node;
@@ -725,7 +726,7 @@ public class NodeServiceTest extends FreshDb {
 
         RelativeDifference relDifference = new RelativeDifference();
         //relDifference.name="max.y";
-        relDifference.setFilter("max");
+        relDifference.setFilter(Filter.MAX);
         relDifference.setWindow(1);
         relDifference.setMinPrevious(1);
         relDifference.setNodes(fingerprintNode,rootNode,rangeNode,domainNode);
@@ -803,7 +804,7 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1,found.size());
 
         assertEquals(RelativeDifference.DEFAULT_FILTER, relDifference.getFilter(),
-                "getFilter() should return DEFAULT_FILTER ('mean') when no filter is configured");
+                "getFilter() should return default (MEAN) when no filter is configured");
     }
 
     @Test
@@ -1804,7 +1805,7 @@ public class NodeServiceTest extends FreshDb {
 
         // set up RelativeDifference with fingerprintFilter that only matches x86
         RelativeDifference relDifference = new RelativeDifference();
-        relDifference.setFilter("max");
+        relDifference.setFilter(Filter.MAX);
         relDifference.setWindow(1);
         relDifference.setMinPrevious(1);
         relDifference.setFingerprintFilter("(fp) => fp.platform === \"x86\"");
@@ -1826,7 +1827,7 @@ public class NodeServiceTest extends FreshDb {
 
         // run from an arm root WITHOUT filter to prove arm data produces results
         RelativeDifference relDiffNoFilter = new RelativeDifference();
-        relDiffNoFilter.setFilter("max");
+        relDiffNoFilter.setFilter(Filter.MAX);
         relDiffNoFilter.setWindow(1);
         relDiffNoFilter.setMinPrevious(1);
         relDiffNoFilter.setNodes(fingerprintNode,rootNode,rangeNode,domainNode);
@@ -1843,7 +1844,7 @@ public class NodeServiceTest extends FreshDb {
 
         // run from an arm root WITH x86 filter — filter should exclude the arm fingerprint
         RelativeDifference relDiffArmWithX86Filter = new RelativeDifference();
-        relDiffArmWithX86Filter.setFilter("max");
+        relDiffArmWithX86Filter.setFilter(Filter.MAX);
         relDiffArmWithX86Filter.setWindow(1);
         relDiffArmWithX86Filter.setMinPrevious(1);
         relDiffArmWithX86Filter.setFingerprintFilter("(fp) => fp.platform === \"x86\"");
@@ -2105,7 +2106,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
@@ -2323,7 +2324,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         ValueEntity root1 = new ValueEntity(null, rootNode, JqObject.EMPTY);
@@ -2483,7 +2484,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         
@@ -2627,7 +2628,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         
@@ -2767,7 +2768,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         
@@ -2916,7 +2917,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
         tm.commit();
 
@@ -2953,7 +2954,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         
@@ -3121,7 +3122,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, splitNode, rangeNode, domainNode);
         relDiff.setWindow(1);
         relDiff.setMinPrevious(1);
-        relDiff.setFilter("mean");
+        relDiff.setFilter(Filter.MEAN);
         relDiff.persist();
 
         
