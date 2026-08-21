@@ -12,7 +12,7 @@ import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
 
-@CommandDefinition(name = "add-member", description = "Add a user to a team", generateHelp = true)
+@CommandDefinition(name = "add", description = "Add a user to a team", generateHelp = true)
 public class AdminAddMember implements Command<H5mCommandInvocation> {
 
     @Inject

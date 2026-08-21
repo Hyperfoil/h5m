@@ -8,7 +8,7 @@ import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 
-@CommandDefinition(name = "revoke-api-key", description = "Revoke an existing API key", generateHelp = true)
+@CommandDefinition(name = "revoke", description = "Revoke an existing API key", generateHelp = true)
 public class AdminRevokeApiKey implements Command<H5mCommandInvocation> {
 
     @Inject

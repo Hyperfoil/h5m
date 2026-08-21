@@ -8,7 +8,7 @@ import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 
-@CommandDefinition(name = "create-team", description = "Create a new team for organizing access control", generateHelp = true)
+@CommandDefinition(name = "add", description = "Create a new team for organizing access control", generateHelp = true)
 public class AdminCreateTeam implements Command<H5mCommandInvocation> {
 
     @Inject
