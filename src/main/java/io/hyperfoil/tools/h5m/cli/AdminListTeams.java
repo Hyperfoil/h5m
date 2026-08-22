@@ -9,7 +9,7 @@ import org.aesh.command.CommandDefinition;
 import org.aesh.command.CommandResult;
 import java.util.List;
 
-@CommandDefinition(name = "list-teams", description = "List all teams", generateHelp = true)
+@CommandDefinition(name = "list", description = "List all teams", generateHelp = true)
 public class AdminListTeams implements Command<H5mCommandInvocation> {
 
     @Inject

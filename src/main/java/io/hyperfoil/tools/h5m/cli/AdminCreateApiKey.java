@@ -10,7 +10,7 @@ import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
 
-@CommandDefinition(name = "create-api-key", description = "Generate a new API key for programmatic access", generateHelp = true)
+@CommandDefinition(name = "add", description = "Generate a new API key for programmatic access", generateHelp = true)
 public class AdminCreateApiKey implements Command<H5mCommandInvocation> {
 
     @Inject

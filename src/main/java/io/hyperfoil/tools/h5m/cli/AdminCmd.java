@@ -9,14 +9,10 @@ import org.aesh.command.CommandResult;
         name = "admin",
         description = "Administration commands for managing users, teams, and API keys",
         groupCommands = {
-                AdminCreateTeam.class,
-                AdminCreateUser.class,
-                AdminListTeams.class,
-                AdminListUsers.class,
-                AdminAddMember.class,
-                AdminCreateApiKey.class,
-                AdminListApiKeys.class,
-                AdminRevokeApiKey.class,
+                AdminTeamCmd.class,
+                AdminUserCmd.class,
+                AdminMemberCmd.class,
+                AdminApiKeyCmd.class,
         },
         generateHelp = true
 )

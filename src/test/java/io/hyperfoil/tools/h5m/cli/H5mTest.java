@@ -1561,4 +1561,64 @@ public class H5mTest {
         assertTrue(values2.contains("Count: 2"), "expect 2 values after recalculate\n" + values2);
     }
 
+    // --- Admin command tests (3-level nesting: admin <entity> <action>) ---
+
+    @Test
+    public void admin_team_add_and_list() {
+        List<String> results = H5mTest.run(aeshLauncher,
+                new String[]{"admin", "team", "add", "test-team"},
+                new String[]{"admin", "team", "list"}
+        );
+
+        String addOutput = results.get(0);
+        assertTrue(addOutput.contains("test-team"), "should confirm team creation\n" + addOutput);
+
+        String listOutput = results.get(1);
+        assertTrue(listOutput.contains("test-team"), "team list should show created team\n" + listOutput);
+    }
+
+    @Test
+    public void admin_user_add_and_list() {
+        List<String> results = H5mTest.run(aeshLauncher,
+                new String[]{"admin", "user", "add", "test-user"},
+                new String[]{"admin", "user", "list"}
+        );
+
+        String addOutput = results.get(0);
+        assertTrue(addOutput.contains("test-user"), "should confirm user creation\n" + addOutput);
+
+        String listOutput = results.get(1);
+        assertTrue(listOutput.contains("test-user"), "user list should show created user\n" + listOutput);
+    }
+
+    @Test
+    public void admin_member_add() {
+        List<String> results = H5mTest.run(aeshLauncher,
+                new String[]{"admin", "team", "add", "member-team"},
+                new String[]{"admin", "user", "add", "member-user"},
+                new String[]{"admin", "member", "add", "member-user", "--team", "member-team"}
+        );
+
+        String memberOutput = results.get(2);
+        assertTrue(memberOutput.contains("member-user") || memberOutput.contains("member-team"),
+                "should confirm member addition\n" + memberOutput);
+    }
+
+    @Test
+    public void admin_apikey_add_list_revoke() {
+        List<String> results = H5mTest.run(aeshLauncher,
+                new String[]{"admin", "user", "add", "apikey-user"},
+                new String[]{"admin", "apikey", "add", "apikey-user"},
+                new String[]{"admin", "apikey", "list", "apikey-user"}
+        );
+
+        String addOutput = results.get(1);
+        assertTrue(addOutput.contains("apikey-user") || addOutput.contains("key"),
+                "should confirm API key creation\n" + addOutput);
+
+        String listOutput = results.get(2);
+        assertTrue(listOutput.contains("apikey-user"),
+                "apikey list should show key for user\n" + listOutput);
+    }
+
 }

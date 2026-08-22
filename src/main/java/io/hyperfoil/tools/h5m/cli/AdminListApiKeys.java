@@ -11,7 +11,7 @@ import org.aesh.command.option.Argument;
 
 import java.util.List;
 
-@CommandDefinition(name = "list-api-keys", description = "List API keys for a user", generateHelp = true)
+@CommandDefinition(name = "list", description = "List API keys for a user", generateHelp = true)
 public class AdminListApiKeys implements Command<H5mCommandInvocation> {
 
     @Inject

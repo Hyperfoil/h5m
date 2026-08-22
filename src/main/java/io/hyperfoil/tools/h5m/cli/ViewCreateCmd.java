@@ -14,7 +14,7 @@ import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 
-@CommandDefinition(name = "create", description = "Create a new named view for a folder", generateHelp = true)
+@CommandDefinition(name = "add", aliases = {"create"}, description = "Create a new named view for a folder", generateHelp = true)
 public class ViewCreateCmd implements Command<H5mCommandInvocation>, FolderAware {
 
     @Inject

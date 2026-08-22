@@ -10,7 +10,7 @@ import org.aesh.command.CommandResult;
 import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
 
-@CommandDefinition(name = "create-user", description = "Create a new user account", generateHelp = true)
+@CommandDefinition(name = "add", description = "Create a new user account", generateHelp = true)
 public class AdminCreateUser implements Command<H5mCommandInvocation> {
 
     @Inject
