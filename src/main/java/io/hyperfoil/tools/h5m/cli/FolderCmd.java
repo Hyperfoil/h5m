@@ -19,6 +19,7 @@ import org.aesh.command.CommandResult;
         RecalculateCmd.class,
         PurgeValuesCmd.class,
         ListValue.class,
+        ChartCmd.class,
     },
     generateHelp = true
 )
