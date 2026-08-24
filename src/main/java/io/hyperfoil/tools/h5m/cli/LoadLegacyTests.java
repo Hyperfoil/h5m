@@ -557,6 +557,24 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
             }
         }
         //create change detections with fingerprints and nodeIds
+        // Look up a domain node from Horreum's timeline_labels configuration.
+        // This provides the temporal ordering for change detection algorithms.
+        // When timeline_labels is empty, domain stays null and detection algorithms
+        // fall back to created_at ordering (issue #284).
+        NodeEntity domainNode = null;
+        if (!test.fingerprints().isEmpty()) {
+            List<String> timelineLabels = test.fingerprints().get(0).timelineLabels();
+            if (timelineLabels != null && !timelineLabels.isEmpty()) {
+                String timelineLabel = timelineLabels.get(0);
+                if (nodeTracking.hasNode(timelineLabel)) {
+                    domainNode = nodeTracking.getNodes(timelineLabel).get(0);
+                    System.out.println("Using timeline label '" + timelineLabel + "' as domain node for detection");
+                } else {
+                    System.out.println("Timeline label '" + timelineLabel + "' not found in node graph, detection will use created_at ordering");
+                }
+            }
+        }
+
         for(ChangeDetection changeDetection : test.changeDetections()){
             String fingerPrintName = test.name + "_fingerprint";
             NodeEntity  variableNode = variableIdToNode.get(changeDetection.variableId());
@@ -585,7 +603,7 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                     difference.setWindow(changeDetection.config().get("window").asInt(RelativeDifference.DEFAULT_WINDOW));
                     difference.setThreshold(changeDetection.config().get("threshold").asDouble(RelativeDifference.DEFAULT_THRESHOLD));
                     difference.setMinPrevious(changeDetection.config().get("minPrevious").asInt(RelativeDifference.DEFAULT_MIN_PREVIOUS));
-                    difference.setNodes(fingerprintNode,groupBy,variableNode,null);
+                    difference.setNodes(fingerprintNode,groupBy,variableNode,domainNode);
                     if(fingerprint_filter!=null && !fingerprint_filter.isEmpty()){
                         difference.setFingerprintFilter(fingerprint_filter);
                     }

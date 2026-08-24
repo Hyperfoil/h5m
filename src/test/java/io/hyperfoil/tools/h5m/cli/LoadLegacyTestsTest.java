@@ -748,6 +748,117 @@ public class LoadLegacyTestsTest extends FreshDb {
         assertTrue(entity.sources.stream().anyMatch(s -> "target".equals(s.name)));
     }
 
+    /**
+     * Tests that createFolder correctly creates a domain node from timeline_labels
+     * and wires it into RelativeDifference detection nodes. When timeline_labels
+     * contains a label name that exists in the node graph, the RD node should have
+     * 4 sources (fingerprint, groupBy, range, domain) instead of 3.
+     */
+    @Test
+    public void createFolder_timeline_labels_creates_domain_node_for_detection() {
+        // Create a label that will serve as both a variable and the timeline domain
+        LoadLegacyTests.Extractor timeExtractor = new LoadLegacyTests.Extractor("startTime", "$.startTime", false);
+        LoadLegacyTests.Label timeLabel = new LoadLegacyTests.Label(-1, "Start Time", null, List.of(timeExtractor));
+
+        // Create a value label for detection
+        LoadLegacyTests.Extractor valueExtractor = new LoadLegacyTests.Extractor("throughput", "$.throughput", false);
+        LoadLegacyTests.Label valueLabel = new LoadLegacyTests.Label(-1, "Throughput", null, List.of(valueExtractor));
+
+        HashedSets<String, LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"", timeLabel);
+        schemaPaths.put("$.\"$schema\"", valueLabel);
+
+        // Fingerprint with timeline_labels pointing to "Start Time"
+        LoadLegacyTests.Fingerprint fingerprint = new LoadLegacyTests.Fingerprint(
+                List.of("Throughput"), null, List.of("Start Time"), "");
+
+        // Variable for the value (maps to Throughput label)
+        LoadLegacyTests.Variable variable = new LoadLegacyTests.Variable(-1, "throughput_var", List.of("Throughput"), null);
+
+        // RelativeDifference change detection
+        JqObject rdConfig = (JqObject) JqValues.parse("""
+                {
+                    "filter": "mean",
+                    "window": 1,
+                    "minPrevious": 5,
+                    "threshold": 0.2
+                }
+                """);
+        LoadLegacyTests.ChangeDetection changeDetection = new LoadLegacyTests.ChangeDetection(-1, -1, "relativeDifference", rdConfig);
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", schemaPaths,
+                List.of(fingerprint), List.of(changeDetection), List.of(), List.of(variable));
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+        assertNotNull(folder);
+        assertNotNull(folder.group);
+
+        // Find the RelativeDifference node
+        List<NodeEntity> rdNodes = folder.group.sources.stream()
+                .filter(v -> v instanceof RelativeDifference)
+                .toList();
+        assertEquals(1, rdNodes.size(), "Expect 1 RelativeDifference node\n"
+                + folder.group.sources.stream().map(NodeEntity::toString).collect(Collectors.joining("\n")));
+
+        RelativeDifference rd = (RelativeDifference) rdNodes.getFirst();
+        // With domain node, RD should have 4 sources: fingerprint, groupBy, range, domain
+        assertEquals(4, rd.sources.size(),
+                "RD node should have 4 sources (fingerprint, groupBy, range, domain) when timeline_labels is set\n"
+                + rd.sources.stream().map(NodeEntity::toString).collect(Collectors.joining("\n")));
+
+        // The domain node should be the "Start Time" extractor node
+        assertNotNull(rd.getDomainNode(), "RD should have a domain node from timeline_labels");
+        assertEquals("Start Time", rd.getDomainNode().name,
+                "Domain node should be the 'Start Time' label node");
+    }
+
+    /**
+     * Tests that createFolder with empty timeline_labels produces an RD node
+     * without a domain node (3 sources instead of 4), falling back to created_at ordering.
+     */
+    @Test
+    public void createFolder_empty_timeline_labels_no_domain_node() {
+        LoadLegacyTests.Extractor valueExtractor = new LoadLegacyTests.Extractor("throughput", "$.throughput", false);
+        LoadLegacyTests.Label valueLabel = new LoadLegacyTests.Label(-1, "Throughput", null, List.of(valueExtractor));
+
+        HashedSets<String, LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"", valueLabel);
+
+        // Fingerprint with EMPTY timeline_labels
+        LoadLegacyTests.Fingerprint fingerprint = new LoadLegacyTests.Fingerprint(
+                List.of("Throughput"), null, List.of(), "");
+
+        LoadLegacyTests.Variable variable = new LoadLegacyTests.Variable(-1, "throughput_var", List.of("Throughput"), null);
+
+        JqObject rdConfig = (JqObject) JqValues.parse("""
+                {
+                    "filter": "mean",
+                    "window": 1,
+                    "minPrevious": 5,
+                    "threshold": 0.2
+                }
+                """);
+        LoadLegacyTests.ChangeDetection changeDetection = new LoadLegacyTests.ChangeDetection(-1, -1, "relativeDifference", rdConfig);
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1, "test", schemaPaths,
+                List.of(fingerprint), List.of(changeDetection), List.of(), List.of(variable));
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+        assertNotNull(folder);
+
+        List<NodeEntity> rdNodes = folder.group.sources.stream()
+                .filter(v -> v instanceof RelativeDifference)
+                .toList();
+        assertEquals(1, rdNodes.size(), "Expect 1 RelativeDifference node");
+
+        RelativeDifference rd = (RelativeDifference) rdNodes.getFirst();
+        // Without domain node, RD should have 3 sources: fingerprint, groupBy, range
+        assertEquals(3, rd.sources.size(),
+                "RD node should have 3 sources (no domain) when timeline_labels is empty\n"
+                + rd.sources.stream().map(NodeEntity::toString).collect(Collectors.joining("\n")));
+        assertNull(rd.getDomainNode(), "RD should NOT have a domain node when timeline_labels is empty");
+    }
+
     @Test @Disabled("not sure why it is failing atm")
     public void createNodesFromLabel_two_extractors_custom_function_with_extra_parameters(){
         LoadLegacyTests.Extractor extractor1 = new LoadLegacyTests.Extractor("extractor","$.one",false);

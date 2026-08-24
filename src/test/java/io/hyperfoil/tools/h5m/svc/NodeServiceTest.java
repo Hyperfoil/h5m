@@ -807,6 +807,202 @@ public class NodeServiceTest extends FreshDb {
                 "getFilter() should return default (MEAN) when no filter is configured");
     }
 
+    /**
+     * Tests that RelativeDifference detection works without a domain node
+     * (null domain), using created_at ordering as fallback. This is the
+     * code path used by legacy Horreum imports (issue #284).
+     */
+    @Test
+    public void calculateRelativeDifference_nullDomain_detects_change() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fp", rootNode);
+        fingerprintNode.persist();
+
+        // Create 3 values: two stable (1.0, 1.0) then a big change (10.0)
+        // With window=1, minPrevious=1, threshold=0.2, the jump from 1.0→10.0
+        // should be detected (ratio = 900%)
+        for (double y : new double[]{1.0, 1.0, 10.0}) {
+            ValueEntity rootVal = new ValueEntity(null, rootNode, JqValues.parse(
+                    String.format("{\"y\": %s, \"fp\": \"alpha\"}", y)));
+            rootVal.persist();
+            new ValueEntity(null, rangeNode, rootVal.data.getField("y"), List.of(rootVal)).persist();
+            new ValueEntity(null, fingerprintNode, rootVal.data.getField("fp"), List.of(rootVal)).persist();
+        }
+        tm.commit();
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setThreshold(0.2);
+        // No domain node — null domain triggers created_at fallback
+        relDiff.setNodes(fingerprintNode, rootNode, rangeNode, null);
+
+        // Use the first root value as the trigger
+        ValueEntity firstRoot = ValueEntity.find("node.id", rootNode.id).firstResult();
+        List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff, firstRoot, 0);
+        assertNotNull(found);
+        assertFalse(found.isEmpty(), "Should detect a change with null domain using created_at ordering");
+
+        // Verify the detection output has correct structure
+        JqValue data = found.getFirst().data;
+        assertNotNull(data, "Detection value should have data");
+        assertTrue(data.has("ratio"), "Detection should include ratio");
+        assertTrue(data.has("previous"), "Detection should include previous");
+        assertTrue(data.has("last"), "Detection should include last");
+        assertTrue(data.has("value"), "Detection should include value");
+        // No domainvalue since there's no domain node
+        assertFalse(data.has("domainvalue"), "Detection without domain should not have domainvalue");
+    }
+
+    /**
+     * Tests that RelativeDifference with null domain respects the minPrevious
+     * bound — not enough data should produce zero detections.
+     */
+    @Test
+    public void calculateRelativeDifference_nullDomain_respects_minPrevious() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fp", rootNode);
+        fingerprintNode.persist();
+
+        // Create only 2 values — with minPrevious=5, we need 6 total (5 + window=1)
+        // 2 values is insufficient, should produce 0 detections
+        for (double y : new double[]{1.0, 100.0}) {
+            ValueEntity rootVal = new ValueEntity(null, rootNode, JqValues.parse(
+                    String.format("{\"y\": %s, \"fp\": \"alpha\"}", y)));
+            rootVal.persist();
+            new ValueEntity(null, rangeNode, rootVal.data.getField("y"), List.of(rootVal)).persist();
+            new ValueEntity(null, fingerprintNode, rootVal.data.getField("fp"), List.of(rootVal)).persist();
+        }
+        tm.commit();
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(5); // needs 6 values total, only have 2
+        relDiff.setThreshold(0.2);
+        relDiff.setNodes(fingerprintNode, rootNode, rangeNode, null);
+
+        ValueEntity firstRoot = ValueEntity.find("node.id", rootNode.id).firstResult();
+        List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff, firstRoot, 0);
+        assertNotNull(found);
+        assertTrue(found.isEmpty(), "Should not detect changes when insufficient samples (2 < minPrevious+window=6)");
+    }
+
+    /**
+     * Tests that evaluateRelativeDifference calculates the correct ratio
+     * value for a known data pattern. Uses the extracted helper directly
+     * to verify algorithmic correctness independent of DB ordering.
+     *
+     * With converted = [100, 100, 100, 50], window=1, minPrevious=2, mean filter:
+     *   previous = limit(2) → [100, 100] → previousMean = 100
+     *   window   = skip(2)  → [100, 50]  → sum=150, mean=75
+     *   ratio    = 75/100 = 0.75 → (0.75-1)*100 = -25%
+     */
+    @Test
+    public void evaluateRelativeDifference_correct_ratio() {
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name = "test_rd";
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(2);
+        relDiff.setThreshold(0.2);
+
+        List<Double> converted = List.of(100.0, 100.0, 100.0, 50.0);
+        long minPrevious = Math.max(relDiff.getWindow(), relDiff.getMinPrevious());
+
+        JqValue result = nodeService.evaluateRelativeDifference(converted, relDiff, minPrevious, null);
+        assertNotNull(result, "Should detect a change (ratio exceeds threshold)");
+
+        double ratio = result.getField("ratio").asDouble(0);
+        assertEquals(-25.0, ratio, 0.01, "Ratio should be -25% ((75/100 - 1) * 100)");
+
+        double previous = result.getField("previous").asDouble(0);
+        assertEquals(100.0, previous, 0.01, "Previous should be the last value in the baseline window");
+
+        double value = result.getField("value").asDouble(0);
+        assertEquals(75.0, value, 0.01, "Value should be the mean of window values (75.0)");
+
+        assertFalse(result.has("domainvalue"), "Should not have domainvalue when null domain passed");
+    }
+
+    /**
+     * Tests evaluateRelativeDifference with a domain value included in output.
+     */
+    @Test
+    public void evaluateRelativeDifference_includes_domainvalue() {
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name = "test_rd";
+        relDiff.setFilter(Filter.MAX);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setThreshold(0.2);
+
+        // [1.0, 10.0]: previous=[1.0]→mean=1, window=[10.0]→max=10, ratio=10/1=10→900%
+        List<Double> converted = List.of(1.0, 10.0);
+        JqValue domainData = JqValues.parse("\"2024-01-15T12:00:00Z\"");
+
+        JqValue result = nodeService.evaluateRelativeDifference(converted, relDiff, 1, domainData);
+        assertNotNull(result, "Should detect a change");
+
+        assertTrue(result.has("domainvalue"), "Should have domainvalue when domain data is provided");
+        assertEquals(domainData, result.getField("domainvalue"), "Domainvalue should match input");
+
+        double ratio = result.getField("ratio").asDouble(0);
+        assertEquals(900.0, ratio, 0.01, "Ratio should be 900% ((10/1 - 1) * 100)");
+    }
+
+    /**
+     * Tests that evaluateRelativeDifference returns null when there are
+     * insufficient samples (respecting minPrevious bound).
+     */
+    @Test
+    public void evaluateRelativeDifference_insufficient_samples_returns_null() {
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name = "test_rd";
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(5);
+        relDiff.setThreshold(0.2);
+
+        // Only 3 values, need 6 (window=1 + minPrevious=5)
+        List<Double> converted = List.of(1.0, 100.0, 200.0);
+        long minPrevious = Math.max(relDiff.getWindow(), relDiff.getMinPrevious());
+
+        JqValue result = nodeService.evaluateRelativeDifference(converted, relDiff, minPrevious, null);
+        assertNull(result, "Should return null when insufficient samples (3 < 6)");
+    }
+
+    /**
+     * Tests that evaluateRelativeDifference returns null when the ratio
+     * is within the threshold (no change detected).
+     */
+    @Test
+    public void evaluateRelativeDifference_within_threshold_returns_null() {
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name = "test_rd";
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(2);
+        relDiff.setThreshold(0.2); // 20% threshold
+
+        // [100, 100, 105]: previous=[100,100]→mean=100, window=[105]→mean=105
+        // ratio = 105/100 = 1.05 → 5% change — within 20% threshold
+        List<Double> converted = List.of(100.0, 100.0, 105.0);
+        long minPrevious = Math.max(relDiff.getWindow(), relDiff.getMinPrevious());
+
+        JqValue result = nodeService.evaluateRelativeDifference(converted, relDiff, minPrevious, null);
+        assertNull(result, "Should return null when change (5%) is within threshold (20%)");
+    }
+
     @Test
     public void getDependentNodes() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         tm.begin();

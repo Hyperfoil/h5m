@@ -504,10 +504,7 @@ public class NodeService implements NodeServiceInterface {
                     continue;
                 }
                 if (relDiff.getDomainNode() != null) {
-                    //changing domainValues to just get the domainValues from this root would change from full series scanning to just scanning the new values
-                    //but that would only work if values are added sequentially to the domain value (or we delay relative difference calculation to the end of the work queue.
-                    //perhaps we check if root introduced the maximum domainValue then only calculate new changes for that last window
-                    //or get the domainValues greater than domain values from root and calculate all those changes?
+                    // Domain-based ordering: iterate over domain values to find matching ranges.
                     List<ValueEntity> rootDomainValues = valueService.getDescendantValues(root, relDiff.getDomainNode());
                     List<ValueEntity> allDomainValues = new ArrayList<>();
                     for (int sdIdx = 0; sdIdx < rootDomainValues.size(); sdIdx++) {
@@ -558,67 +555,16 @@ public class NodeService implements NodeServiceInterface {
                                 .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
                                 .filter(Objects::nonNull).toList();
 
-                            if (converted.size() < relDiff.getWindow() + minPrevious) {
-                                System.err.println("insufficient samples to calculate " + relDiff.name + " need " + (relDiff.getWindow() + minPrevious) + " have " + converted.size());
-                            } else {
-                                DoubleBinaryOperator op = switch (relDiff.getFilter()) {
-                                    case MIN -> Double::min;
-                                    case MAX -> Double::max;
-                                    case MEAN -> Double::sum;
-                                };
-                                SummaryStatistics previousStats = new SummaryStatistics();
-                                converted
-                                        .stream()
-                                        .limit(minPrevious)
-                                        //.skip(relDiff.getWindow())
-                                        .mapToDouble(Double::doubleValue)
-                                        .forEach(previousStats::addValue);
-                                Double value = converted
-                                        .stream()
-                                        //.limit(relDiff.getWindow())
-                                        .skip(minPrevious)
-                                        .mapToDouble(Double::doubleValue)
-                                        .reduce(op)
-                                        .getAsDouble();
-                                if (relDiff.getFilter() == RelativeDifferenceConfig.Filter.MEAN) {
-                                    value = value / (converted.size() - minPrevious);
+                            JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, domainValue.data);
+                            if (changeData != null) {
+                                dIdx += minPrevious;
+                                ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
+                                changeValue.idx = startingOrdinal;
+                                List<ValueEntity> foundParents = valueService.getAncestor(domainValue, groupBy);
+                                if (foundParents.size() == 1) {
+                                    changeValue.sources = foundParents;
                                 }
-                                double ratio = value / previousStats.getMean();
-                                if (ratio < 1 - relDiff.getThreshold() || ratio > 1 + relDiff.getThreshold()) {
-                                    // We cannot know which datapoint is first with the regression; as a heuristic approach
-                                    // we'll select first datapoint with value lower than mean (if this is a drop, e.g. throughput)
-                                    // or above the mean (if this is an increase, e.g. memory usage).
-                                    Double cv = null;
-                                    //why does i start with less than last in window?
-                                    for (int i = (int) relDiff.getWindow() - 1; i >= 0; --i) {
-                                        cv = converted.get(i);
-                                        if (ratio < 1 && cv < previousStats.getMean()) {
-                                            break;
-                                        } else if (ratio > 1 && cv > previousStats.getMean()) {
-                                            break;
-                                        }
-                                    }
-                                    assert cv != null;
-                                    Double prevData = converted.get((int) relDiff.getWindow() - 1);
-                                    Double lastData = cv;
-                                    JqValue data = JqObject.builder()
-                                            .put("previous", prevData)
-                                            .put("last", lastData)
-                                            .put("value", value)
-                                            .put("ratio", 100 * (ratio - 1))
-                                            .put("domainvalue", domainValue.data)
-                                            .build();
-                                    //skip domain values due to a detection
-                                    dIdx += minPrevious;
-                                    ValueEntity changeValue = new ValueEntity(root.folder, relDiff, data);
-                                    changeValue.idx = startingOrdinal;
-                                    List<ValueEntity> foundParents = valueService.getAncestor(domainValue, groupBy);
-                                    if (foundParents.size() == 1) {
-                                        changeValue.sources = foundParents;
-                                    }
-
-                                    rtrn.add(changeValue);
-                                }
+                                rtrn.add(changeValue);
                             }
                         }
                         List<ValueEntity> persistedChangeValues = valueService.findMatchingFingerprint(
@@ -660,12 +606,100 @@ public class NodeService implements NodeServiceInterface {
 
                         }
                     }
+                } else {
+                    // No domain node — fall back to created_at ordering.
+                    // This supports legacy Horreum imports where detection nodes are
+                    // created without an explicit domain node (issue #284).
+                    // findMatchingFingerprint with null domain uses ORDER BY created_at.
+                    List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
+                            relDiff.getRangeNode(),
+                            groupBy,
+                            fingerprintValue,
+                            (NodeEntity) null, null, null,
+                            -1, 0, true
+                    );
+                    List<Double> converted = rangeValues.stream()
+                            .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
+                            .filter(Objects::nonNull).toList();
+
+                    JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, null);
+                    if (changeData != null) {
+                        ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
+                        changeValue.idx = startingOrdinal;
+                        List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
+                        if (foundParents.size() == 1) {
+                            changeValue.sources = foundParents;
+                        }
+                        rtrn.add(changeValue);
+                    }
                 }
             }
         }catch (Exception e){
             e.printStackTrace();
         }
         return rtrn;
+    }
+
+    @Transactional
+    /**
+     * Evaluates a list of numeric range values for a relative difference change.
+     * Shared by both domain-based and created_at-based detection paths.
+     *
+     * @param converted     list of numeric values ordered chronologically
+     * @param relDiff       the detection node configuration
+     * @param minPrevious   the effective minPrevious value (max of window and minPrevious)
+     * @param domainData    optional domain value data for the output (null for created_at ordering)
+     * @return the detection value data if a change was detected, null otherwise
+     */
+    JqValue evaluateRelativeDifference(List<Double> converted, RelativeDifference relDiff, long minPrevious, JqValue domainData) {
+        if (converted.size() < relDiff.getWindow() + minPrevious) {
+            System.err.println("insufficient samples to calculate " + relDiff.name
+                    + " need " + (relDiff.getWindow() + minPrevious)
+                    + " have " + converted.size());
+            return null;
+        }
+        DoubleBinaryOperator op = switch (relDiff.getFilter()) {
+            case MIN -> Double::min;
+            case MAX -> Double::max;
+            case MEAN -> Double::sum;
+        };
+        SummaryStatistics previousStats = new SummaryStatistics();
+        converted.stream()
+                .limit(minPrevious)
+                .mapToDouble(Double::doubleValue)
+                .forEach(previousStats::addValue);
+        Double value = converted.stream()
+                .skip(minPrevious)
+                .mapToDouble(Double::doubleValue)
+                .reduce(op)
+                .getAsDouble();
+        if (relDiff.getFilter() == RelativeDifferenceConfig.Filter.MEAN) {
+            value = value / (converted.size() - minPrevious);
+        }
+        double ratio = value / previousStats.getMean();
+        if (ratio < 1 - relDiff.getThreshold() || ratio > 1 + relDiff.getThreshold()) {
+            Double cv = null;
+            for (int i = (int) relDiff.getWindow() - 1; i >= 0; --i) {
+                cv = converted.get(i);
+                if (ratio < 1 && cv < previousStats.getMean()) {
+                    break;
+                } else if (ratio > 1 && cv > previousStats.getMean()) {
+                    break;
+                }
+            }
+            assert cv != null;
+            Double prevData = converted.get((int) relDiff.getWindow() - 1);
+            JqObject.Builder dataBuilder = JqObject.builder()
+                    .put("previous", prevData)
+                    .put("last", cv)
+                    .put("value", value)
+                    .put("ratio", 100 * (ratio - 1));
+            if (domainData != null) {
+                dataBuilder.put("domainvalue", domainData);
+            }
+            return dataBuilder.build();
+        }
+        return null;
     }
 
     @Transactional
@@ -760,10 +794,8 @@ public class NodeService implements NodeServiceInterface {
     public List<ValueEntity> calculateEDivisiveValues(EDivisive ed, ValueEntity root, int startingOrdinal) throws IOException {
         List<ValueEntity> rtrn = new ArrayList<>();
         try {
-            if (ed.getDomainNode() == null) {
-                Log.errorf("e-divisive node %s requires a domain node for meaningful ordering", ed.name);
-                return rtrn;
-            }
+            // Domain node is optional — when null, findMatchingFingerprint falls back
+            // to created_at ordering (supports legacy Horreum imports, issue #284).
 
             NodeEntity groupBy = NodeEntity.findById(ed.getGroupByNode().getId());
             List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root, ed.getFingerprintNode());
@@ -867,11 +899,13 @@ public class NodeService implements NodeServiceInterface {
                         // Find the domain value that shares the same groupBy ancestor as
                         // the range value at the change point. This handles split/dataset
                         // scoping correctly (siblings in the DAG, not ancestors).
-                        List<ValueEntity> rangeGroupBy = valueService.getAncestor(rangeAtCp, groupBy);
-                        if (!rangeGroupBy.isEmpty()) {
-                            List<ValueEntity> domainValues = valueService.getDescendantValues(rangeGroupBy.getFirst(), ed.getDomainNode());
-                            if (!domainValues.isEmpty()) {
-                                dataBuilder.put("domainvalue", domainValues.getFirst().data);
+                        if (ed.getDomainNode() != null) {
+                            List<ValueEntity> rangeGroupBy = valueService.getAncestor(rangeAtCp, groupBy);
+                            if (!rangeGroupBy.isEmpty()) {
+                                List<ValueEntity> domainValues = valueService.getDescendantValues(rangeGroupBy.getFirst(), ed.getDomainNode());
+                                if (!domainValues.isEmpty()) {
+                                    dataBuilder.put("domainvalue", domainValues.getFirst().data);
+                                }
                             }
                         }
                     }

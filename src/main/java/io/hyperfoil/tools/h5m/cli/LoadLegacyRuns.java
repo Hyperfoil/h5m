@@ -129,8 +129,8 @@ public class LoadLegacyRuns implements Command<H5mCommandInvocation> {
                     }
                 }
                 String runQuery = limit > 0
-                        ? "select id,data from run where testid = ? and trashed = false order by id desc limit ?"
-                        : "select id,data from run where testid = ? and trashed = false order by id desc";
+                        ? "select id,data from run where testid = ? and trashed = false order by id asc limit ?"
+                        : "select id,data from run where testid = ? and trashed = false order by id asc";
                 if (offset > 0) {
                     runQuery += " offset ?";
                 }
