@@ -22,7 +22,7 @@ import {
   TextInput,
 } from '@carbon/react';
 import { byIdOptions, createConfiguredMutation, createNodeMutation } from '@client/@tanstack/react-query.gen.ts';
-import { zCreateNodeQuery } from '@client/zod.gen.ts';
+import { zCreateNodeBody } from '@client/zod.gen.ts';
 import { useForm, useSelector } from '@tanstack/react-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -157,7 +157,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
       } else if (type === 'FINGERPRINT') {
         createConfigured.mutate({ query: { name, groupId, type: 'FINGERPRINT', sources: value.fpSources } });
       } else {
-        createNode.mutate({ query: { name, groupId, type, operation: value.operation.trim() } });
+        createNode.mutate({ body: { name, groupId, type, operation: value.operation.trim() } });
       }
     },
   });
@@ -246,8 +246,8 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                 <form.Field
                   name="name"
                   validators={{
-                    onBlur: zCreateNodeQuery.shape.name,
-                    onSubmit: zCreateNodeQuery.shape.name,
+                    onBlur: zCreateNodeBody.shape.name,
+                    onSubmit: zCreateNodeBody.shape.name,
                   }}
                 >
                   {(field) => (
@@ -421,7 +421,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
             )}
 
             {steps[currentStep] === 'operation' && (
-              <form.Field name="operation" validators={{ onSubmit: zCreateNodeQuery.shape.operation }}>
+              <form.Field name="operation" validators={{ onSubmit: zCreateNodeBody.shape.operation }}>
                 {(field) => (
                   <TextArea
                     id="node-operation"

@@ -25,7 +25,7 @@ describe('nodeColor', () => {
 describe('collectNodes', () => {
   it('collects a single node', () => {
     const map = new Map();
-    const node: Node = { id: 1, name: 'root', type: 'ROOT' };
+    const node: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '' };
     collectNodes(node, map);
     expect(map.size).toBe(1);
     expect(map.get('1')?.name).toBe('root');
@@ -34,11 +34,11 @@ describe('collectNodes', () => {
   it('collects node tree recursively', () => {
     const map = new Map();
     const root: Node = {
-      id: 1, name: 'root', type: 'ROOT',
+      id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '',
       sources: [],
     };
     const child: Node = {
-      id: 2, name: 'cpu', type: 'JQ', operation: '.cpu',
+      id: 2, name: 'cpu', type: 'JQ', groupId: 1, operation: '.cpu',
       sources: [root],
     };
     collectNodes(child, map);
@@ -49,7 +49,7 @@ describe('collectNodes', () => {
 
   it('deduplicates nodes by id', () => {
     const map = new Map();
-    const root: Node = { id: 1, name: 'root', type: 'ROOT' };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '' };
     collectNodes(root, map);
     collectNodes(root, map);
     expect(map.size).toBe(1);
@@ -57,7 +57,7 @@ describe('collectNodes', () => {
 
   it('skips nodes with null id', () => {
     const map = new Map();
-    const node: Node = { name: 'orphan', type: 'JQ' };
+    const node: Node = { name: 'orphan', type: 'JQ', groupId: 1, operation: '' };
     collectNodes(node, map);
     expect(map.size).toBe(0);
   });
@@ -65,9 +65,9 @@ describe('collectNodes', () => {
 
 describe('buildGraph', () => {
   it('builds graph from simple node group', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const cpu: Node = { id: 2, name: 'cpu', type: 'JQ', operation: '.cpu', sources: [root] };
-    const mem: Node = { id: 3, name: 'mem', type: 'JQ', operation: '.mem', sources: [root] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const cpu: Node = { id: 2, name: 'cpu', type: 'JQ', groupId: 1, operation: '.cpu', sources: [root] };
+    const mem: Node = { id: 3, name: 'mem', type: 'JQ', groupId: 1, operation: '.mem', sources: [root] };
 
     const nodeGroup: NodeGroup = {
       id: 1,
@@ -94,9 +94,9 @@ describe('buildGraph', () => {
   });
 
   it('handles chained nodes (root -> a -> b)', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const a: Node = { id: 2, name: 'a', type: 'JQ', operation: '.a', sources: [root] };
-    const b: Node = { id: 3, name: 'b', type: 'JQ', operation: '.b', sources: [a] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const a: Node = { id: 2, name: 'a', type: 'JQ', groupId: 1, operation: '.a', sources: [root] };
+    const b: Node = { id: 3, name: 'b', type: 'JQ', groupId: 1, operation: '.b', sources: [a] };
 
     const nodeGroup: NodeGroup = {
       id: 1, name: 'chain',
@@ -115,10 +115,10 @@ describe('buildGraph', () => {
   });
 
   it('handles diamond pattern (root -> a, root -> b, a + b -> c)', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const a: Node = { id: 2, name: 'a', type: 'JQ', operation: '.a', sources: [root] };
-    const b: Node = { id: 3, name: 'b', type: 'JQ', operation: '.b', sources: [root] };
-    const c: Node = { id: 4, name: 'c', type: 'JS', operation: '(a, b) => a + b', sources: [a, b] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const a: Node = { id: 2, name: 'a', type: 'JQ', groupId: 1, operation: '.a', sources: [root] };
+    const b: Node = { id: 3, name: 'b', type: 'JQ', groupId: 1, operation: '.b', sources: [root] };
+    const c: Node = { id: 4, name: 'c', type: 'JS', groupId: 1, operation: '(a, b) => a + b', sources: [a, b] };
 
     const nodeGroup: NodeGroup = {
       id: 1, name: 'diamond',
@@ -146,9 +146,9 @@ describe('buildGraph', () => {
   });
 
   it('assigns correct node types for display', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const jq: Node = { id: 2, name: 'cpu', type: 'JQ', operation: '.cpu', sources: [root] };
-    const ft: Node = { id: 3, name: 'alert', type: 'FIXED_THRESHOLD', operation: '{}', sources: [jq] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const jq: Node = { id: 2, name: 'cpu', type: 'JQ', groupId: 1, operation: '.cpu', sources: [root] };
+    const ft: Node = { id: 3, name: 'alert', type: 'FIXED_THRESHOLD', groupId: 1, operation: '{}', sources: [jq] };
 
     const nodeGroup: NodeGroup = {
       id: 1, name: 'types',
@@ -169,8 +169,8 @@ describe('buildGraph', () => {
   });
 
   it('all nodes have positions after layout', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const a: Node = { id: 2, name: 'a', type: 'JQ', operation: '.a', sources: [root] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const a: Node = { id: 2, name: 'a', type: 'JQ', groupId: 1, operation: '.a', sources: [root] };
 
     const nodeGroup: NodeGroup = {
       id: 1, name: 'layout',
@@ -190,8 +190,8 @@ describe('buildGraph', () => {
   });
 
   it('does not create duplicate edges', () => {
-    const root: Node = { id: 1, name: 'root', type: 'ROOT', sources: [] };
-    const a: Node = { id: 2, name: 'a', type: 'JQ', operation: '.a', sources: [root] };
+    const root: Node = { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] };
+    const a: Node = { id: 2, name: 'a', type: 'JQ', groupId: 1, operation: '.a', sources: [root] };
 
     const nodeGroup: NodeGroup = {
       id: 1, name: 'dedup',

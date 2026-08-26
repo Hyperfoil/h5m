@@ -4,6 +4,7 @@ import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.api.Node;
 import io.hyperfoil.tools.h5m.api.NodeType;
 import io.hyperfoil.tools.h5m.api.Processing;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.api.node.NodeConfiguration;
 import io.hyperfoil.tools.h5m.api.svc.NodeServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
@@ -21,6 +22,7 @@ import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import org.hibernate.validator.constraints.UniqueElements;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -53,14 +55,11 @@ public class NodeResource {
     ApiMapper apiMapper;
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
     @Operation(description = "Create a new node with an operation")
-    public Node createNode(
-            @QueryParam("name") @NotEmpty String name,
-            @QueryParam("groupId") @NotNull Long groupId,
-            @QueryParam("type") @NotNull NodeType type,
-            @QueryParam("operation") @NotEmpty String operation) {
-        return nodeService.create(name, groupId, type, operation);
+    public Node createNode(@Valid @NotNull Node node) {
+        return nodeService.create(node.name(), node.groupId(), node.type(), node.operation());
     }
 
     @POST
@@ -69,7 +68,7 @@ public class NodeResource {
     @Authenticated
     @Operation(description = "Create a new node with sources and configuration")
     public Node createConfigured(
-            @QueryParam("name") @NotEmpty String name,
+            @QueryParam("name") @NotEmpty @Pattern(regexp = ReservedNamespace.ALLOWED_NAME_PATTERN, message = "names starting with 'h5m.' are reserved for internal use") String name,
             @QueryParam("groupId") @NotNull Long groupId,
             @QueryParam("type") @NotNull NodeType type,
             @QueryParam("sources") @NotNull @NotEmpty @UniqueElements(message = "Duplicate source nodes are not allowed: each source node must serve a unique role") List<Long> sources,
@@ -87,7 +86,9 @@ public class NodeResource {
     @Authenticated
     @Transactional
     @Operation(description = "Update a node's name and/or operation. Absent params are left unchanged. An empty operation clears it. Triggers selective recalculation when the operation changes.")
-    public Node update(@PathParam("id") Long id, @QueryParam("name") String name, @QueryParam("operation") String operation) {
+    public Node update(@PathParam("id") Long id,
+            @QueryParam("name") @Pattern(regexp = ReservedNamespace.ALLOWED_NAME_PATTERN, message = "names starting with 'h5m.' are reserved for internal use") String name,
+            @QueryParam("operation") String operation) {
         NodeEntity existing = NodeEntity.findById(id);
         if (existing == null) {
             throw new NotFoundException("Node not found: " + id);

@@ -1,13 +1,9 @@
-import {
-  Button,
-  ComposedModal,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
-  TextInput,
-} from '@carbon/react';
-import { createFolderMutation } from '@client/@tanstack/react-query.gen.ts';
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
+import { fieldError } from '@app/validation.ts';
+import { Button, ComposedModal, Form, InlineNotification, ModalBody, ModalFooter, ModalHeader, Stack, TextInput } from '@carbon/react';
+import { createFolderMutation } from '@client/@tanstack/react-query.gen.ts';
+import { zCreateFolderBody } from '@client/zod.gen.ts';
+import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -17,56 +13,91 @@ interface CreateFolderModalProps {
 }
 
 export const CreateFolderModal = ({ open, onClose }: CreateFolderModalProps) => {
-  const [folderName, setFolderName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const createFolder = useMutation({
     ...createFolderMutation(),
     onSuccess: () => {
       void queryClient.invalidateQueries();
-      setFolderName('');
-      setError(null);
-      onClose();
+      handleClose();
     },
     onError: (e) => {
-      setError(extractErrorMessage(e) ?? 'Failed to create folder');
+      setSubmitError(extractErrorMessage(e) ?? 'Failed to create folder');
     },
   });
 
-  const handleSave = () => {
-    if (folderName.trim() === '') {
-      setError('Folder name cannot be empty');
-      return;
-    }
-    createFolder.mutate({ query: { name: folderName.trim() } });
+  const form = useForm({
+    defaultValues: { name: '' },
+    onSubmit: ({ value }) => {
+      setSubmitError(null);
+      createFolder.mutate({ body: { name: value.name.trim() } });
+    },
+  });
+
+  const handleClose = () => {
+    form.reset();
+    setSubmitError(null);
+    onClose();
   };
 
   return (
-    <ComposedModal open={open} onClose={() => { setFolderName(''); setError(null); onClose(); }}>
+    <ComposedModal open={open} onClose={handleClose}>
       <ModalHeader title="Create Folder" />
       <ModalBody>
-        <TextInput
-          id="folder-name"
-          labelText="Folder name"
-          placeholder="e.g. benchmarks"
-          value={folderName}
-          onChange={(e) => setFolderName(e.target.value)}
-        />
-        {error && (
-          <p style={{ color: 'var(--cds-support-error)', marginTop: '0.5rem' }}>
-            {error}
-          </p>
-        )}
+        <Form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+        >
+          <Stack gap={6}>
+            <form.Field
+              name="name"
+              validators={{
+                onBlur: zCreateFolderBody.shape.name,
+                onSubmit: zCreateFolderBody.shape.name,
+              }}
+            >
+              {(field) => (
+                <TextInput
+                  id="folder-name"
+                  labelText="Folder name"
+                  placeholder="e.g. benchmarks"
+                  value={field.state.value}
+                  onChange={(e) => {
+                    field.handleChange(e.target.value);
+                  }}
+                  onBlur={field.handleBlur}
+                  invalid={field.state.meta.errors.length > 0}
+                  invalidText={fieldError(field.state.meta.errors)}
+                />
+              )}
+            </form.Field>
+
+            {submitError && (
+              <InlineNotification
+                kind="error"
+                lowContrast
+                title="Failed to create folder"
+                subtitle={submitError}
+                onCloseButtonClick={() => {
+                  setSubmitError(null);
+                }}
+              />
+            )}
+          </Stack>
+        </Form>
       </ModalBody>
       <ModalFooter>
-        <Button kind="secondary" onClick={() => { setFolderName(''); setError(null); onClose(); }}>
+        <Button kind="secondary" onClick={handleClose}>
           Cancel
         </Button>
         <Button
           kind="primary"
-          onClick={handleSave}
           disabled={createFolder.isPending}
+          onClick={() => {
+            void form.handleSubmit();
+          }}
         >
           {createFolder.isPending ? 'Saving...' : 'Save'}
         </Button>

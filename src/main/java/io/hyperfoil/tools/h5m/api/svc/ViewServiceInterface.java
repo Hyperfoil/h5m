@@ -45,7 +45,7 @@ public interface ViewServiceInterface {
     View updateView(Long viewId, View view);
 
     /**
-     * Deletes a view. The "Default" view cannot be deleted.
+     * Deletes a view. System views (names in the reserved namespace, e.g. the default view) cannot be deleted.
      *
      * @param viewId The view ID.
      */

@@ -11,6 +11,7 @@ import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
 import io.hyperfoil.tools.h5m.entity.node.*;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.node.RelativeDifferenceConfig;
@@ -1005,21 +1006,18 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                     }
 
                     if ("Default".equals(viewName)) {
-                        // Check if Default view already exists (created by folderService.create)
+                        // Legacy Horreum's "Default" view maps to h5m's system default view, already created by folderService.create — update it in place.
                         List<View> existing = viewService.getViews(folderId);
                         View defaultView = existing.stream()
-                                .filter(v -> "Default".equals(v.name()))
+                                .filter(v -> ReservedNamespace.DEFAULT_VIEW_NAME.equals(v.name()))
                                 .findFirst().orElse(null);
                         if (defaultView != null) {
-                            viewService.updateView(defaultView.id(),
-                                    new View(defaultView.id(), "Default", folderId, components));
+                            viewService.updateView(defaultView.id(), new View(defaultView.id(), ReservedNamespace.DEFAULT_VIEW_NAME, folderId, components));
                         } else {
-                            viewService.createView(folderId,
-                                    new View(null, "Default", null, components));
+                            viewService.createView(folderId, new View(null, ReservedNamespace.DEFAULT_VIEW_NAME, null, components));
                         }
                     } else {
-                        viewService.createView(folderId,
-                                new View(null, viewName, null, components));
+                        viewService.createView(folderId, new View(null, viewName, null, components));
                     }
                     System.out.println("  Imported view '" + viewName + "' with " + components.size() + " columns");
                 }

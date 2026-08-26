@@ -9,6 +9,7 @@ import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -384,11 +385,11 @@ public class FolderService implements FolderServiceInterface {
     }
 
     /**
-     * Creates an empty "Default" view for the folder.
+     * Creates an empty default view ({@value ReservedNamespace#DEFAULT_VIEW_NAME}) for the folder.
      * Users configure which nodes appear as columns via the REST API.
      */
     private void createDefaultView(FolderEntity folder) {
-        ViewEntity view = new ViewEntity("Default", folder);
+        ViewEntity view = new ViewEntity(ReservedNamespace.DEFAULT_VIEW_NAME, folder);
         view.persist();
         folder.views.add(view);
     }

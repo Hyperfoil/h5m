@@ -26,6 +26,10 @@ import { getViewDataOptions, getViewsOptions } from '@client/@tanstack/react-que
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useMemo, useState } from 'react';
 
+// Name of the system-managed default view. Mirrors ReservedNamespace.DEFAULT_VIEW_NAME on the backend.
+// Keep in sync (no constant is emitted into the generated OpenAPI client, so this cannot be imported).
+const DEFAULT_VIEW_NAME = 'h5m.default';
+
 function formatCellValue(value: unknown): string {
   if (value == null) return '';
   if (typeof value === 'object') return JSON.stringify(value);
@@ -108,8 +112,8 @@ export const DataTab = ({ folderId, groupId }: { folderId: number; groupId: numb
     if (selectedViewId != null) {
       return views.find((v: View) => v.id === selectedViewId) ?? views[0] ?? null;
     }
-    // Prefer the "Default" view if it has components, otherwise pick the first view with components
-    const defaultView = views.find((v: View) => v.name === 'Default') ?? null;
+    // Prefer the system default view if it has components, otherwise pick the first view with components.
+    const defaultView = views.find((v: View) => v.name === DEFAULT_VIEW_NAME) ?? null;
     if (defaultView && defaultView.components && defaultView.components.length > 0) {
       return defaultView;
     }

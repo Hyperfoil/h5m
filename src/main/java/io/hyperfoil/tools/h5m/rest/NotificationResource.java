@@ -5,12 +5,14 @@ import io.hyperfoil.tools.h5m.api.NotificationLogResponse;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NotificationConfig;
 import io.hyperfoil.tools.h5m.entity.NotificationLog;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.notification.NotificationMethod;
 import io.hyperfoil.tools.h5m.svc.NotificationService;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.constraints.Pattern;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -35,7 +37,7 @@ public class NotificationResource {
     public NotificationConfigResponse createConfig(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
             @QueryParam("method") @Parameter(description = "Notification method") NotificationMethod method,
-            @QueryParam("name") @Parameter(description = "Notification name (optional)") String name,
+            @QueryParam("name") @Parameter(description = "Notification name (optional)") @Pattern(regexp = ReservedNamespace.ALLOWED_NAME_PATTERN, message = "names starting with 'h5m.' are reserved for internal use") String name,
             @QueryParam("secrets") @Parameter(description = "Secret config data (tokens, passwords)") String secrets,
             String data) {
         notificationService.validateConfig(method, data);

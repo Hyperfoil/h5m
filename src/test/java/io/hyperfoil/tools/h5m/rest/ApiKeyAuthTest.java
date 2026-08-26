@@ -11,6 +11,8 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static io.restassured.RestAssured.given;
 
 @QuarkusTest
@@ -27,7 +29,7 @@ public class ApiKeyAuthTest extends FreshDb {
     void write_endpoint_returns_401_without_auth() {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .queryParam("name", "test")
+                .body(Map.of("name", "test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(401);
@@ -49,7 +51,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + key)
-                .queryParam("name", "auth-test")
+                .body(Map.of("name", "auth-test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(200);
@@ -60,7 +62,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer H5M_INVALID_KEY_12345678")
-                .queryParam("name", "test")
+                .body(Map.of("name", "test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(401);
@@ -76,7 +78,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + key)
-                .queryParam("name", "test")
+                .body(Map.of("name", "test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(401);
@@ -119,7 +121,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + bootstrapKey)
-                .queryParam("name", "bootstrap-test")
+                .body(Map.of("name", "bootstrap-test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(200);
@@ -135,7 +137,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + bootstrapKey)
-                .queryParam("name", "bootstrap-test")
+                .body(Map.of("name", "bootstrap-test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(200);
@@ -195,7 +197,7 @@ public class ApiKeyAuthTest extends FreshDb {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + keyToRevoke)
-                .queryParam("name", "test")
+                .body(Map.of("name", "test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(401);

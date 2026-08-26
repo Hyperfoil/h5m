@@ -76,10 +76,10 @@ export function createMockNodeGroup(overrides?: Partial<NodeGroup>): NodeGroup {
   return {
     id: 1,
     name: 'test-group',
-    root: { id: 1, name: 'root', type: 'ROOT', sources: [] },
+    root: { id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '', sources: [] },
     sources: [
-      { id: 2, name: 'cpu', type: 'JQ', operation: '.cpu', sources: [{ id: 1, name: 'root', type: 'ROOT' }] },
-      { id: 3, name: 'mem', type: 'JQ', operation: '.mem', sources: [{ id: 1, name: 'root', type: 'ROOT' }] },
+      { id: 2, name: 'cpu', type: 'JQ', groupId: 1, operation: '.cpu', sources: [{ id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '' }] },
+      { id: 3, name: 'mem', type: 'JQ', groupId: 1, operation: '.mem', sources: [{ id: 1, name: 'root', type: 'ROOT', groupId: 1, operation: '' }] },
     ],
     ...overrides,
   };

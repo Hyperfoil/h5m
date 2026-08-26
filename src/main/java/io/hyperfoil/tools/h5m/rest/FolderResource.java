@@ -12,6 +12,7 @@ import io.quarkus.runtime.configuration.MemorySize;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -84,10 +85,11 @@ public class FolderResource {
     }
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
     @Operation(description = "Create a new folder")
-    public Folder createFolder(@QueryParam("name") String name) {
-        return folderService.create(name);
+    public Folder createFolder(@Valid @NotNull Folder folder) {
+        return folderService.create(folder.name());
     }
 
     @DELETE

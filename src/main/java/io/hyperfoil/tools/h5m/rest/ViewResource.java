@@ -6,6 +6,8 @@ import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -38,24 +40,26 @@ public class ViewResource {
     }
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
     @Operation(description = "Create a new view for a folder")
-    public View createView(@PathParam("folderId") long folderId, View view) {
+    public View createView(@PathParam("folderId") long folderId, @Valid @NotNull View view) {
         return viewService.createView(folderId, view);
     }
 
     @PUT
     @Path("/{viewId}")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
     @Operation(description = "Update a view")
-    public View updateView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId, View view) {
+    public View updateView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId, @Valid @NotNull View view) {
         return viewService.updateView(viewId, view);
     }
 
     @DELETE
     @Path("/{viewId}")
     @Authenticated
-    @Operation(description = "Delete a view (cannot delete the Default view)")
+    @Operation(description = "Delete a view (cannot delete system views in the reserved namespace)")
     public void deleteView(@PathParam("folderId") long folderId, @PathParam("viewId") Long viewId) {
         viewService.deleteView(viewId);
     }

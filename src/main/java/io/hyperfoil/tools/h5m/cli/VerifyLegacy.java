@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.cli;
 
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalPropertiesReader;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
@@ -427,9 +428,9 @@ public class VerifyLegacy implements Command<H5mCommandInvocation> {
             }
         }
 
-        // Check for extra h5m views not in Horreum (excluding auto-created "Default")
+        // Check for extra h5m views not in Horreum (excluding the auto-created default view)
         for (String h5mName : h5mViewsByName.keySet()) {
-            if (!horreumViews.containsKey(h5mName) && !"Default".equals(h5mName)) {
+            if (!horreumViews.containsKey(h5mName) && !ReservedNamespace.DEFAULT_VIEW_NAME.equals(h5mName)) {
                 System.out.println("  View '" + h5mName + "': extra in h5m (not in Horreum)");
             }
         }

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
@@ -69,7 +70,7 @@ public class RestEndpointTest extends FreshDb {
     private long createFolder(String name) {
         return given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .queryParam("name", name)
+                .body(Map.of("name", name))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(200)
@@ -110,10 +111,7 @@ public class RestEndpointTest extends FreshDb {
     private Long createNodeWithType(Long groupId, String name, String type, String operation) {
         return given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .queryParam("name", name)
-                .queryParam("groupId", groupId)
-                .queryParam("type", type)
-                .queryParam("operation", operation)
+                .body(Map.of("name", name, "groupId", groupId, "type", type, "operation", operation))
                 .when().post("/api/node")
                 .then()
                 .statusCode(200)
@@ -121,6 +119,28 @@ public class RestEndpointTest extends FreshDb {
     }
 
     // -- Folder endpoints --
+
+    @Test
+    public void folder_create_rejects_reserved_name() {
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "h5m.reserved"))
+                .when().post("/api/folder")
+                .then()
+                .statusCode(400);
+    }
+
+    @Test
+    public void node_create_rejects_reserved_name() {
+        createFolder("reserved-node-test");
+        Long groupId = getGroupId("reserved-node-test");
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "h5m.reserved", "groupId", groupId, "type", NodeType.JQ.name(), "operation", "."))
+                .when().post("/api/node")
+                .then()
+                .statusCode(400);
+    }
 
     @Test
     public void folder_create_and_get() {
@@ -565,7 +585,7 @@ public class RestEndpointTest extends FreshDb {
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
-                .body("[0].name", equalTo("Default"))
+                .body("[0].name", equalTo("h5m.default"))
                 .body("[0].components.size()", equalTo(0));
     }
 
@@ -580,7 +600,7 @@ public class RestEndpointTest extends FreshDb {
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
-                .body("[0].name", equalTo("Default"))
+                .body("[0].name", equalTo("h5m.default"))
                 .body("[0].components.size()", equalTo(0));
     }
 
@@ -775,7 +795,7 @@ public class RestEndpointTest extends FreshDb {
                 .then()
                 .statusCode(200)
                 .body("size()", equalTo(1))
-                .body("[0].name", equalTo("Default"));
+                .body("[0].name", equalTo("h5m.default"));
     }
 
     @Test
@@ -788,14 +808,14 @@ public class RestEndpointTest extends FreshDb {
                 .when().get("/api/folder/" + rhivosFolderId + "/view/")
                 .then()
                 .statusCode(200)
-                .body("[0].name", equalTo("Default"))
+                .body("[0].name", equalTo("h5m.default"))
                 .extract().jsonPath().getLong("[0].id");
 
-        // Attempting to delete "Default" should fail
+        // Attempting to delete the system default view is forbidden
         given()
                 .when().delete("/api/folder/" + rhivosFolderId + "/view/" + viewId)
                 .then()
-                .statusCode(anyOf(equalTo(400), equalTo(500)));
+                .statusCode(403);
     }
 
     @Test
@@ -948,7 +968,7 @@ public class RestEndpointTest extends FreshDb {
     public void labelValues_returns_grouped_values() throws InterruptedException {
         Long folderId = given()
                 .contentType(MediaType.APPLICATION_JSON)
-                .queryParam("name", "lv-test")
+                .body(Map.of("name", "lv-test"))
                 .when().post("/api/folder")
                 .then()
                 .statusCode(200)

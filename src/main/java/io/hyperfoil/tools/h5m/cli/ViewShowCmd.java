@@ -17,6 +17,7 @@ import io.hyperfoil.tools.jjq.value.JqNumber;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqString;
 import io.hyperfoil.tools.jjq.value.JqValue;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
@@ -50,7 +51,7 @@ public class ViewShowCmd implements Command<H5mCommandInvocation>, FolderAware {
             return CommandResult.FAILURE;
         }
         if (viewName == null || viewName.isEmpty()) {
-            viewName = "Default";
+            viewName = ReservedNamespace.DEFAULT_VIEW_NAME;
         }
 
         var folder = folderService.find(folderName);

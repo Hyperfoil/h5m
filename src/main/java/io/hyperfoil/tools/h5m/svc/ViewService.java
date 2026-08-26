@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
+import io.hyperfoil.tools.h5m.api.ReservedNamespace;
 import io.hyperfoil.tools.h5m.api.View;
 import io.hyperfoil.tools.h5m.api.ViewComponent;
 import io.hyperfoil.tools.h5m.api.svc.ViewServiceInterface;
@@ -14,6 +15,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotFoundException;
 
 import java.util.ArrayList;
@@ -128,8 +130,8 @@ public class ViewService implements ViewServiceInterface {
         if (entity == null) {
             throw new NotFoundException("View not found: " + viewId);
         }
-        if ("Default".equals(entity.name)) {
-            throw new IllegalArgumentException("Cannot delete the Default view");
+        if (ReservedNamespace.isReserved(entity.name)) {
+            throw new ForbiddenException("Cannot delete system view: " + entity.name);
         }
         entity.delete();
     }
