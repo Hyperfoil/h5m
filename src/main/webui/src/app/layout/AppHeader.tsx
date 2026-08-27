@@ -19,16 +19,15 @@ import {
 import { listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useState } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
 
 const NavFolders = () => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
   const { folderId } = useParams<{ folderId: string }>();
-  const activeId = Number(folderId);
   return (
     <SideNavItems>
       {folders.map((folder) => (
-        <SideNavLink key={folder.id} href={`/folder/${String(folder.id)}`} isActive={folder.id === activeId}>
+        <SideNavLink key={folder.id} as={Link} to={`/folder/${String(folder.id)}`} isActive={folder.id === Number(folderId)}>
           {folder.name}
         </SideNavLink>
       ))}
@@ -37,9 +36,8 @@ const NavFolders = () => {
 };
 
 export const AppHeader = () => {
-  const { folderId } = useParams<{ folderId: string }>();
   const navigate = useNavigate();
-  const [sideNavOpen, setSideNavOpen] = useState(!folderId);
+  const [sideNavOpen, setSideNavOpen] = useState(false);
   const toggleSideNav = useCallback(() => {
     setSideNavOpen((prev) => !prev);
   }, []);
@@ -49,7 +47,7 @@ export const AppHeader = () => {
         <Header aria-label="Carbon App">
           <SkipToContent />
           <HeaderMenuButton aria-label="Hamburger menu" onClick={toggleSideNav} isActive={sideNavOpen} isCollapsible={true} />
-          <HeaderName href="/" prefix="h5m">
+          <HeaderName as={Link} to="/" prefix="h5m">
             Horreum
           </HeaderName>
           <HeaderGlobalBar>
