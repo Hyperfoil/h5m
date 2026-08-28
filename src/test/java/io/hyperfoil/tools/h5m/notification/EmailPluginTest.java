@@ -2,8 +2,11 @@ package io.hyperfoil.tools.h5m.notification;
 
 import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.EmailConfig;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
 import io.hyperfoil.tools.jjq.value.*;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import io.quarkus.mailer.MockMailbox;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -28,48 +31,32 @@ public class EmailPluginTest {
         mailbox.clear();
     }
 
-    // === Validation tests ===
+    // === Recipient validation ===
 
     @Test
-    public void validate_valid_config() {
-        assertDoesNotThrow(() -> plugin.validate("{\"to\": \"team@example.com\"}"));
+    public void send_rejects_empty_recipients() {
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), EmailConfig.of(List.of(), null), null, null));
+    }
+
+    // === Config type ===
+
+    @Test
+    public void send_rejects_foreign_config() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), SlackConfig.of("#alerts"), null, null));
+        assertTrue(ex.getMessage().contains("EmailConfig"), "Message should name the expected type: " + ex.getMessage());
     }
 
     @Test
-    public void validate_multiple_recipients() {
-        assertDoesNotThrow(() -> plugin.validate("{\"to\": \"alice@example.com,bob@example.com\"}"));
-    }
-
-    @Test
-    public void validate_rejects_null() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(null));
-    }
-
-    @Test
-    public void validate_rejects_empty() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(""));
-    }
-
-    @Test
-    public void validate_rejects_missing_to() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"subject\": \"test\"}"));
-    }
-
-    @Test
-    public void validate_rejects_invalid_email() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"to\": \"not-an-email\"}"));
+    public void send_rejects_null_config() {
+        assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), null, null, null));
     }
 
     // === Send tests ===
 
     @Test
     public void send_delivers_email() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"team@example.com\"}",
-            null
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(), EmailConfig.of(List.of("team@example.com"), null), null, null);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         assertEquals(1, sent.size());
@@ -80,12 +67,7 @@ public class EmailPluginTest {
 
     @Test
     public void send_includes_change_details_in_body() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"team@example.com\"}",
-            null
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(), EmailConfig.of(List.of("team@example.com"), null), null, null);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         // Check plain text body
@@ -103,12 +85,8 @@ public class EmailPluginTest {
 
     @Test
     public void send_to_multiple_recipients() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"alice@example.com,bob@example.com\"}",
-            null
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(),
+            EmailConfig.of(List.of("alice@example.com", "bob@example.com"), null), null, null);
 
         assertEquals(1, mailbox.getMailsSentTo("alice@example.com").size());
         assertEquals(1, mailbox.getMailsSentTo("bob@example.com").size());
@@ -116,12 +94,8 @@ public class EmailPluginTest {
 
     @Test
     public void send_with_custom_subject() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"team@example.com\", \"subject\": \"ALERT: {folderName} regression\"}",
-            null
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(),
+            EmailConfig.of(List.of("team@example.com"), "ALERT: {folderName} regression"), null, null);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         assertEquals("[h5m] ALERT: test-folder regression", sent.getFirst().getSubject());
@@ -129,12 +103,8 @@ public class EmailPluginTest {
 
     @Test
     public void send_with_custom_template() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"team@example.com\"}",
-            "Regression in {folderName} by {nodeName}: {changeCount} change(s)"
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(), EmailConfig.of(List.of("team@example.com"), null),
+            null, "Regression in {folderName} by {nodeName}: {changeCount} change(s)");
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         assertEquals(
@@ -145,12 +115,7 @@ public class EmailPluginTest {
 
     @Test
     public void send_formats_fixed_threshold_data() {
-        ChangeNotification notification = createTestNotification(
-            "{\"to\": \"team@example.com\"}",
-            null
-        );
-
-        plugin.send(notification);
+        plugin.send(testEvent(), EmailConfig.of(List.of("team@example.com"), null), null, null);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         String body = sent.getFirst().getText();
@@ -165,16 +130,11 @@ public class EmailPluginTest {
                 .put("previous", 1000.0)
                 .put("last", 750.0)
                 .build();
-        Change change = new Change(42L, 1L, "regression-node", NodeType.FIXED_THRESHOLD, data, null);
+        Change change = new Change(42L, 1L, "regression-node", NodeType.RELATIVE_DIFFERENCE, data, null);
 
-        ChangeNotification notification = new ChangeNotification(
-            "test-folder", 5L, 42L, 1L, "regression-node", NodeType.RELATIVE_DIFFERENCE,
-            List.of(change),
-            parseObj("{\"to\": \"team@example.com\"}"),
-            JqObject.EMPTY, null
-        );
+        ChangeEvent event = new ChangeEvent(5L, "test-folder", List.of(change), true, 42L);
 
-        plugin.send(notification);
+        plugin.send(event, EmailConfig.of(List.of("team@example.com"), null), null, null);
 
         var sent = mailbox.getMailsSentTo("team@example.com");
         String body = sent.getFirst().getText();
@@ -190,7 +150,7 @@ public class EmailPluginTest {
 
     // === Helpers ===
 
-    private ChangeNotification createTestNotification(String configData, String template) {
+    private ChangeEvent testEvent() {
         JqValue detectionData = JqObject.builder()
                 .put("value", 95.3)
                 .put("bound", 90.0)
@@ -203,15 +163,6 @@ public class EmailPluginTest {
 
         Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
-        return new ChangeNotification(
-            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
-            List.of(change), parseObj(configData), JqObject.EMPTY, template
-        );
-    }
-
-    private static JqObject parseObj(String json) {
-        if (json == null || json.isBlank()) return JqObject.EMPTY;
-        JqValue v = JqValues.parse(json);
-        return v instanceof JqObject obj ? obj : JqObject.EMPTY;
+        return new ChangeEvent(5L, "test-folder", List.of(change), true, 42L);
     }
 }

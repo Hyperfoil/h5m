@@ -1,18 +1,12 @@
 package io.hyperfoil.tools.h5m.rest;
 
-import io.hyperfoil.tools.h5m.api.NotificationConfigResponse;
-import io.hyperfoil.tools.h5m.api.NotificationLogResponse;
-import io.hyperfoil.tools.h5m.entity.FolderEntity;
-import io.hyperfoil.tools.h5m.entity.NotificationConfig;
-import io.hyperfoil.tools.h5m.entity.NotificationLog;
-import io.hyperfoil.tools.h5m.api.ReservedNamespace;
-import io.hyperfoil.tools.h5m.notification.NotificationMethod;
-import io.hyperfoil.tools.h5m.svc.NotificationService;
+import io.hyperfoil.tools.h5m.api.Notification;
+import io.hyperfoil.tools.h5m.api.NotificationChannel;
+import io.hyperfoil.tools.h5m.api.svc.NotificationServiceInterface;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -23,103 +17,65 @@ import java.util.List;
 
 @Path("/notification")
 @Produces(MediaType.APPLICATION_JSON)
-@Tag(name = "Notification", description = "Manage notification configurations for change detection")
+@Tag(name = "Notification", description = "Manage notification channels and view sent notifications for change detection")
 public class NotificationResource {
 
     @Inject
-    NotificationService notificationService;
+    NotificationServiceInterface notificationService;
 
     @POST
-    @Path("config")
+    @Path("channel")
     @Authenticated
-    @Transactional
-    @Operation(description = "Create a notification config for a folder")
-    public NotificationConfigResponse createConfig(
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Operation(description = "Create a notification channel for a folder")
+    public NotificationChannel createChannel(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
-            @QueryParam("method") @Parameter(description = "Notification method") NotificationMethod method,
-            @QueryParam("name") @Parameter(description = "Notification name (optional)") @Pattern(regexp = ReservedNamespace.ALLOWED_NAME_PATTERN, message = "names starting with 'h5m.' are reserved for internal use") String name,
-            @QueryParam("secrets") @Parameter(description = "Secret config data (tokens, passwords)") String secrets,
-            String data) {
-        notificationService.validateConfig(method, data);
-        FolderEntity folder = FolderEntity.findById(folderId);
-        if (folder == null) {
-            throw new NotFoundException("Folder not found: " + folderId);
-        }
-        NotificationConfig config = new NotificationConfig(folder, method, data, secrets);
-        config.persist();
-        // Auto-generate name if not provided
-        config.name = name != null ? name : method.label() + "-" + config.id;
-        return new NotificationConfigResponse(config.id, config.name, folderId, config.method, config.data, config.template, config.enabled);
+            @Valid NotificationChannel channel) {
+        // The method is derived from the config's discriminator, not sent separately.
+        return notificationService.createChannel(folderId, channel.name(), channel.config().method(),
+                channel.config(), channel.secret(), channel.template(), channel.enabled());
     }
 
     @GET
-    @Path("config")
+    @Path("channel")
     @PermitAll
-    @Operation(description = "List notification configs for a folder")
-    public List<NotificationConfigResponse> listConfigs(
+    @Operation(description = "List notification channels for a folder")
+    public List<NotificationChannel> channels(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId) {
-        List<NotificationConfig> configs = notificationService.listByFolder(folderId);
-        return configs.stream().map(c -> new NotificationConfigResponse(
-                c.id, c.name, c.folder != null ? c.folder.id : null, c.method, c.data, c.template, c.enabled
-        )).toList();
+        return notificationService.channelsByFolder(folderId);
     }
 
     @PUT
-    @Path("config/{id}")
+    @Path("channel/{id}")
     @Authenticated
-    @Transactional
-    @Operation(description = "Update a notification config")
-    public NotificationConfigResponse updateConfig(
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Operation(description = "Update a notification channel")
+    public NotificationChannel updateChannel(
             @PathParam("id") long id,
-            @QueryParam("method") @Parameter(description = "New notification method") NotificationMethod method,
-            @QueryParam("enabled") @Parameter(description = "Enable or disable") Boolean enabled,
-            @QueryParam("secrets") @Parameter(description = "Secret config data (tokens, passwords)") String secrets,
-            String data) {
-        NotificationConfig config = NotificationConfig.findById(id);
-        if (config == null) {
-            throw new NotFoundException("Notification config not found: " + id);
+            @Valid NotificationChannel channel) {
+        NotificationChannel updated = notificationService.updateChannel(id, channel);
+        if (updated == null) {
+            throw new NotFoundException("Notification channel not found: " + id);
         }
-        if (method != null) {
-            config.method = method;
-        }
-        if (data != null && !data.isBlank()) {
-            notificationService.validateConfig(config.method, data);
-            config.data = data;
-        }
-        if (secrets != null) {
-            config.secrets = secrets;
-        }
-        if (enabled != null) {
-            config.enabled = enabled;
-        }
-        return new NotificationConfigResponse(config.id, config.name, config.folder != null ? config.folder.id : null, config.method, config.data, config.template, config.enabled);
+        return updated;
     }
 
     @DELETE
-    @Path("config/{id}")
+    @Path("channel/{id}")
     @Authenticated
-    @Transactional
-    @Operation(description = "Delete a notification config")
-    public void deleteConfig(@PathParam("id") long id) {
-        boolean deleted = NotificationConfig.deleteById(id);
-        if (!deleted) {
-            throw new NotFoundException("Notification config not found: " + id);
+    @Operation(description = "Delete a notification channel")
+    public void deleteChannel(@PathParam("id") long id) {
+        if (!notificationService.deleteChannel(id)) {
+            throw new NotFoundException("Notification channel not found: " + id);
         }
     }
 
     @GET
-    @Path("log")
     @PermitAll
-    @Operation(description = "Get notification log for a folder")
-    public List<NotificationLogResponse> getLog(
+    @Operation(description = "List sent notifications for a folder, most recent first")
+    public List<Notification> sentNotifications(
             @QueryParam("folderId") @Parameter(description = "Folder ID") long folderId,
             @QueryParam("limit") @Parameter(description = "Max entries to return") @DefaultValue("50") int limit) {
-        List<NotificationLog> logs = NotificationLog.find("folder.id = ?1 ORDER BY sentAt DESC", folderId)
-            .page(0, limit)
-            .list();
-        return logs.stream().map(l -> new NotificationLogResponse(
-                l.id, l.folder != null ? l.folder.id : null, l.method, l.destination,
-                l.status, l.errorMessage, l.nodeId, l.nodeName, l.changeCount, l.sentAt
-        )).toList();
+        return notificationService.sentNotifications(folderId, limit);
     }
 }

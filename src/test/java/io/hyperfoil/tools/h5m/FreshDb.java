@@ -45,8 +45,8 @@ public class FreshDb {
                 stmt.executeUpdate("DELETE from processing");
                 stmt.executeUpdate("DELETE from folder_view_component");
                 stmt.executeUpdate("DELETE from folder_view");
-                stmt.executeUpdate("DELETE from notification_log");
-                stmt.executeUpdate("DELETE from notification_config");
+                stmt.executeUpdate("DELETE from notification");
+                stmt.executeUpdate("DELETE from notification_channel");
                 stmt.executeUpdate("DELETE from api_key");
                 stmt.executeUpdate("DELETE from team_members");
                 stmt.executeUpdate("DELETE from value_edge");

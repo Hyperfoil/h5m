@@ -178,7 +178,7 @@ public class NotificationTest {
         List<String> results = H5mTest.run(aeshLauncher,
                 new String[]{"folder", "add", "raw_json_test"},
                 new String[]{"cd", "raw_json_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--data", "{\"url\":\"https://raw.example.com/hook\"}"},
+                new String[]{"notification", "add", "WEBHOOK", "--data", "{\"method\":\"WEBHOOK\",\"url\":\"https://raw.example.com/hook\"}"},
                 new String[]{"notification", "list"},
                 new String[]{"cd", ".."}
         );
@@ -201,7 +201,7 @@ public class NotificationTest {
         );
 
         String listOutput = results.get(2);
-        assertTrue(listOutput.contains("No notification configs"),
+        assertTrue(listOutput.contains("No notification channels"),
                 "should show empty message\n" + listOutput);
     }
 
@@ -243,7 +243,7 @@ public class NotificationTest {
         assertTrue(removeOutput.contains("Removed"), "should confirm removal\n" + removeOutput);
 
         String listAfter = results.get(5);
-        assertTrue(listAfter.contains("No notification configs"),
+        assertTrue(listAfter.contains("No notification channels"),
                 "should show empty after removal\n" + listAfter);
     }
 
@@ -266,7 +266,7 @@ public class NotificationTest {
         assertTrue(removeOutput.contains("Removed"), "should confirm removal\n" + removeOutput);
 
         String listAfter = results.get(5);
-        assertTrue(listAfter.contains("No notification configs"),
+        assertTrue(listAfter.contains("No notification channels"),
                 "should show empty after removal\n" + listAfter);
     }
 
@@ -322,6 +322,25 @@ public class NotificationTest {
         // Aesh's EnumConverter provides the error: "Invalid value 'INVALID_METHOD'. Valid values: ..."
         assertTrue(output.contains("Invalid value") || output.contains("invalid_method"),
                 "should show invalid method error\n" + output);
+    }
+
+    @Test
+    public void add_rejects_invalid_config() {
+        List<String> results = H5mTest.run(aeshLauncher,
+                new String[]{"folder", "add", "invalid_config_test"},
+                new String[]{"cd", "invalid_config_test"},
+                new String[]{"notification", "add", "WEBHOOK", "--data", "{\"method\":\"WEBHOOK\",\"url\":\"\"}"},
+                new String[]{"notification", "list"},
+                new String[]{"cd", ".."}
+        );
+
+        String addOutput = results.get(2);
+        assertTrue(addOutput.contains("Invalid configuration"),
+                "blank webhook url should be rejected by bean validation\n" + addOutput);
+
+        String listOutput = results.get(3);
+        assertTrue(listOutput.contains("No notification channels"),
+                "no channel should be created for invalid config\n" + listOutput);
     }
 
     @Test
@@ -407,7 +426,7 @@ public class NotificationTest {
         assertTrue(removeOutput.contains("Removed"), "should confirm removal\n" + removeOutput);
 
         String listOutput = results.get(3);
-        assertTrue(listOutput.contains("No notification configs"),
+        assertTrue(listOutput.contains("No notification channels"),
                 "should show empty after removal\n" + listOutput);
     }
 }

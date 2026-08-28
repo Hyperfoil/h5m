@@ -7,7 +7,7 @@ import org.aesh.command.CommandResult;
 
 @CommandDefinition(
     name = "notification",
-    description = "Notification configuration management for change detection events",
+    description = "Manage notification channels for change detection events",
     groupCommands = {
         AddNotification.class,
         ListNotification.class,

@@ -4,11 +4,11 @@
 **Detection node:** {nodeName} (`{nodeType}`)
 **Changes:** {changeCount}
 
-{#if changes.size > 0}
+{#if changes.size() > 0}
 ### Details
 
 | # | Fingerprint | Details |
-|---|-------------|----------|
+|---|-------------|---------|
 {#each changes}
 | {it_count} | `{it.fingerprint}` | {it.data} |
 {/each}

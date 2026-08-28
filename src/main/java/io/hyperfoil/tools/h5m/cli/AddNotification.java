@@ -1,11 +1,27 @@
 package io.hyperfoil.tools.h5m.cli;
 
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.NotificationChannel;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
-import io.hyperfoil.tools.h5m.entity.NotificationConfig;
-import io.hyperfoil.tools.h5m.notification.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.AuthHeaderSecret;
+import io.hyperfoil.tools.h5m.api.notification.EmailConfig;
+import io.hyperfoil.tools.h5m.api.notification.GitHubIssueConfig;
+import io.hyperfoil.tools.h5m.api.notification.NotificationConfiguration;
+import io.hyperfoil.tools.h5m.api.notification.NotificationSecret;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
+import io.hyperfoil.tools.h5m.api.notification.TokenSecret;
+import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.hyperfoil.tools.h5m.api.svc.NotificationServiceInterface;
 import jakarta.inject.Inject;
+import jakarta.json.bind.Jsonb;
+import jakarta.json.bind.JsonbBuilder;
+import jakarta.validation.Validator;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.aesh.command.Command;
 import org.aesh.command.CommandDefinition;
@@ -14,10 +30,12 @@ import org.aesh.command.option.Argument;
 import org.aesh.command.option.Option;
 import org.aesh.readline.prompt.Prompt;
 
-@CommandDefinition(name = "add", description = "Configure a notification (email, Slack, webhook, or GitHub issue) for change detection events in a folder", generateHelp = true)
+@CommandDefinition(name = "add", description = "Add a notification channel (email, Slack, webhook, or GitHub issue) for change detection events in a folder", generateHelp = true)
 public class AddNotification implements Command<H5mCommandInvocation>, FolderAware {
 
     private static final Prompt MASKED_PROMPT = new Prompt("", '*');
+
+    private static final Jsonb JSONB = JsonbBuilder.create();
 
     @Argument(description = "notification method", required = true)
     NotificationMethod method;
@@ -32,8 +50,8 @@ public class AddNotification implements Command<H5mCommandInvocation>, FolderAwa
     @Option(name = "data", acceptNameWithoutDashes = true, description = "configuration data as raw JSON (alternative to method-specific options)")
     String data;
 
-    @Option(name = "secrets", acceptNameWithoutDashes = true, description = "secret configuration as raw JSON (alternative to --token / --auth-header)")
-    String secrets;
+    @Option(name = "secret", acceptNameWithoutDashes = true, description = "secret configuration as raw JSON (alternative to --token / --auth-header)")
+    String secret;
 
     @Option(name = "template", acceptNameWithoutDashes = true, description = "custom message template with placeholders: {folderName}, {nodeName}, {nodeType}, {changeCount}")
     String template;
@@ -79,6 +97,9 @@ public class AddNotification implements Command<H5mCommandInvocation>, FolderAwa
     @Inject
     NotificationServiceInterface notificationService;
 
+    @Inject
+    Validator validator;
+
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         if (folderName == null && invocation.hasFolderContext()) {
@@ -92,132 +113,90 @@ public class AddNotification implements Command<H5mCommandInvocation>, FolderAwa
         }
 
         // Validate name uniqueness within folder
-        if (name != null && notificationService.findByName(folder.id(), name) != null) {
-            invocation.println("Notification '" + name + "' already exists in folder '" + folderName + "'");
+        if (name != null && notificationService.findChannelByName(folder.id(), name) != null) {
+            invocation.println("Notification channel '" + name + "' already exists in folder '" + folderName + "'");
             return CommandResult.FAILURE;
         }
 
-        // Resolve data and secrets: --data/--secrets (raw JSON) → method-specific options → interactive dialog
-        if (data == null) {
-            switch (method) {
-                case WEBHOOK -> { if (!resolveWebhook(invocation)) return CommandResult.FAILURE; }
-                case EMAIL -> { if (!resolveEmail(invocation)) return CommandResult.FAILURE; }
-                case SLACK -> { if (!resolveSlack(invocation)) return CommandResult.FAILURE; }
-                case GITHUB_ISSUE -> { if (!resolveGitHubIssue(invocation)) return CommandResult.FAILURE; }
-            }
-        }
-
+        NotificationConfiguration configObj;
+        NotificationSecret secretObj;
         try {
-            notificationService.validateConfig(method, data);
-        } catch (IllegalArgumentException e) {
-            invocation.println("Invalid notification config: " + e.getMessage());
-            return CommandResult.FAILURE;
+            // --data/--secret (raw JSON, including the 'type' discriminator) take precedence;
+            // otherwise build the typed config/secret from method-specific options or interactive prompts.
+            configObj = data != null && !data.isBlank()
+                    ? JSONB.fromJson(data, NotificationConfiguration.class)
+                    : switch (method) {
+                        case WEBHOOK -> resolveWebhook(invocation);
+                        case EMAIL -> resolveEmail(invocation);
+                        case SLACK -> resolveSlack(invocation);
+                        case GITHUB_ISSUE -> resolveGitHubIssue(invocation);
+                    };
+            secretObj = secret != null && !secret.isBlank()
+                    ? JSONB.fromJson(secret, NotificationSecret.class)
+                    : resolveSecret();
+        } catch (Exception e) {
+            invocation.println("Invalid JSON: " + e.getMessage());
+            return CommandResult.USAGE_ERROR;
         }
 
-        NotificationConfig config = notificationService.create(folder.id(), method, name, data, secrets, template);
-        invocation.println("Added " + method.label() + " notification '" + config.name + "' to " + folderName + " (id=" + config.id + ")");
+        // Slack and GitHub-issue channels are useless without a token: every dispatch would fail at delivery.
+        // A null secret is skipped by validate() below, so guard it explicitly here.
+        if ((method == NotificationMethod.SLACK || method == NotificationMethod.GITHUB_ISSUE) && secretObj == null) {
+            invocation.println("A token is required for " + method.label() + " notifications (use --token or --secret)");
+            return CommandResult.USAGE_ERROR;
+        }
+
+        String violations = validate(configObj, secretObj);
+        if (violations != null) {
+            invocation.println("Invalid configuration: " + violations);
+            return CommandResult.USAGE_ERROR;
+        }
+
+        NotificationChannel channel = notificationService.createChannel(
+                folder.id(), name, method, configObj, secretObj, template, null);
+        invocation.println("Added " + method.label() + " notification channel '" + channel.name() + "' to " + folderName + " (id=" + channel.id() + ")");
         return CommandResult.SUCCESS;
     }
 
-    private boolean resolveWebhook(H5mCommandInvocation invocation) throws InterruptedException {
-        boolean interactive = url == null;
-        if (interactive) {
+    private NotificationConfiguration resolveWebhook(H5mCommandInvocation invocation) throws InterruptedException {
+        if (url == null) {
             url = prompt(invocation, "URL: ");
-            if (isEmpty(url)) {
-                invocation.println("URL is required");
-                return false;
-            }
-            if (authHeader == null && secrets == null) {
+            if (authHeader == null && secret == null) {
                 invocation.print("Auth header (optional, Enter to skip): ");
                 authHeader = readMasked(invocation);
             }
-        } else if (isEmpty(url)) {
-            invocation.println("URL is required (use --url)");
-            return false;
         }
-
-        data = "{\"url\":\"" + escapeJson(url) + "\"}";
-        if (secrets == null && !isEmpty(authHeader)) {
-            secrets = "{\"authHeader\":\"" + escapeJson(authHeader) + "\"}";
-        }
-        return true;
+        return WebhookConfig.of(url);
     }
 
-    private boolean resolveEmail(H5mCommandInvocation invocation) throws InterruptedException {
-        boolean interactive = email == null;
-        if (interactive) {
+    private NotificationConfiguration resolveEmail(H5mCommandInvocation invocation) throws InterruptedException {
+        if (email == null) {
             email = prompt(invocation, "Recipients (comma-separated): ");
-            if (isEmpty(email)) {
-                invocation.println("At least one recipient is required");
-                return false;
-            }
             if (subject == null) {
                 subject = prompt(invocation, "Subject (optional, Enter for default): ");
             }
-        } else if (isEmpty(email)) {
-            invocation.println("At least one recipient is required (use --email)");
-            return false;
         }
-
-        StringBuilder sb = new StringBuilder("{\"to\":\"").append(escapeJson(email)).append("\"");
-        if (!isEmpty(subject)) {
-            sb.append(",\"subject\":\"").append(escapeJson(subject)).append("\"");
-        }
-        sb.append("}");
-        data = sb.toString();
-        return true;
+        return EmailConfig.of(splitCsv(email), isEmpty(subject) ? null : subject);
     }
 
-    private boolean resolveSlack(H5mCommandInvocation invocation) throws InterruptedException {
-        boolean interactive = channel == null && token == null;
-        if (interactive) {
+    private NotificationConfiguration resolveSlack(H5mCommandInvocation invocation) throws InterruptedException {
+        if (channel == null && token == null) {
             channel = prompt(invocation, "Channel: ");
-            if (isEmpty(channel)) {
-                invocation.println("Channel is required");
-                return false;
-            }
-            if (secrets == null) {
+            if (secret == null) {
                 invocation.print("Bot token: ");
                 token = readMasked(invocation);
-                if (isEmpty(token)) {
-                    invocation.println("Bot token is required");
-                    return false;
-                }
-            }
-        } else {
-            if (isEmpty(channel)) {
-                invocation.println("Channel is required (use --channel)");
-                return false;
             }
         }
-
-        data = "{\"channel\":\"" + escapeJson(channel) + "\"}";
-        if (secrets == null && !isEmpty(token)) {
-            secrets = "{\"token\":\"" + escapeJson(token) + "\"}";
-        }
-        return true;
+        return SlackConfig.of(channel);
     }
 
-    private boolean resolveGitHubIssue(H5mCommandInvocation invocation) throws InterruptedException {
-        boolean interactive = owner == null && repo == null && token == null;
-        if (interactive) {
+    private NotificationConfiguration resolveGitHubIssue(H5mCommandInvocation invocation) throws InterruptedException {
+        if (owner == null && repo == null && token == null) {
             owner = prompt(invocation, "Owner: ");
-            if (isEmpty(owner)) {
-                invocation.println("Owner is required");
-                return false;
-            }
             repo = prompt(invocation, "Repository: ");
-            if (isEmpty(repo)) {
-                invocation.println("Repository is required");
-                return false;
-            }
-            if (secrets == null) {
+            if (secret == null) {
                 invocation.print("GitHub token: ");
                 token = readMasked(invocation);
-                if (isEmpty(token)) {
-                    invocation.println("GitHub token is required");
-                    return false;
-                }
             }
             if (title == null) {
                 title = prompt(invocation, "Title (optional, Enter for default): ");
@@ -225,37 +204,29 @@ public class AddNotification implements Command<H5mCommandInvocation>, FolderAwa
             if (labels == null) {
                 labels = prompt(invocation, "Labels (comma-separated, optional, Enter for default): ");
             }
-        } else {
-            if (isEmpty(owner)) {
-                invocation.println("Owner is required (use --owner)");
-                return false;
-            }
-            if (isEmpty(repo)) {
-                invocation.println("Repository is required (use --repo)");
-                return false;
-            }
         }
+        return GitHubIssueConfig.of(owner, repo, isEmpty(title) ? null : title,
+                isEmpty(labels) ? null : splitCsv(labels));
+    }
 
-        StringBuilder sb = new StringBuilder("{\"owner\":\"").append(escapeJson(owner))
-                .append("\",\"repo\":\"").append(escapeJson(repo)).append("\"");
-        if (!isEmpty(title)) {
-            sb.append(",\"title\":\"").append(escapeJson(title)).append("\"");
-        }
-        if (!isEmpty(labels)) {
-            sb.append(",\"labels\":[");
-            String[] parts = labels.split(",");
-            for (int i = 0; i < parts.length; i++) {
-                if (i > 0) sb.append(",");
-                sb.append("\"").append(escapeJson(parts[i].trim())).append("\"");
-            }
-            sb.append("]");
-        }
-        sb.append("}");
-        data = sb.toString();
-        if (secrets == null && !isEmpty(token)) {
-            secrets = "{\"token\":\"" + escapeJson(token) + "\"}";
-        }
-        return true;
+    /** Build the typed secret from the collected --token / --auth-header options for the current method. */
+    private NotificationSecret resolveSecret() {
+        return switch (method) {
+            case EMAIL -> null;
+            case WEBHOOK -> isEmpty(authHeader) ? null : AuthHeaderSecret.webHook(authHeader);
+            case SLACK -> isEmpty(token) ? null : TokenSecret.slack(token);
+            case GITHUB_ISSUE -> isEmpty(token) ? null : TokenSecret.github(token);
+        };
+    }
+
+    /** Bean-validate the config and secret; returns a message of violations, or null if valid. */
+    private String validate(NotificationConfiguration config, NotificationSecret secret) {
+        String messages = Stream.of(config, secret)
+                .filter(Objects::nonNull)
+                .flatMap(o -> validator.validate(o).stream())
+                .map(v -> v.getPropertyPath() + " " + v.getMessage())
+                .collect(Collectors.joining(", "));
+        return messages.isEmpty() ? null : messages;
     }
 
     private String prompt(H5mCommandInvocation invocation, String message) throws InterruptedException {
@@ -270,8 +241,15 @@ public class AddNotification implements Command<H5mCommandInvocation>, FolderAwa
         return s == null || s.isBlank();
     }
 
-    private static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    /** Split a comma-separated option into a list of trimmed, non-empty values. */
+    private static List<String> splitCsv(String commaSeparated) {
+        if (isEmpty(commaSeparated)) {
+            return List.of();
+        }
+        return Stream.of(commaSeparated.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     @Override

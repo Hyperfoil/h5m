@@ -15,7 +15,7 @@ import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.queue.KahnDagSort;
 import io.hyperfoil.tools.yaup.HashedLists;
 import jakarta.enterprise.context.ApplicationScoped;
-import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -53,7 +53,7 @@ public class ValueService implements ValueServiceInterface {
 
     // ---- Detection value cache ----
     // In-memory cache of detection values keyed by root value ID (upload ID).
-    // Populated by the ChangeDetectedEvent observer as detection nodes produce values.
+    // Populated by the ChangeEvent observer as detection nodes produce values.
     // Used by getDetectionDescendants() as a fast path before falling back to DB query.
     private static final long DETECTION_CACHE_RETENTION_MS = 10 * 60 * 1000; // 10 minutes
     private static final int DETECTION_CACHE_MAX_ENTRIES = 1000;
@@ -65,7 +65,7 @@ public class ValueService implements ValueServiceInterface {
      * Observes change detection events and caches the detection values
      * by root value ID for fast retrieval via the REST API.
      */
-    void onChangeDetected(@Observes ChangeDetectedEvent event) {
+    void onChangeDetected(@Observes ChangeEvent event) {
         if (event.rootValueId() < 0) return;
         long rootId = event.rootValueId();
         CycleAvoidingContext ctx = new CycleAvoidingContext();
@@ -851,7 +851,7 @@ public class ValueService implements ValueServiceInterface {
     /**
      * Returns detection node values that are descendants of the given root value.
      * Checks the in-memory detection cache first (populated by the
-     * ChangeDetectedEvent observer), then falls back to a DB query.
+     * ChangeEvent observer), then falls back to a DB query.
      *
      * @param rootValueId the root value ID (upload ID)
      * @return detection values as DTOs, or empty list if none found

@@ -6,14 +6,14 @@ import org.aesh.command.completer.CompleterInvocation;
 import org.aesh.command.completer.OptionCompleter;
 
 import io.hyperfoil.tools.h5m.api.Folder;
+import io.hyperfoil.tools.h5m.api.NotificationChannel;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
-import io.hyperfoil.tools.h5m.entity.NotificationConfig;
-import io.hyperfoil.tools.h5m.svc.NotificationService;
+import io.hyperfoil.tools.h5m.api.svc.NotificationServiceInterface;
 import io.quarkus.arc.Arc;
 
 /**
- * Completer that suggests notification config names from the current folder context.
- * Used by notification remove command.
+ * Completer that suggests notification channel names from the current folder context.
+ * Used by the notification remove command.
  */
 public class NotificationNameCompleter implements OptionCompleter<CompleterInvocation> {
 
@@ -33,15 +33,15 @@ public class NotificationNameCompleter implements OptionCompleter<CompleterInvoc
                 return;
             }
 
-            NotificationService notificationService = Arc.container().instance(NotificationService.class).get();
-            List<NotificationConfig> configs = notificationService.listByFolder(folder.id());
-            if (configs == null) {
+            NotificationServiceInterface notificationService = Arc.container().instance(NotificationServiceInterface.class).get();
+            List<NotificationChannel> channels = notificationService.channelsByFolder(folder.id());
+            if (channels == null) {
                 return;
             }
 
-            List<String> names = configs.stream()
-                    .filter(c -> c.name != null && !c.name.isEmpty())
-                    .map(c -> c.name)
+            List<String> names = channels.stream()
+                    .filter(c -> c.name() != null && !c.name().isEmpty())
+                    .map(NotificationChannel::name)
                     .filter(name -> input == null || input.isEmpty() || name.startsWith(input))
                     .sorted()
                     .toList();

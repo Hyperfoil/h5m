@@ -7,15 +7,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
-public class ChangeDetectedEventObserver {
+public class ChangeEventObserver {
 
-    private final List<ChangeDetectedEvent> events = new ArrayList<>();
+    private final List<ChangeEvent> events = new ArrayList<>();
 
-    void onChangeDetected(@Observes ChangeDetectedEvent event) {
+    void onChangeDetected(@Observes ChangeEvent event) {
         events.add(event);
     }
 
-    public List<ChangeDetectedEvent> getEvents() {
+    public List<ChangeEvent> getEvents() {
         return events;
     }
 

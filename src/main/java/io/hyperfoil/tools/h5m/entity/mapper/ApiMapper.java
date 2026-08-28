@@ -5,6 +5,8 @@ import io.hyperfoil.tools.h5m.entity.ApiKeyEntity;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
+import io.hyperfoil.tools.h5m.entity.NotificationChannelEntity;
+import io.hyperfoil.tools.h5m.entity.NotificationEntity;
 import io.hyperfoil.tools.h5m.entity.TeamEntity;
 import io.hyperfoil.tools.h5m.entity.UserEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
@@ -61,6 +63,28 @@ public interface ApiMapper {
                 rawKey
         );
     }
+
+    /**
+     * Map a notification channel entity to its API representation.
+     * <p>
+     * {@code secret} is deliberately ignored — this {@code @Mapping(ignore = true)}
+     * is the single rule that guarantees the secret is never returned from the server.
+     * {@code config} is read as a typed object through the entity's {@code getConfig()} accessor.
+     */
+    @Mapping(target = "folderId", source = "folder.id")
+    @Mapping(target = "folderName", source = "folder.name")
+    @Mapping(target = "secret", ignore = true)
+    NotificationChannel toNotificationChannel(NotificationChannelEntity entity);
+
+    /**
+     * Map a sent-notification entity to its API/log representation.
+     * The channel may have been deleted, so {@code channelId}/{@code channelName} are null-safe.
+     */
+    @Mapping(target = "folderId", source = "folder.id")
+    @Mapping(target = "folderName", source = "folder.name")
+    @Mapping(target = "channelId", source = "channel.id")
+    @Mapping(target = "channelName", source = "channel.name")
+    Notification toNotification(NotificationEntity entity);
 
     default User toUser(UserEntity entity) {
         if (entity == null) return null;

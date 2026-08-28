@@ -1,20 +1,22 @@
 package io.hyperfoil.tools.h5m.svc;
 
+import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.NodeGroupEntity;
-import io.hyperfoil.tools.h5m.entity.NotificationConfig;
-import io.hyperfoil.tools.h5m.entity.NotificationLog;
+import io.hyperfoil.tools.h5m.entity.NotificationChannelEntity;
+import io.hyperfoil.tools.h5m.entity.NotificationEntity;
 import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.TeamEntity;
 
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
-import io.hyperfoil.tools.h5m.api.Folder;
-import io.hyperfoil.tools.h5m.notification.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.Notification;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -22,7 +24,6 @@ import jakarta.transaction.TransactionManager;
 import jakarta.ws.rs.NotFoundException;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -463,15 +464,16 @@ public class FolderServiceTest extends FreshDb {
         long nodeId = nodeA.id;
 
 
-        NotificationConfig config = new NotificationConfig(folder, NotificationMethod.WEBHOOK, "{\"url\": \"http://example.com\"}");
+        NotificationChannelEntity config = new NotificationChannelEntity(folder, NotificationMethod.WEBHOOK,
+                WebhookConfig.of("http://example.com"));
         config.persist();
         long configId = config.id;
 
-        NotificationLog log = new NotificationLog();
+        NotificationEntity log = new NotificationEntity();
         log.folder = folder;
-        log.method = "webhook";
-        log.destination = "http://example.com";
-        log.status = "sent";
+        log.method = NotificationMethod.WEBHOOK;
+        log.channel = config;
+        log.status = Notification.Status.SENT;
         log.nodeId = 1L;
         log.nodeName = "test-node";
         log.changeCount = 1;
@@ -487,8 +489,8 @@ public class FolderServiceTest extends FreshDb {
         tm.begin();
         assertNull(FolderEntity.find("name", "delete-upload-test").firstResult(), "Folder should not exist after deletion");
         assertNotNull(NodeGroupEntity.findById(groupId), "Node group should still exist after folder deletion");
-        assertNull(NotificationConfig.findById(configId), "Notification config should be deleted ");
-        assertNull(NotificationLog.findById(logId), "Notification log should be deleted");
+        assertNull(NotificationChannelEntity.findById(configId), "Notification config should be deleted ");
+        assertNull(NotificationEntity.findById(logId), "Notification log should be deleted");
         assertNotNull(NodeEntity.findById(nodeId), "Node should not be deleted");
         tm.commit();
     }

@@ -2,8 +2,12 @@ package io.hyperfoil.tools.h5m.notification;
 
 import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.GitHubIssueConfig;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
+import io.hyperfoil.tools.h5m.api.notification.TokenSecret;
 import io.hyperfoil.tools.jjq.value.*;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,53 +18,32 @@ public class GitHubIssuePluginTest {
 
     private final GitHubIssuePlugin plugin = new GitHubIssuePlugin();
 
-    // === Validation tests ===
-
-    @Test
-    public void validate_valid_config() {
-        assertDoesNotThrow(() -> plugin.validate("{\"owner\": \"myorg\", \"repo\": \"perf\"}"));
-    }
-
-    @Test
-    public void validate_rejects_null() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(null));
-    }
-
-    @Test
-    public void validate_rejects_empty() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(""));
-    }
-
-    @Test
-    public void validate_rejects_missing_owner() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"repo\": \"perf\"}"));
-    }
-
-    @Test
-    public void validate_rejects_missing_repo() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"owner\": \"myorg\"}"));
-    }
-
     // === Token validation ===
 
     @Test
     public void send_rejects_missing_token() {
-        ChangeNotification notification = createTestNotification(
-            "{\"owner\": \"myorg\", \"repo\": \"perf\"}",
-            null,
-            null
-        );
-        assertThrows(IllegalArgumentException.class, () -> plugin.send(notification));
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), GitHubIssueConfig.of("myorg", "perf", null, null), null, null));
     }
 
     @Test
-    public void send_rejects_empty_secrets() {
-        ChangeNotification notification = createTestNotification(
-            "{\"owner\": \"myorg\", \"repo\": \"perf\"}",
-            "{}",
-            null
-        );
-        assertThrows(IllegalArgumentException.class, () -> plugin.send(notification));
+    public void send_rejects_blank_token() {
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), GitHubIssueConfig.of("myorg", "perf", null, null), TokenSecret.github(""), null));
+    }
+
+    // === Config type ===
+
+    @Test
+    public void send_rejects_foreign_config() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), SlackConfig.of("#alerts"), TokenSecret.github("ghp_test"), null));
+        assertTrue(ex.getMessage().contains("GitHubIssueConfig"), "Message should name the expected type: " + ex.getMessage());
+    }
+
+    @Test
+    public void send_rejects_null_config() {
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), null, TokenSecret.github("ghp_test"), null));
     }
 
     // === Method identity ===
@@ -72,7 +55,7 @@ public class GitHubIssuePluginTest {
 
     // === Helpers ===
 
-    private ChangeNotification createTestNotification(String configData, String secrets, String template) {
+    private ChangeEvent testEvent() {
         JqValue detectionData = JqObject.builder()
                 .put("value", 95.3)
                 .put("bound", 90.0)
@@ -85,15 +68,6 @@ public class GitHubIssuePluginTest {
 
         Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
-        return new ChangeNotification(
-            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
-            List.of(change), parseObj(configData), parseObj(secrets), template
-        );
-    }
-
-    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
-        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
-        io.hyperfoil.tools.jjq.value.JqValue v = io.hyperfoil.tools.jjq.value.JqValues.parse(json);
-        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        return new ChangeEvent(5L, "test-folder", List.of(change), true, 42L);
     }
 }

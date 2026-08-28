@@ -14,16 +14,16 @@ import {
   TextInput,
   Toggle,
 } from '@carbon/react';
-import { updateConfigMutation } from '@client/@tanstack/react-query.gen';
+import { updateChannelMutation } from '@client/@tanstack/react-query.gen';
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NotificationConfigResponse } from '@client/types.gen';
+import type { NotificationChannel } from '@client/types.gen';
 import { z } from 'zod';
 
 interface EditNotiConfigModalProps {
   open: boolean;
   onClose: () => void;
-  config: NotificationConfigResponse | null;
+  channel: NotificationChannel | null;
 }
 
 interface FormValues {
@@ -58,57 +58,49 @@ function destinationLabel(method?: string): string {
   }
 }
 
-export default function EditNotiConfigModal({ open, onClose, config }: EditNotiConfigModalProps) {
+export default function EditNotiConfigModal({ open, onClose, channel }: EditNotiConfigModalProps) {
   const notifications = useNotification();
   const queryClient = useQueryClient();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const editConfig = useMutation({
-    ...updateConfigMutation(),
+  const editChannel = useMutation({
+    ...updateChannelMutation(),
     onSuccess: () => {
       void queryClient.invalidateQueries();
-      notifications.success('Notification config updated');
+      notifications.success('Notification channel updated');
       handleClose();
     },
     onError: (e) => {
-      setSubmitError(extractErrorMessage(e) ?? 'Failed to update notification config');
+      setSubmitError(extractErrorMessage(e) ?? 'Failed to update notification channel');
     },
   });
 
   const form = useForm({
     defaultValues: DEFAULT_VALUES,
     onSubmit: ({ value }) => {
-      if (!config?.id) return;
+      if (!channel?.id) return;
       setSubmitError(null);
-      const key = destinationKey(config.method);
-      let body: string;
-      try {
-        const parsed = JSON.parse(config.data ?? '{}');
-        parsed[key] = value.destination;
-        body = JSON.stringify(parsed);
-      } catch {
-        body = JSON.stringify({ [key]: value.destination });
-      }
-      editConfig.mutate({
-        path: { id: config.id },
-        query: { enabled: value.enabled },
-        body,
+      const key = destinationKey(channel.method);
+      const updatedConfig = { ...(channel.config ?? {}), [key]: value.destination };
+      editChannel.mutate({
+        path: { id: channel.id },
+        body: {
+          method: channel.method,
+          config: updatedConfig,
+          enabled: value.enabled,
+        },
       });
     },
   });
 
   useEffect(() => {
-    if (open && config) {
-      form.setFieldValue('enabled', config.enabled ?? true);
-      try {
-        const parsed = JSON.parse(config.data ?? '');
-        const key = destinationKey(config.method);
-        form.setFieldValue('destination', parsed[key] ?? '');
-      } catch {
-        form.setFieldValue('destination', config.data ?? '');
-      }
+    if (open && channel) {
+      form.setFieldValue('enabled', channel.enabled ?? true);
+      const key = destinationKey(channel.method);
+      const value = (channel.config as Record<string, unknown> | undefined)?.[key];
+      form.setFieldValue('destination', typeof value === 'string' ? value : '');
     }
-  }, [open, config]);
+  }, [open, channel]);
 
   const handleClose = () => {
     form.reset();
@@ -139,8 +131,8 @@ export default function EditNotiConfigModal({ open, onClose, config }: EditNotiC
               {(field) => (
                 <TextInput
                   id="edit-destination-name"
-                  type={config?.method === 'WEBHOOK' ? 'url' : config?.method === 'EMAIL' ? 'email' : 'text'}
-                  labelText={destinationLabel(config?.method)}
+                  type={channel?.method === 'WEBHOOK' ? 'url' : channel?.method === 'EMAIL' ? 'email' : 'text'}
+                  labelText={destinationLabel(channel?.method)}
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
@@ -166,8 +158,8 @@ export default function EditNotiConfigModal({ open, onClose, config }: EditNotiC
         <Button kind="secondary" onClick={handleClose}>
           Cancel
         </Button>
-        <Button kind="primary" disabled={editConfig.isPending} onClick={() => void form.handleSubmit()}>
-          {editConfig.isPending ? 'Saving...' : 'Save'}
+        <Button kind="primary" disabled={editChannel.isPending} onClick={() => void form.handleSubmit()}>
+          {editChannel.isPending ? 'Saving...' : 'Save'}
         </Button>
       </ModalFooter>
     </ComposedModal>

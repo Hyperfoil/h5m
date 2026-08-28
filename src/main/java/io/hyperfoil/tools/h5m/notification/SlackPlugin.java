@@ -1,5 +1,10 @@
 package io.hyperfoil.tools.h5m.notification;
 
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.NotificationConfiguration;
+import io.hyperfoil.tools.h5m.api.notification.NotificationSecret;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
+import io.hyperfoil.tools.h5m.api.notification.TokenSecret;
 import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqString;
@@ -7,7 +12,7 @@ import io.hyperfoil.tools.jjq.value.JqValue;
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.api.NodeType;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import io.quarkus.logging.Log;
 import io.quarkus.qute.Qute;
 import io.vertx.mutiny.core.Vertx;
@@ -20,6 +25,8 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Notification plugin that posts change notifications to Slack using the
@@ -27,11 +34,8 @@ import java.time.Duration;
  * with <a href="https://api.slack.com/reference/block-kit">Block Kit</a> formatting.
  * Uses the Vert.x Web Client for HTTP requests.
  * <p>
- * Configuration data (JSON):
- * <pre>{"channel": "#perf-alerts"}</pre>
- * <p>
- * Secret data (JSON):
- * <pre>{"token": "xoxb-your-bot-token"}</pre>
+ * Configuration: {@link SlackConfig} — {@code channel}.
+ * Secret: {@link TokenSecret} — {@code token}.
  */
 @ApplicationScoped
 public class SlackPlugin implements NotificationPlugin {
@@ -57,17 +61,15 @@ public class SlackPlugin implements NotificationPlugin {
     }
 
     @Override
-    public void send(ChangeNotification notification) {
-        String channel = notification.configData().get("channel").asString(null);
-        if (notification.configSecrets() == null || !notification.configSecrets().has("token")) {
-            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
-        }
-        String token = notification.configSecrets().get("token").asString(null);
+    public void send(ChangeEvent event, NotificationConfiguration config, NotificationSecret secret, String template) {
+        SlackConfig cfg = configAs(SlackConfig.class, config);
+        String channel = cfg.channel();
+        String token = secret instanceof TokenSecret(var _, String t) ? t : null;
         if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("Slack secrets must contain a 'token' field");
+            throw new IllegalArgumentException("Slack secret must contain a 'token' field");
         }
 
-        JqObject payload = buildSlackPayload(channel, notification);
+        JqObject payload = buildSlackPayload(channel, event, template);
 
         HttpResponse<Buffer> response = webClient.postAbs(slackApiUrl)
             .putHeader("Content-Type", "application/json; charset=utf-8")
@@ -97,40 +99,30 @@ public class SlackPlugin implements NotificationPlugin {
         Log.debugf("Slack message posted to %s", channel);
     }
 
-    @Override
-    public void validate(String configData) {
-        if (configData == null || configData.isBlank()) {
-            throw new IllegalArgumentException("Slack config is required");
-        }
-        String channel = extractField(configData, "channel");
-        if (channel == null || channel.isBlank()) {
-            throw new IllegalArgumentException("Slack config must contain a 'channel' field (e.g. #perf-alerts)");
-        }
-    }
-
-    private JqObject buildSlackPayload(String channel, ChangeNotification notification) {
+    private JqObject buildSlackPayload(String channel, ChangeEvent event, String template) {
+        Change first = event.changes().getFirst();
         String fallbackText = String.format("Change detected in %s by %s: %d change(s)",
-            notification.folderName(), notification.nodeName(), notification.changes().size());
+            event.folderName(), first.nodeName(), event.changes().size());
 
         // Build blocks array
-        java.util.List<JqValue> blockList = new java.util.ArrayList<>();
+        List<JqValue> blockList = new ArrayList<>();
 
         // Header block
         blockList.add(JqObject.of("type", JqString.of("header"),
             "text", JqObject.of("type", JqString.of("plain_text"),
-                "text", JqString.of(String.format("Change detected in %s", notification.folderName())))));
+                "text", JqString.of(String.format("Change detected in %s", event.folderName())))));
 
         // Main section with markdown
         blockList.add(JqObject.of("type", JqString.of("section"),
             "text", JqObject.of("type", JqString.of("mrkdwn"),
-                "text", JqString.of(buildMarkdownBody(notification)))));
+                "text", JqString.of(buildMarkdownBody(event, template)))));
 
         // Change details sections
-        for (int i = 0; i < notification.changes().size(); i++) {
-            Change change = notification.changes().get(i);
+        for (int i = 0; i < event.changes().size(); i++) {
+            Change change = event.changes().get(i);
             blockList.add(JqObject.of("type", JqString.of("section"),
                 "text", JqObject.of("type", JqString.of("mrkdwn"),
-                    "text", JqString.of(formatChangeDetail(i + 1, change, notification.nodeType())))));
+                    "text", JqString.of(formatChangeDetail(i + 1, change, first.nodeType())))));
         }
 
         // Divider
@@ -141,30 +133,31 @@ public class SlackPlugin implements NotificationPlugin {
             "elements", JqArray.of(
                 JqObject.of("type", JqString.of("mrkdwn"),
                     "text", JqString.of(String.format("Node: `%s` (%s) | Changes: %d",
-                        notification.nodeName(), notification.nodeType(), notification.changes().size()))))));
+                        first.nodeName(), first.nodeType(), event.changes().size()))))));
 
         return JqObject.of("channel", JqString.of(channel),
             "text", JqString.of(fallbackText),
             "blocks", JqArray.of(blockList.toArray(new JqValue[0])));
     }
 
-    private String buildMarkdownBody(ChangeNotification notification) {
-        if (notification.template() != null && !notification.template().isBlank()) {
-            return applyTemplate(notification.template(), notification);
+    private String buildMarkdownBody(ChangeEvent event, String template) {
+        if (template != null && !template.isBlank()) {
+            return applyTemplate(template, event);
         }
-        return String.format("*%s* detected by `%s` (%s)",
-            notification.changes().size() == 1 ? "1 change" : notification.changes().size() + " changes",
-            notification.nodeName(),
-            notification.nodeType());
+        Change first = event.changes().getFirst();
+        return NotificationTemplates.slack(
+            event.folderName(), first.nodeName(), first.nodeType(), event.changes().size(), event.changes())
+            .render();
     }
 
-    private String applyTemplate(String template, ChangeNotification notification) {
+    private String applyTemplate(String template, ChangeEvent event) {
+        Change first = event.changes().getFirst();
         return Qute.fmt(template)
-            .data("folderName", notification.folderName())
-            .data("nodeName", notification.nodeName())
-            .data("nodeType", notification.nodeType())
-            .data("changeCount", notification.changes().size())
-            .data("changes", notification.changes())
+            .data("folderName", event.folderName())
+            .data("nodeName", first.nodeName())
+            .data("nodeType", first.nodeType())
+            .data("changeCount", event.changes().size())
+            .data("changes", event.changes())
             .render();
     }
 
@@ -193,18 +186,5 @@ public class SlackPlugin implements NotificationPlugin {
             sb.append("• Data: `").append(change.data().toJsonString()).append("`\n");
         }
         return sb.toString();
-    }
-
-    private String extractField(String json, String field) {
-        if (json == null) return null;
-        try {
-            JqValue parsed = JqValues.parse(json);
-            if (parsed instanceof JqObject obj && obj.has(field)) {
-                return obj.get(field).asString("");
-            }
-        } catch (Exception e) {
-            // not valid JSON
-        }
-        return null;
     }
 }

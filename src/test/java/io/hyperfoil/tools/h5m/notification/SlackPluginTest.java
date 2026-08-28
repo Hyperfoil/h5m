@@ -3,8 +3,12 @@ package io.hyperfoil.tools.h5m.notification;
 import com.sun.net.httpserver.HttpServer;
 import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
+import io.hyperfoil.tools.h5m.api.notification.TokenSecret;
+import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.hyperfoil.tools.jjq.value.*;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterEach;
@@ -54,55 +58,25 @@ public class SlackPluginTest {
         if (mockServer != null) mockServer.stop(0);
     }
 
-    // === Validation tests ===
-
-    @Test
-    public void validate_valid_config() {
-        assertDoesNotThrow(() -> plugin.validate("{\"channel\": \"#perf-alerts\"}"));
-    }
-
-    @Test
-    public void validate_rejects_null() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(null));
-    }
-
-    @Test
-    public void validate_rejects_empty() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(""));
-    }
-
-    @Test
-    public void validate_rejects_missing_channel() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"token\": \"xoxb-123\"}"));
-    }
-
     // === Token validation ===
 
     @Test
     public void send_rejects_missing_token() {
-        ChangeNotification notification = createTestNotification(
-            "{\"channel\": \"#alerts\"}", null, null
-        );
-        assertThrows(IllegalArgumentException.class, () -> plugin.send(notification));
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), SlackConfig.of("#alerts"), null, null));
     }
 
     @Test
-    public void send_rejects_empty_secrets() {
-        ChangeNotification notification = createTestNotification(
-            "{\"channel\": \"#alerts\"}", "{}", null
-        );
-        assertThrows(IllegalArgumentException.class, () -> plugin.send(notification));
+    public void send_rejects_blank_token() {
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.send(testEvent(), SlackConfig.of("#alerts"), TokenSecret.slack(""), null));
     }
 
     // === Send tests (using mock server on port 19876) ===
 
     @Test
     public void send_posts_block_kit_message() throws Exception {
-        plugin.send(createTestNotification(
-            "{\"channel\": \"#perf-alerts\"}",
-            "{\"token\": \"xoxb-test-token\"}",
-            null
-        ));
+        plugin.send(testEvent(), SlackConfig.of("#perf-alerts"), TokenSecret.slack("xoxb-test-token"), null);
 
         assertNotNull(lastReceivedBody.get(), "Server should have received a request");
         assertEquals("Bearer xoxb-test-token", lastReceivedAuth.get());
@@ -117,11 +91,8 @@ public class SlackPluginTest {
 
     @Test
     public void send_with_custom_template() throws Exception {
-        plugin.send(createTestNotification(
-            "{\"channel\": \"#alerts\"}",
-            "{\"token\": \"xoxb-test\"}",
-            "Regression in *{folderName}* by `{nodeName}`: {changeCount} change(s). cc @perf-team"
-        ));
+        plugin.send(testEvent(), SlackConfig.of("#alerts"), TokenSecret.slack("xoxb-test"),
+            "Regression in *{folderName}* by `{nodeName}`: {changeCount} change(s). cc @perf-team");
 
         JqValue payload = JqValues.parse(lastReceivedBody.get());
         String sectionText = payload.getField("blocks").getElement(1).getField("text").getField("text").asString("");
@@ -136,13 +107,22 @@ public class SlackPluginTest {
         mockResponse = "{\"ok\": false, \"error\": \"channel_not_found\"}";
 
         RuntimeException ex = assertThrows(RuntimeException.class, () ->
-            plugin.send(createTestNotification(
-                "{\"channel\": \"#nonexistent\"}",
-                "{\"token\": \"xoxb-test\"}",
-                null
-            ))
+            plugin.send(testEvent(), SlackConfig.of("#nonexistent"), TokenSecret.slack("xoxb-test"), null)
         );
         assertTrue(ex.getMessage().contains("channel_not_found"));
+    }
+
+    // === Config type ===
+
+    @Test
+    public void send_rejects_foreign_config() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), WebhookConfig.of("https://hook.example.com"), TokenSecret.slack("xoxb-test"), null));
+        assertTrue(ex.getMessage().contains("SlackConfig"), "Message should name the expected type: " + ex.getMessage());
+    }
+
+    @Test
+    public void send_rejects_null_config() {
+        assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), null, TokenSecret.slack("xoxb-test"), null));
     }
 
     @Test
@@ -152,7 +132,7 @@ public class SlackPluginTest {
 
     // === Helpers ===
 
-    private ChangeNotification createTestNotification(String configData, String secrets, String template) {
+    private ChangeEvent testEvent() {
         JqValue detectionData = JqObject.builder()
                 .put("value", 95.3)
                 .put("bound", 90.0)
@@ -165,15 +145,6 @@ public class SlackPluginTest {
 
         Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
-        return new ChangeNotification(
-            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
-            List.of(change), parseObj(configData), parseObj(secrets), template
-        );
-    }
-
-    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
-        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
-        io.hyperfoil.tools.jjq.value.JqValue v = JqValues.parse(json);
-        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        return new ChangeEvent(5L, "test-folder", List.of(change), true, 42L);
     }
 }

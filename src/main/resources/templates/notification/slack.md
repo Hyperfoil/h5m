@@ -1,0 +1,1 @@
+*{changeCount} {#if changeCount == 1}change{#else}changes{/if}* detected by `{nodeName}` ({nodeType})

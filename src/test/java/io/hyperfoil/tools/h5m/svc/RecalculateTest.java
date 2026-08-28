@@ -12,7 +12,7 @@ import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
-import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import jakarta.persistence.EntityManager;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -75,13 +75,13 @@ public class RecalculateTest extends FreshDb {
 
     @ApplicationScoped
     public static class ChangeEventObserver {
-        private final CopyOnWriteArrayList<ChangeDetectedEvent> events = new CopyOnWriteArrayList<>();
+        private final CopyOnWriteArrayList<ChangeEvent> events = new CopyOnWriteArrayList<>();
 
-        public void onEvent(@Observes ChangeDetectedEvent event) {
+        public void onEvent(@Observes ChangeEvent event) {
             events.add(event);
         }
 
-        public List<ChangeDetectedEvent> getEvents() {
+        public List<ChangeEvent> getEvents() {
             return events;
         }
 
@@ -175,7 +175,7 @@ public class RecalculateTest extends FreshDb {
         processingService.awaitIngestion(valueService.createRootValue(folderId, JqValues.parse("{\"y\": 100, \"fp\": \"default\"}")), 30, TimeUnit.SECONDS);
 
         // Upload should dispatch notifications
-        List<ChangeDetectedEvent> uploadEvents = new ArrayList<>(eventObserver.getEvents());
+        List<ChangeEvent> uploadEvents = new ArrayList<>(eventObserver.getEvents());
         boolean hasDispatchedEvent = uploadEvents.stream().anyMatch(e -> e.dispatch());
         assertTrue(hasDispatchedEvent, "Upload should fire events with dispatch=true");
 
@@ -188,7 +188,7 @@ public class RecalculateTest extends FreshDb {
             processingService.awaitRecalculation(n.id, 30, TimeUnit.SECONDS);
         }
 
-        List<ChangeDetectedEvent> recalcEvents = eventObserver.getEvents();
+        List<ChangeEvent> recalcEvents = eventObserver.getEvents();
         boolean hasNonDispatchedEvent = recalcEvents.stream().anyMatch(e -> !e.dispatch());
         if (!recalcEvents.isEmpty()) {
             // If events were fired during recalculation, they should all have dispatch=false

@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.svc.WorkServiceInterface;
+import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
@@ -13,7 +14,7 @@ import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
 import io.hyperfoil.tools.h5m.api.Change;
-import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -120,7 +121,7 @@ public class WorkService implements WorkServiceInterface {
     MeterRegistry registry;
 
     @Inject
-    Event<ChangeDetectedEvent> changeDetectedEvent;
+    Event<ChangeEvent> changeEvent;
 
     @Inject
     DatabaseEngine db;
@@ -376,16 +377,17 @@ public class WorkService implements WorkServiceInterface {
                                         v.data != null ? v.data.getField("fingerprint") : null
                                 ))
                                 .toList();
-                        long folderId = sourceValues.stream()
-                                .filter(v -> v.folder != null)
-                                .map(v -> v.folder.id)
+                        FolderEntity folder = sourceValues.stream()
+                                .map(v -> v.folder)
+                                .filter(Objects::nonNull)
                                 .findFirst()
-                                .orElse(-1L);
+                                .orElse(null);
+                        long folderId = folder != null ? folder.id : -1L;
+                        String folderName = folder != null ? folder.name : "unknown";
                         // Derive rootValueId from sourceValueIds — for upload work,
                         // the first ID is the root value (upload ID)
                         long rootValueId = w.getSourceValueIds().isEmpty() ? -1L : w.getSourceValueIds().getFirst();
-                        changeDetectedEvent.fire(new ChangeDetectedEvent(folderId,
-                                changes, w.isDispatch(), rootValueId));
+                        changeEvent.fire(new ChangeEvent(folderId, folderName, changes, w.isDispatch(), rootValueId));
                     }
                     // Cascade work inherits source value IDs and dispatch flag, so
                     // tracker association is derived automatically via findTrackers()

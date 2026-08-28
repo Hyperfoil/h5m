@@ -14,11 +14,11 @@ import {
   Stack,
   TextInput,
 } from '@carbon/react';
-import { createConfigMutation } from '@client/@tanstack/react-query.gen';
+import { createChannelMutation } from '@client/@tanstack/react-query.gen';
 import { zNotificationMethod } from '@client/zod.gen.ts';
 import { useForm, useSelector } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NotificationMethod } from '@client/types.gen';
+import type { NotificationConfiguration, NotificationMethod, NotificationSecret } from '@client/types.gen';
 import { useState } from 'react';
 import { z } from 'zod';
 
@@ -65,15 +65,15 @@ export default function CreateNotificationModal({ open, onClose, folderId }: Cre
   const queryClient = useQueryClient();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const createConfig = useMutation({
-    ...createConfigMutation(),
+  const createChannel = useMutation({
+    ...createChannelMutation(),
     onSuccess: () => {
       void queryClient.invalidateQueries();
-      notifications.success('Notification Config created');
+      notifications.success('Notification channel created');
       handleClose();
     },
     onError: (e) => {
-      setSubmitError(extractErrorMessage(e) ?? 'Failed to create Notification config');
+      setSubmitError(extractErrorMessage(e) ?? 'Failed to create notification channel');
     },
   });
 
@@ -81,30 +81,42 @@ export default function CreateNotificationModal({ open, onClose, folderId }: Cre
     defaultValues: DEFAULT_VALUES,
     onSubmit: ({ value }) => {
       setSubmitError(null);
-      let requestBody = {};
-      let secretData = '';
+      let config: NotificationConfiguration;
+      let secret: NotificationSecret | undefined;
 
       switch (value.method) {
         case 'WEBHOOK':
-          requestBody = { url: value.url };
-          secretData = value.auth;
+          config = { method: 'WEBHOOK', url: value.url };
+          secret = value.auth ? { method: 'WEBHOOK', authHeader: value.auth } : undefined;
           break;
         case 'EMAIL':
-          requestBody = { to: value.recipients, subject: value.subject };
+          config = { method: 'EMAIL', to: value.recipients.split(',').map((r) => r.trim()).filter(Boolean), subject: value.subject };
           break;
         case 'SLACK':
-          requestBody = { channel: value.channel };
-          secretData = value.slackToken;
+          config = { method: 'SLACK', channel: value.channel };
+          secret = { method: 'SLACK', token: value.slackToken };
           break;
         case 'GITHUB_ISSUE':
-          requestBody = { repo: value.repo, owner: value.owner, title: value.title, label: value.label };
-          secretData = value.githubToken;
+          config = {
+            method: 'GITHUB_ISSUE',
+            repo: value.repo,
+            owner: value.owner,
+            title: value.title || undefined,
+            labels: value.label ? [value.label] : undefined,
+          };
+          secret = { method: 'GITHUB_ISSUE', token: value.githubToken };
           break;
+        default:
+          return;
       }
 
-      createConfig.mutate({
-        query: { folderId, method: value.method as NotificationMethod, name: undefined, secrets: secretData },
-        body: JSON.stringify(requestBody),
+      createChannel.mutate({
+        query: { folderId },
+        body: {
+          method: value.method as NotificationMethod,
+          config,
+          secret,
+        },
       });
     },
   });
@@ -324,8 +336,8 @@ export default function CreateNotificationModal({ open, onClose, folderId }: Cre
         <Button kind="secondary" onClick={handleClose}>
           Cancel
         </Button>
-        <Button kind="primary" disabled={createConfig.isPending} onClick={() => void form.handleSubmit()}>
-          {createConfig.isPending ? 'Saving...' : 'Save'}
+        <Button kind="primary" disabled={createChannel.isPending} onClick={() => void form.handleSubmit()}>
+          {createChannel.isPending ? 'Saving...' : 'Save'}
         </Button>
       </ModalFooter>
     </ComposedModal>

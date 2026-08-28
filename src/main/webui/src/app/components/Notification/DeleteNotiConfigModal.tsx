@@ -1,36 +1,36 @@
 import { Modal } from '@carbon/react';
-import { deleteConfigMutation } from '@client/@tanstack/react-query.gen.ts';
+import { deleteChannelMutation } from '@client/@tanstack/react-query.gen.ts';
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useNotification } from '@app/context/useNotification.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NotificationConfigResponse } from '@client/types.gen';
+import type { NotificationChannel } from '@client/types.gen';
 import { useState } from 'react';
 
 interface DeleteNotiConfigModalProps {
   open: boolean;
   onClose: () => void;
-  config: NotificationConfigResponse | null;
+  channel: NotificationChannel | null;
 }
 
-export default function DeleteNotiConfigModal({ open, onClose, config }: DeleteNotiConfigModalProps){
+export default function DeleteNotiConfigModal({ open, onClose, channel }: DeleteNotiConfigModalProps){
   const queryClient = useQueryClient();
   const notifications = useNotification();
   const [error, setError] = useState<string | null>(null);
 
-   const deleteConfig = useMutation({
-      ...deleteConfigMutation(),
+   const deleteChannel = useMutation({
+      ...deleteChannelMutation(),
       onSuccess: () => {
         void queryClient.invalidateQueries();
-        notifications.success('Notification config deleted');
+        notifications.success('Notification channel deleted');
         handleClose();
       },
       onError: (e) => {
-        notifications.error(extractErrorMessage(e) ?? 'Failed to delete notification config');
+        notifications.error(extractErrorMessage(e) ?? 'Failed to delete notification channel');
       },
     });
   const handleDelete = ()=>{
-    if (!config?.id) return;
-    deleteConfig.mutate({ path: { id: config.id } })
+    if (!channel?.id) return;
+    deleteChannel.mutate({ path: { id: channel.id } })
     }
 
   const handleClose = ()=>{
@@ -42,16 +42,16 @@ export default function DeleteNotiConfigModal({ open, onClose, config }: DeleteN
     <Modal
       open={open}
       danger
-      modalHeading="Delete config"
-      modalLabel={config?.name ?? ''}
-      primaryButtonText={deleteConfig.isPending ? 'Deleting…' : 'Delete'}
+      modalHeading="Delete channel"
+      modalLabel={channel?.name ?? ''}
+      primaryButtonText={deleteChannel.isPending ? 'Deleting…' : 'Delete'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={deleteConfig.isPending}
+      primaryButtonDisabled={deleteChannel.isPending}
       onRequestSubmit={handleDelete}
       onRequestClose={() => { setError(null); handleClose(); }}
     >
       <p>
-        Are you sure you want to delete <strong>{config?.name}</strong>?
+        Are you sure you want to delete <strong>{channel?.name}</strong>?
       </p>
       <p style={{ marginTop: '0.75rem', color: 'var(--cds-text-secondary)' }}>
          This action cannot be undone.

@@ -1,15 +1,17 @@
 package io.hyperfoil.tools.h5m.notification;
 
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.AuthHeaderSecret;
+import io.hyperfoil.tools.h5m.api.notification.NotificationConfiguration;
+import io.hyperfoil.tools.h5m.api.notification.NotificationSecret;
+import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.hyperfoil.tools.jjq.value.JqArray;
 import io.hyperfoil.tools.jjq.value.JqObject;
 import io.hyperfoil.tools.jjq.value.JqValue;
-import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Change;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import io.quarkus.logging.Log;
-import io.quarkus.qute.Location;
 import io.quarkus.qute.Qute;
-import io.quarkus.qute.Template;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.mutiny.core.Vertx;
@@ -21,17 +23,15 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 
 /**
  * Notification plugin that sends change notifications via HTTP POST (webhook).
  * <p>
- * Configuration data (JSON):
- * <pre>{"url": "https://hooks.example.com/endpoint"}</pre>
- * <p>
- * Secret data (JSON, optional):
- * <pre>{"authHeader": "Bearer token123"}</pre>
+ * Configuration: {@link WebhookConfig} — {@code url}.
+ * Secret (optional): {@link AuthHeaderSecret} — {@code authHeader}.
  * <p>
  * The payload is a JSON object containing the folder name, detection node info,
  * and change details. If a custom template is provided, it is included as a
@@ -46,9 +46,6 @@ public class WebhookPlugin implements NotificationPlugin {
     @Inject
     Vertx vertx;
 
-    @Location("webhook_notification")
-    Template defaultTemplate;
-
     private WebClient webClient;
 
     @PostConstruct
@@ -62,19 +59,19 @@ public class WebhookPlugin implements NotificationPlugin {
     }
 
     @Override
-    public void send(ChangeNotification notification) {
-        String urlStr = notification.configData().getField("url").asString(null);
+    public void send(ChangeEvent event, NotificationConfiguration config, NotificationSecret secret, String template) {
+        WebhookConfig cfg = configAs(WebhookConfig.class, config);
+        String urlStr = cfg.url();
         if (urlStr == null || urlStr.isBlank()) {
             throw new IllegalArgumentException("Webhook config is missing required 'url' field");
         }
-        String authHeader = notification.configSecrets().getField("authHeader").asString(null);
-
-        JqObject payload = buildPayload(notification);
+        String authHeader = secret instanceof AuthHeaderSecret(var _, String header) ? header : null;
+        JqObject payload = buildPayload(event, template);
 
         URL url;
         try {
-            url = new URL(urlStr);
-        } catch (MalformedURLException e) {
+            url = URI.create(urlStr).toURL();
+        } catch (IllegalArgumentException | MalformedURLException e) {
             throw new RuntimeException("Invalid webhook URL: " + urlStr, e);
         }
 
@@ -103,42 +100,24 @@ public class WebhookPlugin implements NotificationPlugin {
         Log.debugf("Webhook delivered to %s (HTTP %d)", urlStr, response.statusCode());
     }
 
-    @Override
-    public void validate(String configData) {
-        if (configData == null || configData.isBlank()) {
-            throw new IllegalArgumentException("Webhook config data is required");
-        }
-        String url = extractUrl(configData);
-        if (url == null || url.isBlank()) {
-            throw new IllegalArgumentException("Webhook config must contain a 'url' field");
-        }
-        try {
-            new URL(url);
-        } catch (MalformedURLException e) {
-            throw new IllegalArgumentException("Invalid webhook URL: " + url, e);
-        }
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            throw new IllegalArgumentException("Webhook URL must start with http:// or https://");
-        }
-    }
-
-    private JqObject buildPayload(ChangeNotification notification) {
+    private JqObject buildPayload(ChangeEvent event, String template) {
+        Change first = event.changes().getFirst();
         JqObject.Builder payloadBuilder = JqObject.builder();
-        payloadBuilder.put("folder", notification.folderName());
-        payloadBuilder.put("folderId", notification.folderId());
-        payloadBuilder.put("valueId", notification.valueId());
-        payloadBuilder.put("nodeId", notification.nodeId());
-        payloadBuilder.put("nodeName", notification.nodeName());
-        payloadBuilder.put("nodeType", notification.nodeType().name());
-        payloadBuilder.put("changeCount", (long) notification.changes().size());
+        payloadBuilder.put("folder", event.folderName());
+        payloadBuilder.put("folderId", event.folderId());
+        payloadBuilder.put("valueId", event.rootValueId());
+        payloadBuilder.put("nodeId", first.nodeId());
+        payloadBuilder.put("nodeName", first.nodeName());
+        payloadBuilder.put("nodeType", first.nodeType().name());
+        payloadBuilder.put("changeCount", (long) event.changes().size());
 
         // Include formatted text — compatible with Slack incoming webhooks
-        String text = formatMessage(notification);
+        String text = formatMessage(event, template);
         payloadBuilder.put("text", text);
 
-        JqValue[] changeElements = new JqValue[notification.changes().size()];
-        for (int i = 0; i < notification.changes().size(); i++) {
-            Change change = notification.changes().get(i);
+        JqValue[] changeElements = new JqValue[event.changes().size()];
+        for (int i = 0; i < event.changes().size(); i++) {
+            Change change = event.changes().get(i);
             JqObject.Builder changeBuilder = JqObject.builder();
             changeBuilder.put("valueId", change.valueId());
             changeBuilder.put("nodeId", change.nodeId());
@@ -158,47 +137,26 @@ public class WebhookPlugin implements NotificationPlugin {
 
         // API links for follow-up queries
         JqObject.Builder linksBuilder = JqObject.builder();
-        linksBuilder.put("processing", "/api/processing/" + notification.valueId());
-        linksBuilder.put("labelValues", "/api/folder/" + notification.folderId() + "/labelValues");
+        linksBuilder.put("processing", "/api/processing/" + event.rootValueId());
+        linksBuilder.put("labelValues", "/api/folder/" + event.folderId() + "/labelValues");
         payloadBuilder.put("links", linksBuilder.build());
 
         return payloadBuilder.build();
     }
 
-    private String formatMessage(ChangeNotification notification) {
-        if (notification.template() != null && !notification.template().isBlank()) {
-            return applyTemplate(notification.template(), notification);
+    private String formatMessage(ChangeEvent event, String template) {
+        Change first = event.changes().getFirst();
+        if (template != null && !template.isBlank()) {
+            return Qute.fmt(template)
+                .data("folderName", event.folderName())
+                .data("nodeName", first.nodeName())
+                .data("nodeType", first.nodeType())
+                .data("changeCount", event.changes().size())
+                .data("changes", event.changes())
+                .render();
         }
-        return defaultTemplate
-            .data("folderName", notification.folderName())
-            .data("nodeName", notification.nodeName())
-            .data("nodeType", notification.nodeType())
-            .data("changeCount", notification.changes().size())
-            .data("changes", notification.changes())
+        return NotificationTemplates.webhook(
+            event.folderName(), first.nodeName(), first.nodeType(), event.changes().size(), event.changes())
             .render();
-    }
-
-    private String applyTemplate(String template, ChangeNotification notification) {
-        return Qute.fmt(template)
-            .data("folderName", notification.folderName())
-            .data("nodeName", notification.nodeName())
-            .data("nodeType", notification.nodeType())
-            .data("changeCount", notification.changes().size())
-            .data("changes", notification.changes())
-            .render();
-    }
-
-    private String extractUrl(String configData) {
-        try {
-            JqValue config = JqValues.parse(configData);
-            if (config instanceof JqObject obj && obj.has("url")) {
-                return obj.get("url").asString("");
-            }
-            // If it's not a JSON object, treat the entire string as the URL
-            return configData.trim();
-        } catch (Exception e) {
-            // Not valid JSON — treat as a plain URL
-            return configData.trim();
-        }
     }
 }

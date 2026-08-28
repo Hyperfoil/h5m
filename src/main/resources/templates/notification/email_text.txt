@@ -1,0 +1,10 @@
+A change was detected in folder '{folderName}'.
+Detected by node '{nodeName}' ({nodeType}).
+{changeCount} change(s) reported.
+
+{#each changes}
+--- Change {it_count} ---
+{#if it.fingerprint}Fingerprint: {it.fingerprint}
+{/if}{it.data}
+
+{/each}

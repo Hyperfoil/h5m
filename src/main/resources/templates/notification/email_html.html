@@ -1,0 +1,23 @@
+<p>A change was detected in folder <strong>{folderName}</strong>.</p>
+<p>Detected by node <strong>{nodeName}</strong> ({nodeType}).<br>
+{changeCount} change(s) reported.</p>
+{#if changes.size() > 0}
+ <table style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr>
+      <th style="border: 1px solid currentColor; padding: 4px; text-align: left;">#</th>
+      <th style="border: 1px solid currentColor; padding: 4px; text-align: left;">Fingerprint</th>
+      <th style="border: 1px solid currentColor; padding: 4px; text-align: left;">Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    {#each changes}
+    <tr>
+      <td style="border: 1px solid currentColor; padding: 4px;">{it_count}</td>
+      <td style="border: 1px solid currentColor; padding: 4px;">{it.fingerprint}</td>
+      <td style="border: 1px solid currentColor; padding: 4px;">{it.data}</td>
+    </tr>
+    {/each}
+  </tbody>
+</table>
+{/if}

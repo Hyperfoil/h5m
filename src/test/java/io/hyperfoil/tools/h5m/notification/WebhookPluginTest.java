@@ -3,8 +3,12 @@ package io.hyperfoil.tools.h5m.notification;
 import com.sun.net.httpserver.HttpServer;
 import io.hyperfoil.tools.h5m.api.Change;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.notification.AuthHeaderSecret;
+import io.hyperfoil.tools.h5m.api.notification.SlackConfig;
+import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.hyperfoil.tools.jjq.value.*;
-import io.hyperfoil.tools.h5m.event.ChangeNotification;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -23,44 +27,6 @@ public class WebhookPluginTest {
     @Inject
     WebhookPlugin plugin;
 
-    // === Validation tests ===
-
-    @Test
-    public void validate_valid_json_config() {
-        assertDoesNotThrow(() -> plugin.validate("{\"url\": \"https://hooks.example.com/endpoint\"}"));
-    }
-
-    @Test
-    public void validate_plain_url() {
-        assertDoesNotThrow(() -> plugin.validate("https://hooks.example.com/endpoint"));
-    }
-
-    @Test
-    public void validate_accepts_https_url() {
-        assertDoesNotThrow(() -> plugin.validate("https://hooks.example.com/endpoint"));
-        assertDoesNotThrow(() -> plugin.validate("{\"url\": \"https://hooks.slack.com/services/T00/B00/xxx\"}"));
-    }
-
-    @Test
-    public void validate_rejects_null() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(null));
-    }
-
-    @Test
-    public void validate_rejects_empty() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate(""));
-    }
-
-    @Test
-    public void validate_rejects_non_http_url() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("ftp://example.com"));
-    }
-
-    @Test
-    public void validate_rejects_missing_url_field() {
-        assertThrows(IllegalArgumentException.class, () -> plugin.validate("{\"channel\": \"#alerts\"}"));
-    }
-
     // === Send tests ===
 
     @Test
@@ -72,13 +38,7 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
-                null,
-                null
-            );
-
-            plugin.send(notification);
+            plugin.send(testEvent(), WebhookConfig.of("http://localhost:" + port + "/webhook"), null, null);
 
             assertNotNull(receivedBody.get(), "Server should have received a request");
             assertEquals("application/json", receivedContentType.get());
@@ -110,13 +70,10 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
-                "{\"authHeader\": \"Bearer test-token-123\"}",
-                null
-            );
-
-            plugin.send(notification);
+            plugin.send(testEvent(),
+                WebhookConfig.of("http://localhost:" + port + "/webhook"),
+                AuthHeaderSecret.webHook("Bearer test-token-123"),
+                null);
 
             assertEquals("Bearer test-token-123", receivedAuth.get());
         } finally {
@@ -132,13 +89,10 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
+            plugin.send(testEvent(),
+                WebhookConfig.of("http://localhost:" + port + "/webhook"),
                 null,
-                "Regression in *{folderName}* by {nodeName}: {changeCount} change(s). cc @perf-team"
-            );
-
-            plugin.send(notification);
+                "Regression in *{folderName}* by {nodeName}: {changeCount} change(s). cc @perf-team");
 
             JqValue payload = JqValues.parse(receivedBody.get());
             assertEquals(
@@ -158,13 +112,7 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
-                null,
-                null
-            );
-
-            plugin.send(notification);
+            plugin.send(testEvent(), WebhookConfig.of("http://localhost:" + port + "/webhook"), null, null);
 
             JqValue payload = JqValues.parse(receivedBody.get());
             String text = payload.getField("text").asString("");
@@ -181,39 +129,25 @@ public class WebhookPluginTest {
         int port = server.getAddress().getPort();
 
         try {
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
-                null,
-                null
-            );
-
-            RuntimeException ex = assertThrows(RuntimeException.class, () -> plugin.send(notification));
+            RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> plugin.send(testEvent(), WebhookConfig.of("http://localhost:" + port + "/webhook"), null, null));
             assertTrue(ex.getMessage().contains("500"), "Exception should mention HTTP status code");
         } finally {
             server.stop(0);
         }
     }
 
+    // === Config type ===
+
     @Test
-    public void send_accepts_plain_url_config() throws Exception {
-        AtomicReference<String> receivedBody = new AtomicReference<>();
+    public void send_rejects_foreign_config() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), SlackConfig.of("#alerts"), null, null));
+        assertTrue(ex.getMessage().contains("WebhookConfig"), "Message should name the expected type: " + ex.getMessage());
+    }
 
-        HttpServer server = startMockServer(200, receivedBody, new AtomicReference<>());
-        int port = server.getAddress().getPort();
-
-        try {
-            // Config with URL field (configData is always JqObject now)
-            ChangeNotification notification = createTestNotification(
-                "{\"url\": \"http://localhost:" + port + "/webhook\"}",
-                null,
-                null
-            );
-
-            plugin.send(notification);
-            assertNotNull(receivedBody.get(), "Server should have received a request");
-        } finally {
-            server.stop(0);
-        }
+    @Test
+    public void send_rejects_null_config() {
+        assertThrows(IllegalArgumentException.class, () -> plugin.send(testEvent(), null, null, null));
     }
 
     @Test
@@ -223,7 +157,7 @@ public class WebhookPluginTest {
 
     // === Helpers ===
 
-    private ChangeNotification createTestNotification(String configData, String secrets, String template) {
+    private ChangeEvent testEvent() {
         JqValue detectionData = JqObject.builder()
                 .put("value", 95.3)
                 .put("bound", 90.0)
@@ -236,16 +170,7 @@ public class WebhookPluginTest {
 
         Change change = new Change(42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD, detectionData, fingerprint);
 
-        return new ChangeNotification(
-            "test-folder", 5L, 42L, 1L, "threshold-node", NodeType.FIXED_THRESHOLD,
-            List.of(change), parseObj(configData), parseObj(secrets), template
-        );
-    }
-
-    private static io.hyperfoil.tools.jjq.value.JqObject parseObj(String json) {
-        if (json == null || json.isBlank()) return io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
-        io.hyperfoil.tools.jjq.value.JqValue v = JqValues.parse(json);
-        return v instanceof io.hyperfoil.tools.jjq.value.JqObject obj ? obj : io.hyperfoil.tools.jjq.value.JqObject.EMPTY;
+        return new ChangeEvent(5L, "test-folder", List.of(change), true, 42L);
     }
 
     private HttpServer startMockServer(int responseCode,

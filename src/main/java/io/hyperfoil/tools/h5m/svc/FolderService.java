@@ -205,7 +205,7 @@ public class FolderService implements FolderServiceInterface {
         }
 
         valueService.deleteForFolder(id);
-        notificationService.deleteForFolder(id);
+        notificationService.deleteChannelsForFolder(id);
         processingService.deleteForFolder(id);
 
         em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id = :fid)")

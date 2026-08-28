@@ -8,8 +8,8 @@ import io.hyperfoil.tools.h5m.entity.node.FixedThreshold;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.entity.work.Work;
-import io.hyperfoil.tools.h5m.event.ChangeDetectedEvent;
-import io.hyperfoil.tools.h5m.event.ChangeDetectedEventObserver;
+import io.hyperfoil.tools.h5m.event.ChangeEvent;
+import io.hyperfoil.tools.h5m.event.ChangeEventObserver;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.*;
@@ -31,7 +31,7 @@ public class ChangeDetectionTest extends FreshDb {
     WorkService workService;
 
     @Inject
-    ChangeDetectedEventObserver eventObserver;
+    ChangeEventObserver eventObserver;
 
     @BeforeEach
     public void clearEvents() {
@@ -90,8 +90,8 @@ public class ChangeDetectionTest extends FreshDb {
 
         workService.execute(work);
 
-        assertEquals(1, eventObserver.getEvents().size(), "should fire exactly one ChangeDetectedEvent");
-        ChangeDetectedEvent event = eventObserver.getEvents().getFirst();
+        assertEquals(1, eventObserver.getEvents().size(), "should fire exactly one ChangeEvent");
+        ChangeEvent event = eventObserver.getEvents().getFirst();
         assertFalse(event.changes().isEmpty(), "event should contain change results");
         assertEquals(fixture.ft().getId(), event.changes().getFirst().nodeId());
         assertEquals("ftNode", event.changes().getFirst().nodeName());
@@ -105,7 +105,7 @@ public class ChangeDetectionTest extends FreshDb {
 
         workService.execute(work);
 
-        assertEquals(0, eventObserver.getEvents().size(), "should not fire ChangeDetectedEvent when value is within threshold");
+        assertEquals(0, eventObserver.getEvents().size(), "should not fire ChangeEvent when value is within threshold");
     }
 
     @Test
@@ -140,6 +140,6 @@ public class ChangeDetectionTest extends FreshDb {
         Work work = new Work(jqNode, new ArrayList<>(jqNode.sources), List.of(rootValue.id));
         workService.execute(work);
 
-        assertEquals(0, eventObserver.getEvents().size(), "should not fire ChangeDetectedEvent for non-detection nodes");
+        assertEquals(0, eventObserver.getEvents().size(), "should not fire ChangeEvent for non-detection nodes");
     }
 }
