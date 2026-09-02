@@ -6,11 +6,32 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   build: {
+    cssMinify: 'esbuild',
     chunkSizeWarningLimit: 600,
     rollupOptions: {
+      input: {
+        app: resolve(__dirname, 'index.html'),
+        roq: resolve(__dirname, 'h5m-roq.js'), // lightweight bundle of carbon dependencies for roq
+      },
       output: {
+        entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name === 'roq') {
+            return 'h5m-roq.js'; // emits directly to /h5m-roq.js
+          }
+          return 'assets/[name]-[hash].js';
+        },
+        assetFileNames: (assetInfo) => {
+          // give Roq's compiled CSS a fixed filename at root
+          if (assetInfo.names.some((name) => name.includes('roq') && name.endsWith('.css'))) {
+            return 'h5m-roq.css';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
         manualChunks: (id: string) => {
           if (id.includes('node_modules')) {
+            if (id.includes('@carbon/web-components')) {
+              return 'carbon-wc';
+            }
             if (id.includes('react-core') || id.includes('react-router') || id.includes('react-dom')) {
               return 'react-core';
             }

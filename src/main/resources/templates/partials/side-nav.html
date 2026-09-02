@@ -1,0 +1,36 @@
+{@io.quarkiverse.roq.frontmatter.runtime.model.Page page}
+{@io.quarkiverse.roq.frontmatter.runtime.model.Site site}
+{!
+  Content-driven side navigation.
+
+  Each top-level folder under content/ is a menu, described by its index.md section page:
+   - its `title` is the menu label and its `weight` the menu order.
+  The other pages in the folder are the menu items, ordered by their own `weight`. So:
+    - add a menu  -> add content/<name>/index.md (with title + weight)
+    - add an item -> add content/<name>/<page>.md  (with title + weight)
+  No template edits, no separate nav file. Grouping/ordering is done by NavExtension (site.pages.sections / .items);
+  Roq's built-in sortBy/filter only work on collection documents, not plain pages. Drafts are already excluded from site.pages by Roq.
+
+  Current-page highlight (see project_qute_boolean_attributes): the matching item gets the BARE `active` attribute and its parent menu the BARE `expanded` attribute,
+  emitted via {#if}...{/if} — never active="false", which HTML treats as truthy-when-present.
+!}
+{#let here=page.url.toString}
+<cds-side-nav aria-label="Side navigation" role="navigation" collapse-mode="responsive" expanded="">
+  <cds-side-nav-items>
+    <cds-side-nav-link href="{site.url('/')}" {#if here == site.url('/').toString}active{/if}>Home</cds-side-nav-link>
+
+    {#for section in site.pages.sections}
+    {#let items=site.pages.items(section)}
+    {#if items.size > 0}
+    {! A menu is expanded when the current page is its section index or one of its items, i.e. the current URL starts with the section URL. !}
+    <cds-side-nav-menu title="{section.title}" {#if here.startsWith(section.url.toString)}expanded{/if}>
+      {#for item in items}
+      <cds-side-nav-menu-item href="{item.url}" {#if here == item.url.toString}active{/if}>{item.data('nav_title') ?: item.title}</cds-side-nav-menu-item>
+      {/for}
+    </cds-side-nav-menu>
+    {/if}
+    {/let}
+    {/for}
+  </cds-side-nav-items>
+</cds-side-nav>
+{/let}

@@ -8,7 +8,7 @@ export const DOCS_IFRAME_STYLE: CSSProperties = { display: 'block', border: 'non
 export const docsIframeSrc = (pathname = '', hash = '') => {
   const path = pathname.replace(/^\/help\/?/, '');
   const needsSlash = path && !path.endsWith('/') && !path.includes('.');
-  return `/site/docs/${path}${needsSlash ? '/' : ''}${hash}`;
+  return `/site/${path}${needsSlash ? '/' : ''}${hash}`;
 };
 
 export const SitePage = () => {
