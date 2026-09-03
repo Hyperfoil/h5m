@@ -5,7 +5,8 @@
   @include carbon.type-style('code-01');
 }
 
-[data-carbon-theme='white'] {
+// :root scoped as Carbon chart holders also carry data-carbon-theme and would inherit unwanted style
+:root[data-carbon-theme='white'] {
   @include carbon.theme(themes.$white);
 
   background-color: carbon.$background;
@@ -13,7 +14,7 @@
   min-height: 100vh;
 }
 
-[data-carbon-theme='g10'] {
+:root[data-carbon-theme='g10'] {
   @include carbon.theme(themes.$g10);
 
   background-color: carbon.$background;
@@ -21,7 +22,7 @@
   min-height: 100vh;
 }
 
-[data-carbon-theme='g90'] {
+:root[data-carbon-theme='g90'] {
   @include carbon.theme(themes.$g90);
 
   background-color: carbon.$background;
@@ -29,7 +30,7 @@
   min-height: 100vh;
 }
 
-[data-carbon-theme='g100'] {
+:root[data-carbon-theme='g100'] {
   @include carbon.theme(themes.$g100);
 
   background-color: carbon.$background;
