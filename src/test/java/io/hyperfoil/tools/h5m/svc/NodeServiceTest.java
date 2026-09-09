@@ -825,6 +825,145 @@ public class NodeServiceTest extends FreshDb {
     }
 
     /**
+     * Tests that re-running detection for the same upload is idempotent:
+     * no duplicate detections are created and the persisted count is stable.
+     * Guards the accumulation bug (allDomainValues growing across sdIdx
+     * iterations) and the cleanup-guard bug (!rtrn.isEmpty()) from #303.
+     */
+    @Test
+    public void calculateRelativeDifference_rerun_is_idempotent() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".domain", rootNode);
+        domainNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fp", rootNode);
+        fingerprintNode.persist();
+
+        ValueEntity rootValue01 = new ValueEntity(null, rootNode, JqValues.parse(
+                "{ \"y\": 1, \"domain\": 10, \"fp\": \"alpha\" }"));
+        rootValue01.persist();
+        ValueEntity rootValue02 = new ValueEntity(null, rootNode, JqValues.parse(
+                "{ \"y\": 1, \"domain\": 20, \"fp\": \"alpha\" }"));
+        rootValue02.persist();
+        ValueEntity rootValue03 = new ValueEntity(null, rootNode, JqValues.parse(
+                "{ \"y\": 10, \"domain\": 30, \"fp\": \"alpha\" }"));
+        rootValue03.persist();
+
+        for (ValueEntity rv : List.of(rootValue01, rootValue02, rootValue03)) {
+            new ValueEntity(null, rangeNode, rv.data.getField("y"), List.of(rv)).persist();
+            new ValueEntity(null, domainNode, rv.data.getField("domain"), List.of(rv)).persist();
+            new ValueEntity(null, fingerprintNode, rv.data.getField("fp"), List.of(rv)).persist();
+        }
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setThreshold(0.2);
+        relDiff.setNodes(fingerprintNode, rootNode, rangeNode, domainNode);
+        relDiff.persist();
+        tm.commit();
+
+        // First run: persist the detections like the pipeline would
+        List<ValueEntity> first = nodeService.calculateRelativeDifferenceValues(relDiff, rootValue03, 0);
+        assertNotNull(first);
+        tm.begin();
+        for (ValueEntity v : first) {
+            em.merge(v);
+        }
+        tm.commit();
+        long persistedAfterFirst = valueService.getValues(relDiff).size();
+
+        // Second run for the same upload: must produce the same detections
+        // (same count, same domain values) — evaluation is deterministic.
+        // The cleanup must not delete the persisted detection that was
+        // re-detected, so the persisted count stays stable without merging.
+        List<ValueEntity> second = nodeService.calculateRelativeDifferenceValues(relDiff, rootValue03, 0);
+        assertNotNull(second);
+        assertEquals(first.size(), second.size(),
+                "Re-running detection for the same upload must produce the same number of detections");
+        Set<JqValue> firstDomains = new HashSet<>();
+        for (ValueEntity v : first) {
+            firstDomains.add(v.data.getField("domainvalue"));
+        }
+        for (ValueEntity v : second) {
+            assertTrue(firstDomains.contains(v.data.getField("domainvalue")),
+                    "Re-run must detect at the same domain values, got: " + v.data);
+        }
+        assertEquals(persistedAfterFirst, valueService.getValues(relDiff).size(),
+                "Persisted detection count must be stable across re-runs (re-detected detections are kept, not deleted)");
+    }
+
+    /**
+     * Tests that two fingerprint series are evaluated independently: a change
+     * in one series must not leak detections into the other, and evaluating
+     * one series must not disturb the other's persisted detections.
+     * The per-fingerprint loop must keep each series' evaluation isolated.
+     */
+    @Test
+    public void calculateRelativeDifference_multi_fingerprint_independent() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".y", rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".domain", rootNode);
+        domainNode.persist();
+        // Single fingerprint node, two distinct fingerprint values ("a" and "b")
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".fp", rootNode);
+        fingerprintNode.persist();
+
+        // Series "a": stable (1, 1, 1) — no change expected
+        // Series "b": stable then jump (1, 1, 10) — change expected
+        String[] fps = {"a", "a", "a", "b", "b", "b"};
+        double[] ys = {1, 1, 1, 1, 1, 10};
+        int[] domains = {10, 20, 30, 10, 20, 30};
+        List<ValueEntity> roots = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            ValueEntity rv = new ValueEntity(null, rootNode, JqValues.parse(
+                    String.format("{\"y\": %s, \"domain\": %d, \"fp\": \"%s\"}", ys[i], domains[i], fps[i])));
+            rv.persist();
+            roots.add(rv);
+            new ValueEntity(null, rangeNode, rv.data.getField("y"), List.of(rv)).persist();
+            new ValueEntity(null, domainNode, rv.data.getField("domain"), List.of(rv)).persist();
+            new ValueEntity(null, fingerprintNode, rv.data.getField("fp"), List.of(rv)).persist();
+        }
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.setFilter(Filter.MEAN);
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setThreshold(0.2);
+        relDiff.setNodes(fingerprintNode, rootNode, rangeNode, domainNode);
+        relDiff.persist();
+        tm.commit();
+
+        // Evaluate from the "b" upload (last root) — the "b" series has the change
+        List<ValueEntity> foundB = nodeService.calculateRelativeDifferenceValues(relDiff, roots.get(5), 0);
+        assertNotNull(foundB);
+        assertFalse(foundB.isEmpty(), "Series 'b' (1,1,10) should detect a change");
+        // Persist like the pipeline would
+        tm.begin();
+        for (ValueEntity v : foundB) {
+            em.merge(v);
+        }
+        tm.commit();
+
+        // Evaluate from the "a" upload — the "a" series is stable, no new detections
+        List<ValueEntity> foundA = nodeService.calculateRelativeDifferenceValues(relDiff, roots.get(2), 0);
+        assertNotNull(foundA);
+        assertTrue(foundA.isEmpty(), "Series 'a' (1,1,1) must not detect any change");
+
+        // The "b" detection must still be the only persisted detection
+        List<ValueEntity> persisted = valueService.getValues(relDiff);
+        assertEquals(foundB.size(), persisted.size(),
+                "Evaluating series 'a' must not disturb series 'b' persisted detections");
+    }
+
+    /**
      * Tests that RelativeDifference detection works without a domain node
      * (null domain), using created_at ordering as fallback. This is the
      * code path used by legacy Horreum imports (issue #284).

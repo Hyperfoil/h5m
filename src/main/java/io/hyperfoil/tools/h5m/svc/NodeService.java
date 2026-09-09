@@ -505,106 +505,122 @@ public class NodeService implements NodeServiceInterface {
                     continue;
                 }
                 if (relDiff.getDomainNode() != null) {
-                    // Domain-based ordering: iterate over domain values to find matching ranges.
+                    // Domain-based ordering: batch-fetch the full series, then
+                    // evaluate in memory at the uploaded domain values + their windows.
+                    //
+                    // Batch fetch: one query for the full domain-ordered series and one
+                    // for range values — replaces per-domain-value CTE queries.
+                    // Pattern follows EDivisive's batch-fetch approach.
+                    List<ValueEntity> allDomainSeries = valueService.findMatchingFingerprint(
+                            relDiff.getDomainNode(),
+                            groupBy,
+                            fingerprintValue,
+                            relDiff.getDomainNode(),
+                            null,
+                            -1, 0, true
+                    );
+                    List<ValueEntity> allRangeSeries = valueService.findMatchingFingerprint(
+                            relDiff.getRangeNode(),
+                            groupBy,
+                            fingerprintValue,
+                            relDiff.getDomainNode(),
+                            null,
+                            -1, 0, true
+                    );
+
+                    // Build domain-position lookup (domain value id -> position in sorted series)
+                    Map<Long, Integer> domainPosById = new HashMap<>();
+                    for (int i = 0; i < allDomainSeries.size(); i++) {
+                        domainPosById.put(allDomainSeries.get(i).id, i);
+                    }
+
+                    int windowSize = (int) (relDiff.getWindow() + minPrevious);
+
+                    // Build the evaluation set: for each uploaded domain value, add
+                    // its window (preceding + following). Deduplicate by ID to avoid
+                    // evaluating the same domain value multiple times.
                     List<ValueEntity> rootDomainValues = valueService.getDescendantValues(root, relDiff.getDomainNode());
-                    List<ValueEntity> allDomainValues = new ArrayList<>();
-                    for (int sdIdx = 0; sdIdx < rootDomainValues.size(); sdIdx++) {
-                        ValueEntity uploadedDomainValue = rootDomainValues.get(sdIdx);
-                        List<ValueEntity> preceedingDomainValues = valueService.findMatchingFingerprint(
-                                relDiff.getDomainNode(),
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                true
-                        );
+                    LinkedHashSet<Long> evaluationIds = new LinkedHashSet<>();
+                    for (ValueEntity uploadedDomainValue : rootDomainValues) {
+                        Integer uploadPos = domainPosById.get(uploadedDomainValue.id);
+                        if (uploadPos == null) continue;
 
-                        List<ValueEntity> followingDomainValues = valueService.findMatchingFingerprint(
-                                relDiff.getDomainNode(),
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                false
-                        );
-                        if(!followingDomainValues.isEmpty()) {
-                            followingDomainValues.remove(0);
+                        // Preceding domain values (up to windowSize before the upload)
+                        int precedingStart = Math.max(0, uploadPos - windowSize + 1);
+                        for (int i = precedingStart; i <= uploadPos; i++) {
+                            evaluationIds.add(allDomainSeries.get(i).id);
                         }
-                        allDomainValues.addAll(preceedingDomainValues);
-                        allDomainValues.addAll(followingDomainValues);
-                        for (int dIdx = 0; dIdx < allDomainValues.size(); dIdx++) {
-                            ValueEntity domainValue = allDomainValues.get(dIdx);
-                            //todo this does not look for values after previous relDiff observation :(
-                            List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
-                                    relDiff.getRangeNode(),
-                                    groupBy,
-                                    fingerprintValue,
-                                    relDiff.getDomainNode(),
-                                    domainValue,
-                                    null,
-                                    (int) (relDiff.getWindow() + minPrevious),
-                                    0,
-                                    true
-                            );
-                            List<Double> converted = rangeValues.stream()
-                                .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
-                                .filter(Objects::nonNull).toList();
+                        // Following domain values affected by this insertion
+                        int followingEnd = Math.min(allDomainSeries.size(), uploadPos + windowSize);
+                        for (int i = uploadPos + 1; i < followingEnd; i++) {
+                            evaluationIds.add(allDomainSeries.get(i).id);
+                        }
+                    }
 
-                            JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, domainValue.data);
-                            if (changeData != null) {
-                                dIdx += minPrevious;
-                                ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
-                                changeValue.idx = startingOrdinal;
-                                List<ValueEntity> foundParents = valueService.getAncestor(domainValue, groupBy);
-                                if (foundParents.size() == 1) {
-                                    changeValue.sources = foundParents;
-                                }
-                                rtrn.add(changeValue);
-                            }
-                        }
-                        List<ValueEntity> persistedChangeValues = valueService.findMatchingFingerprint(
-                                relDiff,
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                false
-                        );
-                        List<JqValue> domainRemoveScope = new ArrayList<>();
-                        for (ValueEntity dv : allDomainValues) {
-                            if (dv.data != null) {
-                                domainRemoveScope.add(dv.data);
-                            }
-                        }
-                        if (!rtrn.isEmpty()) {
-                            for (ValueEntity existingValue : persistedChangeValues) {
-                                JqValue existingDomainValue = existingValue.data != null ? existingValue.data.getField("domainvalue") : JqNull.NULL;
-                                if (existingDomainValue.isNull()) continue;
-                                if (domainRemoveScope.contains(existingDomainValue)) {
-                                    boolean match = false;
-                                    for (ValueEntity currentValue : rtrn) {
-                                        JqValue currentDomainValue = currentValue.data != null ? currentValue.data.getField("domainvalue") : JqNull.NULL;
-                                        if (currentDomainValue.isNull()) continue;
-                                        if (existingDomainValue.equals(currentDomainValue)) {
-                                            match = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!match) {
-                                        valueService.delete(existingValue);
-                                    }
-                                }
-                            }
+                    // Evaluate at each domain value in the deduped set, in domain order.
+                    // Cleanup of stale detections happens AFTER evaluation so we
+                    // know which domain values were re-detected.
+                    // Convert to list for index-based iteration (needed for skip-ahead).
+                    List<Long> evaluationList = new ArrayList<>(evaluationIds);
+                    for (int eIdx = 0; eIdx < evaluationList.size(); eIdx++) {
+                        Long evalId = evaluationList.get(eIdx);
+                        Integer domainPos = domainPosById.get(evalId);
+                        if (domainPos == null) continue;
 
+                        ValueEntity domainValue = allDomainSeries.get(domainPos);
+
+                        // Slice range values: take up to windowSize values ending
+                        // at this domain position
+                        int rangeEnd = Math.min(domainPos + 1, allRangeSeries.size());
+                        int rangeStart = Math.max(0, rangeEnd - windowSize);
+                        List<Double> converted = allRangeSeries.subList(rangeStart, rangeEnd)
+                                .stream()
+                                .map(v -> v.data != null ? v.data.tryDouble() : null)
+                                .filter(Objects::nonNull)
+                                .toList();
+
+                        JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, domainValue.data);
+                        if (changeData != null) {
+                            // Skip ahead to avoid detecting adjacent duplicate changes
+                            eIdx += minPrevious;
+                            ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
+                            changeValue.idx = startingOrdinal;
+                            List<ValueEntity> foundParents = valueService.getAncestor(domainValue, groupBy);
+                            if (foundParents.size() == 1) {
+                                changeValue.sources = foundParents;
+                            }
+                            rtrn.add(changeValue);
+                        }
+                    }
+
+                    // Cleanup: delete persisted detections within the evaluation
+                    // scope that were NOT re-detected. Detections that were
+                    // re-detected stay persisted; new detections at previously
+                    // undetected domain values are returned in rtrn for the
+                    // caller to persist.
+                    Set<JqValue> redetectedDomains = new HashSet<>();
+                    for (ValueEntity rv : rtrn) {
+                        JqValue d = rv.data != null ? rv.data.getField("domainvalue") : JqNull.NULL;
+                        if (!d.isNull()) {
+                            redetectedDomains.add(d);
+                        }
+                    }
+                    Set<JqValue> evaluationDomainData = new HashSet<>();
+                    for (Long evalId : evaluationIds) {
+                        Integer pos = domainPosById.get(evalId);
+                        if (pos != null && allDomainSeries.get(pos).data != null) {
+                            evaluationDomainData.add(allDomainSeries.get(pos).data);
+                        }
+                    }
+                    List<ValueEntity> persistedChangeValues = valueService.findMatchingFingerprint(
+                            relDiff, groupBy, fingerprintValue, (NodeEntity) null);
+                    for (ValueEntity existing : persistedChangeValues) {
+                        JqValue existingDomain = existing.data != null
+                                ? existing.data.getField("domainvalue") : JqNull.NULL;
+                        if (!existingDomain.isNull()
+                                && evaluationDomainData.contains(existingDomain)
+                                && !redetectedDomains.contains(existingDomain)) {
+                            valueService.delete(existing);
                         }
                     }
                 } else {
