@@ -364,10 +364,6 @@ public class NodeServiceTest extends FreshDb {
         rootNode.id = 1L;
         JsNode jsNode = new JsNode("js","value=>value.reduce((a,b)=>a+b)");
         List<ValueEntity> result = nodeService.calculateJsValues(jsNode, Map.of(rootNode.id,new ValueEntity(null,rootNode,JqValues.parse("[1,2,3]"))),0);
-
-        for(ValueEntity v : result){
-            System.out.println(v.data);
-        }
     }
 
     @Test
@@ -386,7 +382,6 @@ public class NodeServiceTest extends FreshDb {
         data = value.data;
         assertNotNull(data);
         assertEquals(JqString.of("foo"),data);
-        System.out.println(data);
     }
 
 
@@ -685,7 +680,125 @@ public class NodeServiceTest extends FreshDb {
         assertEquals("cat", hit.getFirst().data.asText());
         assertEquals(0, miss.size(), "non-matching path should produce no values");
     }
+    @Test
+    public void calculateRelativeDifference_missing_range() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range",".r",rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain",".d",rootNode);
+        domainNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint",".f",rootNode);
+        fingerprintNode.persist();
 
+        List<ValueEntity> roots = new ArrayList<>();
+
+        for(String input : List.of(
+                """
+                    { "f" : "yay", "d" : 1, "r" : 1}
+                """,
+                """
+                    { "f" : "yay", "d" : 2 }
+                """,
+                """
+                    { "f" : "yay", "d" : 3, "r" : 2}
+                """
+        )){
+            JqValue value = JqValues.parse(input);
+            ValueEntity rootValue = new ValueEntity(null,rootNode,value);
+            rootValue.persist();
+            roots.add(rootValue);
+            ValueEntity domainValue = new ValueEntity(null,domainNode,value.getField("d"),List.of(rootValue));
+            domainValue.persist();
+            if(value.has("r")){
+                ValueEntity rangeValue = new ValueEntity(null,rangeNode,value.getField("r"),List.of(rootValue));
+                rangeValue.persist();
+            }
+            ValueEntity fingerprintValue = new ValueEntity(null,fingerprintNode,value.getField("f"),List.of(rootValue));
+            fingerprintValue.persist();
+        }
+        tm.commit();
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name="calculateRelativeDifference_missing_range";
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setNodes(fingerprintNode,rootNode,rangeNode,domainNode);
+
+        List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff,roots.get(1),0);
+        assertNotNull(found);
+        assertEquals(0,found.size(), "should not find a change when missing range value: "+found);
+        found = nodeService.calculateRelativeDifferenceValues(relDiff,roots.get(0),0);
+        assertNotNull(found);
+        assertEquals(1,found.size(), "should find one change: "+found);
+        ValueEntity foundValue = found.getFirst();
+        JqValue data = foundValue.data;
+        assertNotNull(data);
+        assertTrue(data.has("domainvalue"),"change data should have a domainvalue: "+data.asMap().keySet());
+        assertEquals(JqNumber.of(3),data.getField("domainvalue"),"change should be detected for 3rd root value not second: "+data);
+    }
+    @Test
+    public void calculateRelativeDifference_missing_domain() throws IOException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range",".r",rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain",".d",rootNode);
+        domainNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint",".f",rootNode);
+        fingerprintNode.persist();
+
+        List<ValueEntity> roots = new ArrayList<>();
+
+        for(String input : List.of(
+                """
+                    { "f" : "yay", "d" : 1, "r" : 1}
+                """,
+                """
+                    { "f" : "yay", "r" : 10 }
+                """,
+                """
+                    { "f" : "yay", "d" : 3, "r" : 2}
+                """
+        )){
+            JqValue value = JqValues.parse(input);
+            ValueEntity rootValue = new ValueEntity(null,rootNode,value);
+            rootValue.persist();
+            roots.add(rootValue);
+            if(value.has("d")) {
+                ValueEntity domainValue = new ValueEntity(null, domainNode, value.getField("d"), List.of(rootValue));
+                domainValue.persist();
+            }
+            if(value.has("r")){
+                ValueEntity rangeValue = new ValueEntity(null,rangeNode,value.getField("r"),List.of(rootValue));
+                rangeValue.persist();
+            }
+            ValueEntity fingerprintValue = new ValueEntity(null,fingerprintNode,value.getField("f"),List.of(rootValue));
+            fingerprintValue.persist();
+        }
+        tm.commit();
+
+        RelativeDifference relDiff = new RelativeDifference();
+        relDiff.name="calculateRelativeDifference_missing_domain";
+        relDiff.setWindow(1);
+        relDiff.setMinPrevious(1);
+        relDiff.setNodes(fingerprintNode,rootNode,rangeNode,domainNode);
+
+        List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff,roots.getFirst(),0);
+        assertNotNull(found);
+        assertEquals(1,found.size(), "should find one change: "+found);
+        ValueEntity foundValue = found.getFirst();
+        JqValue data = foundValue.data;
+        assertNotNull(data);
+        assertTrue(data.has("domainvalue"),"change data should have a domainvalue: "+data.asMap().keySet());
+        assertEquals(JqNumber.of(3),data.getField("domainvalue"),"change should be detected for 3rd root value not second: "+data);
+        assertTrue(data.has("previous"),"change data should have prevoius: "+data.asMap().keySet());
+        assertEquals(JqNumber.of(1),data.getField("previous"),"previus should be 1: "+data);
+        assertTrue(data.has("value"),"data should have value: "+data.asMap().keySet());
+        assertEquals(JqNumber.of(2),data.getField("value"),"value should be 2: "+data);
+    }
     @Test
     public void calculateRelativeDifference_root() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException, IOException {
         tm.begin();
@@ -748,12 +861,11 @@ public class NodeServiceTest extends FreshDb {
         relDifference.setMinPrevious(1);
         relDifference.setNodes(fingerprintNode,rootNode,rangeNode,domainNode);
 
+        //simulates uploading rootValue01 after rootValue02 and rootValue03 are already in db
         List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDifference,rootValue01,0);
         assertNotNull(found);
         assertEquals(1,found.size());
         ValueEntity value = found.getFirst();
-        System.out.println("found\n"+found);
-        System.out.println("value\n"+value+"\n"+value.data);
 
     }
 
@@ -863,7 +975,7 @@ public class NodeServiceTest extends FreshDb {
         ValueEntity firstRoot = ValueEntity.find("node.id", rootNode.id).firstResult();
         List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff, firstRoot, 0);
         assertNotNull(found);
-        assertFalse(found.isEmpty(), "Should detect a change with null domain using created_at ordering");
+        assertFalse(found.isEmpty(), "Should detect a change with null domain using created_at ordering:\n  "+found.stream().map(e->e.id+"="+e.data).collect(Collectors.joining("\n  ")));
 
         // Verify the detection output has correct structure
         JqValue data = found.getFirst().data;
@@ -1213,8 +1325,6 @@ public class NodeServiceTest extends FreshDb {
         assertEquals(1,values.size(),"expect to create a single value from two sources");
         ValueEntity found = values.get(0);
         assertNotNull(found.data,"found data should not be null");
-        System.out.println(found.data);
-
     }
 
     @Test
@@ -2662,8 +2772,8 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> changes4 = nodeService.calculateRelativeDifferenceValues(relDiff, root4, 0);
 
-        assertEquals(1, changes4.size(),
-                "Upload 2: x=1 should produce 1 change (ratio exceeds 50% threshold)");
+        assertEquals(2, changes4.size(),
+                "Upload 2: x=1 should produce 2 changes (because they arent persisted) (ratio exceeds 50% threshold):\n"+changes4.stream().map(v->v.data.toJsonString()).collect(Collectors.joining("\n")));
 
         ValueEntity change4 = changes4.get(0);
         JqValue changeData4 = change4.data;
@@ -2745,7 +2855,7 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> changes2 = nodeService.calculateRelativeDifferenceValues(relDiff, root2, 0);
         assertEquals(1, changes2.size(),
-                "Upload 2: x=2 with only 1 sample should produce 1 change");
+                "Upload 2: x=2 with 2 samples should produce 1 change");
 
         ValueEntity change2 = changes2.get(0);
         JqValue changeData2 = change2.data;
@@ -2784,7 +2894,7 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> changes3 = nodeService.calculateRelativeDifferenceValues(relDiff, root3, 0);
 
         assertEquals(0, changes3.size(),
-                "Upload 3: x=1 with only 1 sample should produce 0 changes (need window(1) + minPrevious(1) = 2 samples)");
+                "Upload 3: x=1 should produce 0 changes (need window(1) + minPrevious(1) = 2 samples)");
 
         tm.begin();
         ValueEntity root4 = new ValueEntity(null,rootNode,JqValues.parse("""
@@ -2808,7 +2918,7 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> changes4 = nodeService.calculateRelativeDifferenceValues(relDiff, root4, 0);
 
         assertEquals(1, changes4.size(),
-                "Upload 4: x=3 with only 1 sample should produce 1 change");
+                "Upload 4: x=3 sample should produce 1 change");
 
         ValueEntity change4 = changes4.get(0);
         JqValue changeData4 = change4.data;
@@ -2952,8 +3062,8 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> changes4 = nodeService.calculateRelativeDifferenceValues(relDiff, root4, 0);
 
-        assertEquals(1, changes4.size(),
-                "Upload 4: x=3 produce 1 changes (need window(1) + minPrevious(1) = 2 samples)");
+        assertEquals(0, changes4.size(),
+                "Upload 4: x=3 produce 0 changes when relaive difference removes duplicates");
 
         List<ValueEntity> vs =  valueService.getValues(relDiff);
         assertEquals(1,vs.size(),"There should be 1 persisted change value for domainValue 4"+ vs);
@@ -3066,7 +3176,7 @@ public class NodeServiceTest extends FreshDb {
         List<ValueEntity> changes3 = nodeService.calculateRelativeDifferenceValues(relDiff, root3, 0);
 
         assertEquals(1, changes3.size(),
-                "Upload 3: x=1 with only 1 sample should produce 1 change");
+                "Upload 3: x=3 with only 1 sample should produce 1 change");
         ValueEntity change3 = changes3.get(0);
         JqValue changeData3 = change3.data;
         JqValue domainValue3 = changeData3.getField("domainvalue");
@@ -3097,15 +3207,15 @@ public class NodeServiceTest extends FreshDb {
 
         List<ValueEntity> changes4 = nodeService.calculateRelativeDifferenceValues(relDiff, root4, 0);
 
-        assertEquals(1, changes4.size(),
-                "Upload 4: x=1 with only 1 sample should produce 1 change");
+        assertEquals(2, changes4.size(),
+                "Upload 4: x=1 with should produce 2 changes");
         ValueEntity change4 = changes4.get(0);
         JqValue changeData4 = change4.data;
         JqValue domainValue4 = changeData4.getField("domainvalue");
         assertEquals(2,domainValue4.longValue(),"Domain value should be 2");
 
         List<ValueEntity> vs =  valueService.getValues(relDiff);
-        assertEquals(1,vs.size(),"There should be one persisted change value for domainValue 3"+ vs);
+        assertEquals(0,vs.size(),"calculateRelativeDiffernceValues should not automatically commit value"+ vs);
 
     }
     @Test

@@ -24,6 +24,7 @@ import io.hyperfoil.tools.h5m.entity.node.*;
 import io.hyperfoil.tools.h5m.pasted.ProxyJq;
 import io.hyperfoil.tools.h5m.pasted.ProxyJqObject;
 import io.hyperfoil.tools.h5m.pasted.Util;
+import io.hyperfoil.tools.yaup.HashedLists;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -497,144 +498,182 @@ public class NodeService implements NodeServiceInterface {
         try{
             long minPrevious = relDiff.getWindow() > relDiff.getMinPrevious() ? relDiff.getWindow() : relDiff.getMinPrevious();
             NodeEntity groupBy = NodeEntity.findById(relDiff.getGroupByNode().getId());
-            List<ValueEntity> fingerprintValues = valueService.getDescendantValues(root,relDiff.getFingerprintNode());
-            String fpFilter = relDiff.getFingerprintFilter();
-            for(int fIdx=0; fIdx<fingerprintValues.size(); fIdx++) {
-                ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
-                if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
-                    continue;
+
+            List<ValueEntity> groupByValues = root.node.equals(groupBy)?List.of(root) : valueService.getDescendantValues(root,groupBy);
+
+            for(ValueEntity groupByValue : groupByValues){
+                List<ValueEntity> fingerprintValues = valueService.getDescendantValues(groupByValue,relDiff.getFingerprintNode());
+
+                if(fingerprintValues.size() > 1 ) {
+                    //I think this is an indication of a miss-configured change detection.
+                    Map<String, ValueEntity> uniquefingerprintValues = new HashMap<>();
+                    for (ValueEntity fingerprintValue : fingerprintValues) {
+                        uniquefingerprintValues.putIfAbsent(fingerprintValue.data.toJsonString(), fingerprintValue);
+                    }
+                    fingerprintValues = new ArrayList<>(uniquefingerprintValues.values());
                 }
-                if (relDiff.getDomainNode() != null) {
-                    // Domain-based ordering: iterate over domain values to find matching ranges.
-                    List<ValueEntity> rootDomainValues = valueService.getDescendantValues(root, relDiff.getDomainNode());
-                    List<ValueEntity> allDomainValues = new ArrayList<>();
-                    for (int sdIdx = 0; sdIdx < rootDomainValues.size(); sdIdx++) {
-                        ValueEntity uploadedDomainValue = rootDomainValues.get(sdIdx);
-                        List<ValueEntity> preceedingDomainValues = valueService.findMatchingFingerprint(
-                                relDiff.getDomainNode(),
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
+
+                String fpFilter = relDiff.getFingerprintFilter();
+                for(int fIdx=0; fIdx<fingerprintValues.size(); fIdx++){
+                    ValueEntity fingerprintValue = fingerprintValues.get(fIdx);
+                    if (fpFilter != null && !evaluateFingerprintFilter(fpFilter, fingerprintValue.data,fingerprintValue.node)) {
+                        continue;
+                    }
+                    if (relDiff.getDomainNode() != null) {
+                        // Domain-based ordering: iterate over domain values to find matching ranges.
+                        //List<ValueEntity> groupByDomainValues = valueService.getDescendantValues(groupByValue, relDiff.getDomainNode());
+                        //only get the domain values that come from this fingerprint
+                        List<ValueEntity> groupByDomainDescendants = valueService.getDescendantValues(groupByValue,relDiff.getDomainNode());
+                        if(groupByDomainDescendants.isEmpty()){
+                            Log.warn(relDiff+" groupBy value.id="+groupByValue.id+" does not have a domain value");
+                            //this is bad, it means the domain is not a descendant of the groupBy?
+                            continue;
+                        }else if(groupByDomainDescendants.size() > 1 ) {
+                            Log.warn(relDiff+" groupBy value.id="+groupByValue.id+" creates "+groupByDomainDescendants.size()+" domain values, expected 1");
+                            //I think this is an indication the change dection is miss-configured
+                            continue;
+                        }
+                        HashedLists<JqValue,ValueService.GroupRangeValue> groupRangeValues = valueService.getRangeValueForDistinctDomainValues(
+                                relDiff.getRangeNode().id,
+                                relDiff.getDomainNode().id,
+                                groupByDomainDescendants.getFirst().data,
+                                relDiff.getFingerprintNode().id,
+                                fingerprintValue.data,
+                                groupBy.id,
                                 (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                true
+                                (int) (relDiff.getWindow() + minPrevious + minPrevious)
                         );
 
-                        List<ValueEntity> followingDomainValues = valueService.findMatchingFingerprint(
-                                relDiff.getDomainNode(),
+                        List<JqValue> domainValues = new ArrayList<>(groupRangeValues.keys());
+                        List<Double> reducedRangeValues =  new ArrayList<>();
+                        for(JqValue domainValue : domainValues){
+                            List<ValueService.GroupRangeValue> rangeValues = groupRangeValues.get(domainValue);
+                            if(rangeValues.isEmpty()){
+                                //this should not happen
+                            }else if (rangeValues.size() == 1){
+                                if(rangeValues.getFirst().rangeValue().tryDouble()!=null){
+                                    reducedRangeValues.add(rangeValues.getFirst().rangeValue().tryDouble());
+                                }
+                            }else{
+                                //added filtering for null values
+                                SummaryStatistics reducedStatistics = new SummaryStatistics();
+                                rangeValues.stream().filter(grv->grv.rangeValue().tryDouble()!=null).mapToDouble(grv->grv.rangeValue().tryDouble()).forEach(reducedStatistics::addValue);
+                                double reduced = switch (relDiff.getDomainFilter()){
+                                    case MIN -> reducedStatistics.getMin();
+                                    case MAX -> reducedStatistics.getMax();
+                                    case MEAN -> reducedStatistics.getMean();
+                                };
+                                reducedRangeValues.add(reduced);
+                            }
+                        }
+                        if(reducedRangeValues.size() != domainValues.size()){
+                            Log.error("missing range values for domain\n"+relDiff+"\n  range: "+reducedRangeValues+"\n  domain: "+domainValues);
+                            continue;//we cannot calculate change detection
+                        }
+                        //find previous rd before the current domainValue
+                        HashedLists<JqValue, ValueService.GroupRangeValue> detectionsRangeDomains = relDiff.id!=null ? valueService.getRangeValueForDistinctDomainValues(
+                                relDiff.id,
+                                relDiff.getDomainNode().id,
+                                domainValues.getFirst(),
+                                domainValues.getLast(),
+                                relDiff.getFingerprintNode().id,
+                                fingerprintValue.data,
+                                groupBy.id
+                        ) : new HashedLists<>();//empty if the node is not persisted because of unit testing
+
+                        int domainValueIndex = domainValues.indexOf(groupByDomainDescendants.getFirst().data);
+                        //this should be relDiff.getWindow() + minPrevious + 1
+                        if(domainValueIndex < 0){
+                            Log.warn(relDiff+" missing domain+range for domainValue="+groupByDomainDescendants.getFirst().id+" from groupByValue="+groupByValue.id);
+                            continue;//cannot perform change detection for this input
+                        }
+                        for(int i= domainValueIndex; i<domainValues.size(); i++){
+                            JqValue domainValue = domainValues.get(i);
+                            int startIdx = i - (int)relDiff.getWindow() - (int)minPrevious + 1;// + 1 for 0 based indexing versus counts
+                            //int startIdx = i - (int)minPrevious; // I don't understand why minPrivious
+                            if(startIdx < 0){
+                                //cannot perform calculation, insufficient previous values
+                                continue;
+                            }
+                            boolean blockedByExisting = false;
+                            //I'm not sure I understand rel diff minPrevious and window interaction correctly
+                            for(int c=startIdx; c<i; c++){
+                                if(detectionsRangeDomains.containsKey(domainValues.get(c))){
+                                    blockedByExisting = true;
+                                    break;
+                                }
+                            }
+                            if(blockedByExisting){
+                                continue;
+                            }
+                            List<Double> converted = reducedRangeValues.subList(startIdx,i+1); //+1 to include current value bc toIndex is exclusive
+                            JqValue difference = evaluateRelativeDifference(converted,relDiff,minPrevious,domainValue);
+                            if (difference != null) {
+                                if(detectionsRangeDomains.containsKey(domainValue) && detectionsRangeDomains.get(domainValue).stream().map(ValueService.GroupRangeValue::rangeValue).anyMatch(rv->rv.equals(difference))){
+                                    //skipping because we already have that change
+                                    continue;
+                                }
+
+                                ValueEntity changeValue = new ValueEntity(root.folder, relDiff, difference);
+                                changeValue.idx = startingOrdinal;
+                                List<ValueService.GroupRangeValue> rangeValues = groupRangeValues.get(domainValue);
+                                //TODO should the change list each groupId as a source? I think yes but then we have cross root values :scared:
+                                OptionalLong groupId = rangeValues.stream().mapToLong(grv->grv.groupId()).max();
+                                if(groupId.isPresent()){
+                                    long id = groupId.getAsLong();
+                                    ValueEntity groupValue = valueService.byId(id);
+                                    changeValue.sources = List.of(groupValue);
+                                }else{
+                                    //this should not happen, how would there not be a groupId?
+                                }
+                                rtrn.add(changeValue);
+
+                                //purge any changes from detectionsRangeDomains and db if new change created in minPrevious values after i
+                                for(int c=0; c<= relDiff.getMinPrevious() && i+c < domainValues.size(); c++){
+                                    JqValue dv = domainValues.get(c+i);
+                                    if(detectionsRangeDomains.containsKey(dv)){
+                                        List<ValueService.GroupRangeValue> detected = detectionsRangeDomains.get(dv);
+                                        for(ValueService.GroupRangeValue grv : detected){
+                                            valueService.delete(valueService.byId(grv.rangeId()));
+                                        }
+                                        detectionsRangeDomains.removeAll(dv);
+                                    }
+                                }
+
+                                //skip minPrevious to not create a change in within minPrevious of the curent change
+                                i += minPrevious;
+                            }
+                        }
+                    } else {
+                        // No domain node — fall back to created_at ordering.
+                        // This supports legacy Horreum imports where detection nodes are
+                        // created without an explicit domain node (issue #284).
+                        // findMatchingFingerprint with null domain uses ORDER BY created_at.
+                        List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
+                                relDiff.getRangeNode(),
                                 groupBy,
                                 fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                false
+                                (NodeEntity) null, null, null,
+                                (int) (relDiff.getWindow() + minPrevious), 0, true
                         );
-                        if(!followingDomainValues.isEmpty()) {
-                            followingDomainValues.remove(0);
-                        }
-                        allDomainValues.addAll(preceedingDomainValues);
-                        allDomainValues.addAll(followingDomainValues);
-                        for (int dIdx = 0; dIdx < allDomainValues.size(); dIdx++) {
-                            ValueEntity domainValue = allDomainValues.get(dIdx);
-                            //todo this does not look for values after previous relDiff observation :(
-                            List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
-                                    relDiff.getRangeNode(),
-                                    groupBy,
-                                    fingerprintValue,
-                                    relDiff.getDomainNode(),
-                                    domainValue,
-                                    null,
-                                    (int) (relDiff.getWindow() + minPrevious),
-                                    0,
-                                    true
-                            );
-                            List<Double> converted = rangeValues.stream()
+                        List<Double> converted = rangeValues.stream()
                                 .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
                                 .filter(Objects::nonNull).toList();
 
-                            JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, domainValue.data);
-                            if (changeData != null) {
-                                dIdx += minPrevious;
-                                ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
-                                changeValue.idx = startingOrdinal;
-                                List<ValueEntity> foundParents = valueService.getAncestor(domainValue, groupBy);
-                                if (foundParents.size() == 1) {
-                                    changeValue.sources = foundParents;
-                                }
-                                rtrn.add(changeValue);
+                        JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, null);
+                        if (changeData != null) {
+                            ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
+                            changeValue.idx = startingOrdinal;
+                            List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
+                            if (foundParents.size() == 1) {
+                                changeValue.sources = foundParents;
                             }
+                            rtrn.add(changeValue);
                         }
-                        List<ValueEntity> persistedChangeValues = valueService.findMatchingFingerprint(
-                                relDiff,
-                                groupBy,
-                                fingerprintValue,
-                                relDiff.getDomainNode(),
-                                uploadedDomainValue,
-                                null,
-                                (int) (relDiff.getWindow() + minPrevious),
-                                0,
-                                false
-                        );
-                        List<JqValue> domainRemoveScope = new ArrayList<>();
-                        for (ValueEntity dv : allDomainValues) {
-                            if (dv.data != null) {
-                                domainRemoveScope.add(dv.data);
-                            }
-                        }
-                        if (!rtrn.isEmpty()) {
-                            for (ValueEntity existingValue : persistedChangeValues) {
-                                JqValue existingDomainValue = existingValue.data != null ? existingValue.data.getField("domainvalue") : JqNull.NULL;
-                                if (existingDomainValue.isNull()) continue;
-                                if (domainRemoveScope.contains(existingDomainValue)) {
-                                    boolean match = false;
-                                    for (ValueEntity currentValue : rtrn) {
-                                        JqValue currentDomainValue = currentValue.data != null ? currentValue.data.getField("domainvalue") : JqNull.NULL;
-                                        if (currentDomainValue.isNull()) continue;
-                                        if (existingDomainValue.equals(currentDomainValue)) {
-                                            match = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!match) {
-                                        valueService.delete(existingValue);
-                                    }
-                                }
-                            }
-
-                        }
-                    }
-                } else {
-                    // No domain node — fall back to created_at ordering.
-                    // This supports legacy Horreum imports where detection nodes are
-                    // created without an explicit domain node (issue #284).
-                    // findMatchingFingerprint with null domain uses ORDER BY created_at.
-                    List<ValueEntity> rangeValues = valueService.findMatchingFingerprint(
-                            relDiff.getRangeNode(),
-                            groupBy,
-                            fingerprintValue,
-                            (NodeEntity) null, null, null,
-                            -1, 0, true
-                    );
-                    List<Double> converted = rangeValues.stream()
-                            .map(obj -> obj.data != null ? obj.data.tryDouble() : null)
-                            .filter(Objects::nonNull).toList();
-
-                    JqValue changeData = evaluateRelativeDifference(converted, relDiff, minPrevious, null);
-                    if (changeData != null) {
-                        ValueEntity changeValue = new ValueEntity(root.folder, relDiff, changeData);
-                        changeValue.idx = startingOrdinal;
-                        List<ValueEntity> foundParents = valueService.getAncestor(fingerprintValue, groupBy);
-                        if (foundParents.size() == 1) {
-                            changeValue.sources = foundParents;
-                        }
-                        rtrn.add(changeValue);
                     }
                 }
             }
+
         }catch (Exception e){
             e.printStackTrace();
         }

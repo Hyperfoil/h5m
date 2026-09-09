@@ -11,21 +11,19 @@ import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import io.hyperfoil.tools.yaup.HashedLists;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.*;
-import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -52,6 +50,362 @@ public class ValueServiceTest extends FreshDb {
 
     @Inject
     WorkService workService;
+
+    @Test
+    public void getRangeValueForDistinctDomainValues_count_missing_domain() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range",".r",rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain",".d",rootNode);
+        domainNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint",".f",rootNode);
+        fingerprintNode.persist();
+
+        List<ValueEntity> roots = new ArrayList<>();
+
+        for(String input : List.of(
+                """
+                    { "f" : "yay", "d" : 1, "r" : 1}
+                """,
+                """
+                    { "f" : "yay", "r" : 10 }
+                """,
+                """
+                    { "f" : "yay", "d" : 3, "r" : 2}
+                """
+        )){
+            JqValue value = JqValues.parse(input);
+            ValueEntity rootValue = new ValueEntity(null,rootNode,value);
+            rootValue.persist();
+            roots.add(rootValue);
+            if(value.has("d")) {
+                ValueEntity domainValue = new ValueEntity(null, domainNode, value.getField("d"), List.of(rootValue));
+                domainValue.persist();
+            }
+            if(value.has("r")){
+                ValueEntity rangeValue = new ValueEntity(null,rangeNode,value.getField("r"),List.of(rootValue));
+                rangeValue.persist();
+            }
+            ValueEntity fingerprintValue = new ValueEntity(null,fingerprintNode,value.getField("f"),List.of(rootValue));
+            fingerprintValue.persist();
+        }
+        tm.commit();
+
+        HashedLists<JqValue,ValueService.GroupRangeValue> found = valueService.getRangeValueForDistinctDomainValues(rangeNode.id,domainNode.id,JqNumber.of(1),fingerprintNode.id,JqString.of("yay"),rootNode.id,1,2);
+        assertNotNull(found);
+
+        assertEquals(2,found.size());
+        assertTrue(found.containsKey(JqNumber.of(1)),"found should have entry for domain=1: "+found.keys());
+        assertTrue(found.containsKey(JqNumber.of(3)),"found should have entry for domain=3: "+found.keys());
+
+    }
+
+    @Test
+    public void getRangeValueForDistinctDomainValues_counts() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity datasetNode = new JqNode("a",".a[]",rootNode);
+        datasetNode.persist();
+        NodeEntity fNode = new JqNode("f",".f",datasetNode);
+        fNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",datasetNode);
+        dNode.persist();
+        NodeEntity rNode = new JqNode("r",".r",datasetNode);
+        rNode.persist();
+        NodeEntity cNode = new JqNode("c",".c",datasetNode);
+        cNode.persist();
+
+        Map<String,ValueEntity> values = new HashMap<>();
+        List<String> roots = List.of(
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.1-EA1", "r": 10}, { "f" : "nay", "d": "0.0.1-EA1", "r": 20 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.1-EA1", "r": 10}, { "f" : "nay", "d": "1.1.1-EA1", "r": 22 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.0", "r": 11} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.0", "r": 8,  "c" : 0.5} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.1", "r": 12} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.2", "r": 13} ] }
+                """);
+        for(int r=0;r<roots.size();r++){
+            JqValue data = JqValues.parse(roots.get(r));
+            ValueEntity rootValue = new  ValueEntity(null,rootNode,data);
+            rootValue.persist();
+            values.put(rootNode.name+r,rootValue);
+            List<JqValue> datasets = rootValue.data.getField("a").asList();
+            for(int i=0; i<datasets.size();i++){
+                ValueEntity dataset = new ValueEntity(null,datasetNode,datasets.get(i),List.of(rootValue));
+                dataset.persist();
+                values.put(datasetNode.name+r+"_"+i,dataset);
+
+                ValueEntity fValue = new ValueEntity(null,fNode,dataset.data.getField("f"),List.of(dataset));
+                fValue.persist();
+                values.put(fNode.name+r+"_"+i,fValue);
+                ValueEntity dValue = new ValueEntity(null,dNode,dataset.data.getField("d"),List.of(dataset));
+                dValue.persist();
+                values.put(dNode.name+r+"_"+i,dValue);
+                ValueEntity rValue = new ValueEntity(null,rNode,dataset.data.getField("r"),List.of(dataset));
+                rValue.persist();
+                values.put(rNode.name+r+"_"+i,rValue);
+                if(dataset.data.has("c")){
+                    ValueEntity cValue = new ValueEntity(null,cNode,dataset.data.getField("c"),List.of(dataset));
+                    cValue.persist();
+                    values.put(cNode.name+r+"_"+i,cValue);
+                }
+            }
+        }
+        tm.commit();
+
+        HashedLists<JqValue,ValueService.GroupRangeValue> found = valueService.getRangeValueForDistinctDomainValues(rNode.id,dNode.id,values.get(dNode.name+"2_0").data,fNode.id,values.get(fNode.name+"2_0").data,datasetNode.id,1,2);
+        assertNotNull(found);
+        assertEquals(4,found.size());
+        assertTrue(found.containsKey(JqString.of("0.1.0")),"missing expected key: "+found.keys());
+        assertEquals(1,found.get(JqString.of("0.1.0")).size(),"0.1.0 should have 1 entry: "+found.get(JqString.of("0.1.0")));
+        assertEquals(JqNumber.of(11),found.get(JqString.of("0.1.0")).getFirst().rangeValue());
+        assertTrue(found.containsKey(JqString.of("0.0.1-EA1")),"missing expected key: "+found.keys());
+        assertTrue(found.containsKey(JqString.of("0.1.1")),"missing expected key: "+found.keys());
+        assertTrue(found.containsKey(JqString.of("0.1.2")),"missing expected key: "+found.keys());
+        assertEquals(2,found.get(JqString.of("0.0.1-EA1")).size(),"0.0.1-EA1 should have two entries: "+found.get(JqString.of("0.0.1-EA1")));
+    }
+    @Test
+    public void getRangeValueForDistinctDomainValues_counts_numeric_domain() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity datasetNode = new JqNode("a",".a[]",rootNode);
+        datasetNode.persist();
+        NodeEntity fNode = new JqNode("f",".f",datasetNode);
+        fNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",datasetNode);
+        dNode.persist();
+        NodeEntity rNode = new JqNode("r",".r",datasetNode);
+        rNode.persist();
+        NodeEntity cNode = new JqNode("c",".c",datasetNode);
+        cNode.persist();
+
+
+        Map<String,ValueEntity> values = new HashMap<>();
+        List<String> roots = List.of(
+                """
+                { "a": [ { "f" : "yay", "d": 2, "r": 10}, { "f" : "nay", "d": 2, "r": 20 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 2, "r": 10}, { "f" : "nay", "d": 2, "r": 22 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 3, "r": 11} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 1, "r": 8,  "c" : 0.5} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 4, "r": 12} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 5, "r": 13} ] }
+                """);
+        for(int r=0;r<roots.size();r++){
+            JqValue data = JqValues.parse(roots.get(r));
+            ValueEntity rootValue = new  ValueEntity(null,rootNode,data);
+            rootValue.persist();
+            values.put(rootNode.name+r,rootValue);
+            List<JqValue> datasets = rootValue.data.getField("a").asList();
+            for(int i=0; i<datasets.size();i++){
+                ValueEntity dataset = new ValueEntity(null,datasetNode,datasets.get(i),List.of(rootValue));
+                dataset.persist();
+                values.put(datasetNode.name+r+"_"+i,dataset);
+
+                ValueEntity fValue = new ValueEntity(null,fNode,dataset.data.getField("f"),List.of(dataset));
+                fValue.persist();
+                values.put(fNode.name+r+"_"+i,fValue);
+                ValueEntity dValue = new ValueEntity(null,dNode,dataset.data.getField("d"),List.of(dataset));
+                dValue.persist();
+                values.put(dNode.name+r+"_"+i,dValue);
+                ValueEntity rValue = new ValueEntity(null,rNode,dataset.data.getField("r"),List.of(dataset));
+                rValue.persist();
+                values.put(rNode.name+r+"_"+i,rValue);
+                if(dataset.data.has("c")){
+                    ValueEntity cValue = new ValueEntity(null,cNode,dataset.data.getField("c"),List.of(dataset));
+                    cValue.persist();
+                    values.put(cNode.name+r+"_"+i,cValue);
+                }
+            }
+        }
+        tm.commit();
+
+        HashedLists<JqValue,ValueService.GroupRangeValue> found = valueService.getRangeValueForDistinctDomainValues(rNode.id,dNode.id,values.get(dNode.name+"2_0").data,fNode.id,values.get(fNode.name+"2_0").data,datasetNode.id,1,2);
+        assertNotNull(found);
+        assertEquals(4,found.size(),"unexpected number of entries: "+found);
+        assertTrue(found.containsKey(JqNumber.of(3)),"missing expected key: "+found.keys());
+        assertEquals(1,found.get(JqNumber.of(3)).size(),"3 should have 1 entry: "+found.get(JqNumber.of(3)));
+        assertEquals(JqNumber.of(11),found.get(JqNumber.of(3)).getFirst().rangeValue());
+        assertTrue(found.containsKey(JqNumber.of(2)),"missing expected key: "+found.keys());
+        assertTrue(found.containsKey(JqNumber.of(4)),"missing expected key: "+found.keys());
+        assertTrue(found.containsKey(JqNumber.of(5)),"missing expected key: "+found.keys());
+        assertEquals(2,found.get(JqNumber.of(2)).size(),"2 should have two entries: "+found.get(JqNumber.of(2)));
+    }
+
+    @Test
+    public void getRangeValueForDistinctDomainValues_minMax() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity datasetNode = new JqNode("a",".a[]",rootNode);
+        datasetNode.persist();
+        NodeEntity fNode = new JqNode("f",".f",datasetNode);
+        fNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",datasetNode);
+        dNode.persist();
+        NodeEntity rNode = new JqNode("r",".r",datasetNode);
+        rNode.persist();
+        NodeEntity cNode = new JqNode("c",".c",datasetNode);
+        cNode.persist();
+
+
+        Map<String,ValueEntity> values = new HashMap<>();
+        List<String> roots = List.of(
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.1-EA1", "r": 10}, { "f" : "nay", "d": "0.0.1-EA1", "r": 20 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.1-EA1", "r": 10}, { "f" : "nay", "d": "1.1.1-EA1", "r": 22 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.0", "r": 11} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.0.0", "r": 8,  "c" : 0.5} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.1", "r": 12} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": "0.1.2", "r": 13} ] }
+                """);
+        for(int r=0;r<roots.size();r++){
+            JqValue data = JqValues.parse(roots.get(r));
+            ValueEntity rootValue = new  ValueEntity(null,rootNode,data);
+            rootValue.persist();
+            values.put(rootNode.name+r,rootValue);
+            List<JqValue> datasets = rootValue.data.getField("a").asList();
+            for(int i=0; i<datasets.size();i++){
+                ValueEntity dataset = new ValueEntity(null,datasetNode,datasets.get(i),List.of(rootValue));
+                dataset.persist();
+                values.put(datasetNode.name+r+"_"+i,dataset);
+
+                ValueEntity fValue = new ValueEntity(null,fNode,dataset.data.getField("f"),List.of(dataset));
+                fValue.persist();
+                values.put(fNode.name+r+"_"+i,fValue);
+                ValueEntity dValue = new ValueEntity(null,dNode,dataset.data.getField("d"),List.of(dataset));
+                dValue.persist();
+                values.put(dNode.name+r+"_"+i,dValue);
+                ValueEntity rValue = new ValueEntity(null,rNode,dataset.data.getField("r"),List.of(dataset));
+                rValue.persist();
+                values.put(rNode.name+r+"_"+i,rValue);
+                if(dataset.data.has("c")){
+                    ValueEntity cValue = new ValueEntity(null,cNode,dataset.data.getField("c"),List.of(dataset));
+                    cValue.persist();
+                    values.put(cNode.name+r+"_"+i,cValue);
+                }
+            }
+        }
+        tm.commit();
+
+        HashedLists<JqValue,ValueService.GroupRangeValue> found = valueService.getRangeValueForDistinctDomainValues(rNode.id,dNode.id,values.get(dNode.name+"0_0").data,values.get(dNode.name+"2_0").data,fNode.id,values.get(fNode.name+"2_0").data,datasetNode.id);
+        assertNotNull(found);
+        assertEquals(2,found.size());
+        assertTrue(found.containsKey(JqString.of("0.1.0")),"missing expected key: "+found.keys());
+        assertEquals(1,found.get(JqString.of("0.1.0")).size(),"0.1.0 should have 1 entry: "+found.get(JqString.of("0.1.0")));
+        assertEquals(JqNumber.of(11),found.get(JqString.of("0.1.0")).getFirst().rangeValue());
+        assertTrue(found.containsKey(JqString.of("0.0.1-EA1")),"missing expected key: "+found.keys());
+        assertEquals(2,found.get(JqString.of("0.0.1-EA1")).size(),"0.0.1-EA1 should have two entries: "+found.get(JqString.of("0.0.1-EA1")));
+    }
+    @Test
+    public void getRangeValueForDistinctDomainValues_minMax_numeric_domain() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity datasetNode = new JqNode("a",".a[]",rootNode);
+        datasetNode.persist();
+        NodeEntity fNode = new JqNode("f",".f",datasetNode);
+        fNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",datasetNode);
+        dNode.persist();
+        NodeEntity rNode = new JqNode("r",".r",datasetNode);
+        rNode.persist();
+        NodeEntity cNode = new JqNode("c",".c",datasetNode);
+        cNode.persist();
+
+
+        Map<String,ValueEntity> values = new HashMap<>();
+        List<String> roots = List.of(
+                """
+                { "a": [ { "f" : "yay", "d": 2, "r": 10}, { "f" : "nay", "d": 2, "r": 20 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 2, "r": 10}, { "f" : "nay", "d": 2, "r": 22 } ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 3, "r": 11} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 1, "r": 8,  "c" : 0.5} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 4, "r": 12} ] }
+                """,
+                """
+                { "a": [ { "f" : "yay", "d": 5, "r": 13} ] }
+                """);
+        for(int r=0;r<roots.size();r++){
+            JqValue data = JqValues.parse(roots.get(r));
+            ValueEntity rootValue = new  ValueEntity(null,rootNode,data);
+            rootValue.persist();
+            values.put(rootNode.name+r,rootValue);
+            List<JqValue> datasets = rootValue.data.getField("a").asList();
+            for(int i=0; i<datasets.size();i++){
+                ValueEntity dataset = new ValueEntity(null,datasetNode,datasets.get(i),List.of(rootValue));
+                dataset.persist();
+                values.put(datasetNode.name+r+"_"+i,dataset);
+
+                ValueEntity fValue = new ValueEntity(null,fNode,dataset.data.getField("f"),List.of(dataset));
+                fValue.persist();
+                values.put(fNode.name+r+"_"+i,fValue);
+                ValueEntity dValue = new ValueEntity(null,dNode,dataset.data.getField("d"),List.of(dataset));
+                dValue.persist();
+                values.put(dNode.name+r+"_"+i,dValue);
+                ValueEntity rValue = new ValueEntity(null,rNode,dataset.data.getField("r"),List.of(dataset));
+                rValue.persist();
+                values.put(rNode.name+r+"_"+i,rValue);
+                if(dataset.data.has("c")){
+                    ValueEntity cValue = new ValueEntity(null,cNode,dataset.data.getField("c"),List.of(dataset));
+                    cValue.persist();
+                    values.put(cNode.name+r+"_"+i,cValue);
+                }
+            }
+        }
+        tm.commit();
+        HashedLists<JqValue,ValueService.GroupRangeValue> found = valueService.getRangeValueForDistinctDomainValues(rNode.id,dNode.id,values.get(dNode.name+"0_0").data,values.get(dNode.name+"2_0").data,fNode.id,values.get(fNode.name+"2_0").data,datasetNode.id);
+
+        assertNotNull(found);
+        assertEquals(2,found.size());
+        assertTrue(found.containsKey(JqNumber.of(3)),"missing expected key: "+found.keys());
+        assertEquals(1,found.get(JqNumber.of(3)).size(),"3 should have 1 entry: "+found.get(JqNumber.of(3)));
+        assertEquals(JqNumber.of(11),found.get(JqNumber.of(3)).getFirst().rangeValue());
+        assertTrue(found.containsKey(JqNumber.of(2)),"missing expected key: "+found.keys());
+        assertEquals(2,found.get(JqNumber.of(2)).size(),"2 should have two entries: "+found.get(JqNumber.of(2)));
+    }
 
     @Test
     public void delete_does_not_cascade_and_delete_ancestor() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
@@ -642,14 +996,91 @@ public class ValueServiceTest extends FreshDb {
         assertEquals(rootValue02,found.get(1),found.toString());
 
     }
+    @Test @Disabled("not supported yet")
+    public void findMatchingFingerprint_domain_ancestor_of_groupBy() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a",".a[]",rootNode);
+        aNode.persist();
+        NodeEntity tNode = new JqNode("t",".t",rootNode);
+        tNode.persist();
+        NodeEntity bNode = new JqNode("b",".b",aNode);
+        bNode.persist();
+        NodeEntity cNode = new JqNode("c",".c",aNode);
+        cNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",aNode);
+        dNode.persist();
+
+        ValueEntity rootValue01 = new ValueEntity(null,rootNode,JqValues.parse(
+                """
+                { "t": 1, "a": [ {"b" : 1, "c" : 1, "d" : 1} ] }
+                """
+        ));
+        rootValue01.persist();
+        ValueEntity tValue01 = new ValueEntity(null,tNode,rootValue01.data.getField("t"),List.of(rootValue01));
+        tValue01.persist();
+        ValueEntity aValue01 = new ValueEntity(null,aNode,rootValue01.data.getField("a").getElement(0),List.of(rootValue01));
+        aValue01.persist();
+        ValueEntity bValue01 = new ValueEntity(null,bNode,aValue01.data.getField("b"),List.of(aValue01));
+        bValue01.persist();
+        ValueEntity cValue01 = new ValueEntity(null,cNode,aValue01.data.getField("c"),List.of(aValue01));
+        cValue01.persist();
+        ValueEntity dValue01 = new ValueEntity(null,dNode,aValue01.data.getField("d"),List.of(aValue01));
+        dValue01.persist();
+        tm.commit();
+
+        List<ValueEntity> found = valueService.findMatchingFingerprint(
+                bNode,aNode,dValue01,cNode);
+    }
+    @Test
+    public void findMatchingFingerprint_previous() throws SystemException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity aNode = new JqNode("a",".a[]",rootNode);
+        aNode.persist();
+        NodeEntity dNode = new JqNode("d",".d",aNode);
+        dNode.persist();
+        NodeEntity rNode = new JqNode("r",".r",aNode);
+        rNode.persist();
+        NodeEntity fNode = new JqNode("f",".f",aNode);
+        fNode.persist();
+
+        ValueEntity rootValue = new ValueEntity(null,rootNode,JqValues.parse(
+                """
+                { "a" : [
+                    { "d" : 1, "r" : 1, "f" : "a"},
+                    { "d" : 1, "r" : 1, "f" : "b"},
+                    { "d" : 1, "r" : 1, "f" : "c"},
+                    { "d" : 2, "r" : 2, "f" : "a"},
+                    { "d" : 2, "r" : 2, "f" : "b"},
+                    { "d" : 2, "r": 2, "f" : "c"}
+                ]}
+                """
+        ));
+        rootValue.persist();
+        for(int i=0; i<rootValue.data.getField("a").length(); i++){
+            JqValue datum = rootValue.data.getField("a").getElement(i);
+            ValueEntity aValue = new ValueEntity(null,aNode,datum,List.of(rootValue));
+            aValue.persist();
+            ValueEntity dValue = new ValueEntity(null,dNode,datum.getField("d"),List.of(aValue));
+            dValue.persist();
+            ValueEntity rValue = new ValueEntity(null,rNode,datum.getField("r"),List.of(aValue));
+            rValue.persist();
+            ValueEntity fValue = new ValueEntity(null,fNode,datum.getField("f"),List.of(aValue));
+            fValue.persist();
+        }
+    }
+
     @Test
     public void findMatchingFingerprint_sibling() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
         tm.begin();
         NodeEntity rootNode = new RootNode();
-        rootNode.persist(rootNode);
+        rootNode.persist();
         NodeEntity aNode = new JqNode("a");
         aNode.sources=List.of(rootNode);
-        aNode.persist(aNode);
+        aNode.persist();
         NodeEntity bNode = new JqNode("b");
         bNode.sources=List.of(rootNode);
         bNode.persist();
@@ -712,7 +1143,7 @@ public class ValueServiceTest extends FreshDb {
         bNode.persist();
         NodeEntity cNode = new JqNode("c",".c",rootNode);
         cNode.persist();
-        NodeEntity caNode = new JqNode("c",".ca",List.of(cNode,aNode));
+        NodeEntity caNode = new JqNode("ca",".ca",List.of(cNode,aNode));
         caNode.persist();
 
 
@@ -741,9 +1172,9 @@ public class ValueServiceTest extends FreshDb {
         ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.getField("c"),List.of(rootValue02));
         cValue02.persist();
         // ca values
-        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(rootValue01));
+        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(cValue01,aValue01));
         caValue01.persist();
-        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(rootValue02));
+        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(cValue02,aValue02));
         caValue02.persist();
 
         tm.commit();
@@ -799,9 +1230,9 @@ public class ValueServiceTest extends FreshDb {
         ValueEntity cValue02 = new ValueEntity(null,cNode,rootValue02.data.getField("c"),List.of(rootValue02));
         cValue02.persist();
         // ca values
-        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(rootValue01));
+        ValueEntity caValue01 = new ValueEntity(null,caNode,rootValue01.data.getField("ca"),List.of(cValue01,aValue01));
         caValue01.persist();
-        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(rootValue02));
+        ValueEntity caValue02 = new ValueEntity(null,caNode,rootValue02.data.getField("ca"),List.of(cValue02,aValue02));
         caValue02.persist();
 
         tm.commit();

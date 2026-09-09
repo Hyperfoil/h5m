@@ -26,6 +26,7 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     private static final String FILTER =  "filter";
     public static final Filter DEFAULT_FILTER = Filter.MEAN;
     private static final String FINGERPRINT_FILTER = "fingerprintFilter";
+    private static final String DOMAIN_FILTER = "domain-filter";
 
     @Transient
     private JqObject config;
@@ -42,11 +43,12 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
     public RelativeDifference(String name, RelativeDifferenceConfig rd) {
         super(name, "");
         JqObject.Builder b = JqObject.builder();
-        if (rd.filter() != null) b.put("filter", rd.filter().name());
-        b.put("threshold", rd.threshold());
-        b.put("window", (long) rd.window());
-        b.put("minPrevious", (long) rd.minPrevious());
-        if (rd.fingerprintFilter() != null) b.put("fingerprintFilter", rd.fingerprintFilter());
+        if (rd.filter() != null) { b.put("filter", rd.filter().name()); }
+        b.put(THRESHOLD, rd.threshold());
+        b.put(WINDOW, (long) rd.window());
+        b.put(MIN_PREVIOUS, (long) rd.minPrevious());
+        if (rd.domainFilter()!=null) { b.put(DOMAIN_FILTER,rd.domainFilter().name()); }
+        if (rd.fingerprintFilter() != null) { b.put("fingerprintFilter", rd.fingerprintFilter()); }
         config = b.build();
         operation = config.toJsonString();
     }
@@ -140,6 +142,20 @@ public class RelativeDifference extends NodeEntity implements DetectionNode {
         config = config.with(FILTER, JqString.of(filter.name()));
         operation = config.toJsonString();
     }
+
+    @Transient
+    public Filter getDomainFilter(){
+        try {
+            return Filter.valueOf(config.get(DOMAIN_FILTER).asString(DEFAULT_FILTER.name()).toUpperCase());
+        }catch (IllegalArgumentException e){
+            return DEFAULT_FILTER;
+        }
+    }
+    public void setDomainFilter(Filter filter){
+        config = config.with(DOMAIN_FILTER, JqString.of(filter.name()));
+        operation = config.toJsonString();
+    }
+
     @Transient
     public String getFingerprintFilter(){
         return config.has(FINGERPRINT_FILTER) ? config.get(FINGERPRINT_FILTER).asString(null) : null;

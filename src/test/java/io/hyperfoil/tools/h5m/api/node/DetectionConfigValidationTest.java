@@ -150,7 +150,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_threshold_at_boundary() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.0, 10, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.0, 10, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "threshold=0.0 should pass @DecimalMin(\"0\")");
     }
@@ -158,7 +158,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_threshold_positive() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.5, 10, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.5, 10, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "threshold=0.5 should pass @DecimalMin(\"0\")");
     }
@@ -166,7 +166,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_threshold_negative() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, -0.1, 10, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, -0.1, 10, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertFalse(violations.isEmpty(), "threshold=-0.1 should fail @DecimalMin(\"0\")");
     }
@@ -176,7 +176,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_window_valid() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "window=10 should pass @Positive");
     }
@@ -184,7 +184,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_window_one() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MEAN, 0.1, 1, 5, null);
+            RelativeDifferenceConfig.Filter.MEAN,RelativeDifferenceConfig.Filter.MEAN, 0.1, 1, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "window=1 should pass @Positive");
     }
@@ -192,7 +192,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_window_zero() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.1, 0, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.1, 0, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertFalse(violations.isEmpty(), "window=0 should fail @Positive");
     }
@@ -200,7 +200,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_window_negative() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MIN, 0.1, -5, 5, null);
+            RelativeDifferenceConfig.Filter.MIN,RelativeDifferenceConfig.Filter.MAX, 0.1, -5, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertFalse(violations.isEmpty(), "window=-5 should fail @Positive");
     }
@@ -210,7 +210,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_minPrevious_valid() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 5, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 5, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "minPrevious=5 should pass @Positive");
     }
@@ -218,7 +218,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_minPrevious_one() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MEAN, 0.1, 10, 1, null);
+            RelativeDifferenceConfig.Filter.MEAN,RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 1, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "minPrevious=1 should pass @Positive");
     }
@@ -226,7 +226,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_minPrevious_zero() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 0, null);
+            RelativeDifferenceConfig.Filter.MAX,RelativeDifferenceConfig.Filter.MAX, 0.1, 10, 0, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertFalse(violations.isEmpty(), "minPrevious=0 should fail @Positive");
     }
@@ -234,7 +234,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_minPrevious_negative() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MIN, 0.1, 10, -1, null);
+            RelativeDifferenceConfig.Filter.MIN,RelativeDifferenceConfig.Filter.MAX, 0.1, 10, -1, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertFalse(violations.isEmpty(), "minPrevious=-1 should fail @Positive");
     }
@@ -348,6 +348,7 @@ public class DetectionConfigValidationTest {
     public void relativeDiff_multiple_violations() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
             RelativeDifferenceConfig.Filter.MAX,
+            RelativeDifferenceConfig.Filter.MAX,
             -0.1,  // Fails @DecimalMin("0")
             0,     // Fails @Positive
             -5,    // Fails @Positive
@@ -369,7 +370,7 @@ public class DetectionConfigValidationTest {
     @Test
     public void relativeDiff_all_minimum_valid_values() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
-            RelativeDifferenceConfig.Filter.MIN, 0.0, 1, 1, null);
+            RelativeDifferenceConfig.Filter.MIN, RelativeDifferenceConfig.Filter.MAX,0.0, 1, 1, null);
         Set<ConstraintViolation<RelativeDifferenceConfig>> violations = validator.validate(config);
         assertTrue(violations.isEmpty(), "all minimum valid values should pass");
     }
@@ -398,6 +399,7 @@ public class DetectionConfigValidationTest {
     public void relativeDiff_very_large_valid_values() {
         RelativeDifferenceConfig config = new RelativeDifferenceConfig(
             RelativeDifferenceConfig.Filter.MEAN,
+            RelativeDifferenceConfig.Filter.MAX,
             999999.99,  // Very large valid threshold
             10000,      // Very large valid window
             5000,       // Very large valid minPrevious

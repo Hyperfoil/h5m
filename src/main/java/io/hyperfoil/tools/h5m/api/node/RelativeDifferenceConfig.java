@@ -7,6 +7,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @Schema(description = "Configuration for the Relative Difference detection algorithm")
 public record RelativeDifferenceConfig(
         Filter filter,
+        Filter domainFilter,
         @DecimalMin("0") double threshold,
         @Positive int window,
         @Positive int minPrevious,

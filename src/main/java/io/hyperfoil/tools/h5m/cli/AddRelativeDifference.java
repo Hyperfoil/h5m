@@ -39,6 +39,12 @@ public class AddRelativeDifference extends AddDetectionNode {
             defaultValue = {"MEAN"})
     RelativeDifferenceConfig.Filter filter;
 
+    @Option(name = "domain-filter", acceptNameWithoutDashes = true,
+            description = "Function used to aggregate datapoints for same domain value",
+            defaultValue = {"MEAN"}
+    )
+    RelativeDifferenceConfig.Filter domainFilter;
+
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         domainName = domainOption;
@@ -52,7 +58,7 @@ public class AddRelativeDifference extends AddDetectionNode {
                 ? List.of(fingerprintNode.id(), groupByNode.id(), rangeNode.id())
                 : List.of(fingerprintNode.id(), groupByNode.id(), rangeNode.id(), domainNode.id());
         nodeService.createConfigured(name, group.id(), NodeType.RELATIVE_DIFFERENCE, sources,
-                new RelativeDifferenceConfig(filter, threshold, window, minPrevious, fingerprintFilter));
+                new RelativeDifferenceConfig(filter, domainFilter, threshold, window, minPrevious, fingerprintFilter));
         return CommandResult.SUCCESS;
     }
 }

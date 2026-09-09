@@ -7,6 +7,7 @@ import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.work.Work;
 import io.hyperfoil.tools.h5m.queue.WorkQueue;
 import io.hyperfoil.tools.h5m.queue.WorkQueueExecutor;
+import io.hyperfoil.tools.yaup.HashedLists;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -317,32 +318,36 @@ public class WorkService implements WorkServiceInterface {
             for(ValueEntity v : sourceValues) {
                 for(NodeEntity activeNode : activeNodes){
                     Map<String, ValueEntity> descendants = valueService.getDescendantValueByPath(v, activeNode);
-                    for(Iterator<ValueEntity> iter = calculated.iterator(); iter.hasNext();){
-                        ValueEntity newValue = iter.next();
-                        String path = newValue.getPath();
-                        if(descendants.containsKey(path)){
-                            ValueEntity existingValue = descendants.get(path);
-                            if(existingValue.getId().equals(newValue.getId())) {
-                                //if it's the same value we don't have to work with it
-                            }else if( newValue.data.equals(existingValue.data)){
-                                if(newValue.id != null){
-                                    valueService.delete(newValue);
+                    if(descendants.isEmpty()){
+                        toPersist.addAll(calculated);
+                    }else {
+                        for (Iterator<ValueEntity> iter = calculated.iterator(); iter.hasNext(); ) {
+                            ValueEntity newValue = iter.next();
+                            String path = newValue.getPath();
+                            if (descendants.containsKey(path)) {
+                                ValueEntity existingValue = descendants.get(path);
+                                if (existingValue.getId().equals(newValue.getId())) {
+                                    //if it's the same value we don't have to work with it
+                                } else if (newValue.data.equals(existingValue.data)) {
+                                    if (newValue.id != null) {
+                                        valueService.delete(newValue);
+                                    }
+                                    iter.remove();
+                                } else {
+                                    //update the existing value's data via native SQL
+                                    //(@Immutable entities can't be updated through Hibernate)
+                                    em.createNativeQuery("UPDATE value SET data = :data WHERE id = :id")
+                                            .setParameter("data", JqValues.serializeToBytes(newValue.data))
+                                            .setParameter("id", existingValue.getId())
+                                            .executeUpdate();
+                                    // Evict from 2LC since cached value is now stale
+                                    em.getEntityManagerFactory().getCache().evict(ValueEntity.class, existingValue.getId());
+                                    newOrUpdated.add(existingValue);
                                 }
-                                iter.remove();
-                            }else{
-                                //update the existing value's data via native SQL
-                                //(@Immutable entities can't be updated through Hibernate)
-                                em.createNativeQuery("UPDATE value SET data = :data WHERE id = :id")
-                                    .setParameter("data", JqValues.serializeToBytes(newValue.data))
-                                    .setParameter("id", existingValue.getId())
-                                    .executeUpdate();
-                                // Evict from 2LC since cached value is now stale
-                                em.getEntityManagerFactory().getCache().evict(ValueEntity.class, existingValue.getId());
-                                newOrUpdated.add(existingValue);
+                                descendants.remove(path);//remove it so we know what is left over
+                            } else {
+                                toPersist.add(newValue);
                             }
-                            descendants.remove(path);//remove it so we know what is left over
-                        }else{
-                            toPersist.add(newValue);
                         }
                     }
                     if(!descendants.isEmpty()){//values that need to be deleted

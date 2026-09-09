@@ -2,8 +2,10 @@ package io.hyperfoil.tools.h5m.entity;
 
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
+import io.hyperfoil.tools.h5m.entity.node.RelativeDifference;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.FreshDb;
+import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -22,6 +24,8 @@ public class NodeTest extends FreshDb {
 
     @Inject
     TransactionManager tm;
+    @Inject
+    NodeService nodeService;
 
 
     @Test
@@ -42,8 +46,33 @@ public class NodeTest extends FreshDb {
         node.ephemeral = EphemeralMode.DISCARD;
 
         assertNotEquals(EphemeralMode.DISCARD,node.ephemeral,"root node should not set to ephemeral");
+    }
 
+    @Test
+    public void consistent_source_order_after_persist() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        RootNode rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity dataset = new JqNode("dataset",".dataset[]",rootNode);
+        NodeEntity first = new JqNode("first",".first",dataset);
+        first.persist();
+        NodeEntity second = new JqNode("second",".second",dataset);
+        second.persist();
+        NodeEntity third = new JqNode("third",".third",dataset);
+        third.persist();
+        RelativeDifference relativeDifference = new RelativeDifference();
+        relativeDifference.setNodes(first,dataset,second,third);
+        relativeDifference.persist();
+        tm.commit();
 
+        tm.begin();
+        NodeEntity found = nodeService.read(relativeDifference.id);
+        assertEquals(4,found.sources.size());
+        assertEquals(first.id,found.sources.get(0).id,"");
+        assertEquals(dataset.id,found.sources.get(1).id,"");
+        assertEquals(second.id,found.sources.get(2).id,"");
+        assertEquals(third.id,found.sources.get(3).id,"");
+        tm.commit();
     }
 
     @Test

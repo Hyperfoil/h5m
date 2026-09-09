@@ -2,7 +2,6 @@ package io.hyperfoil.tools.h5m.cli;
 
 
 import io.quarkus.test.junit.TestProfile;
-import io.quarkus.test.junit.main.LaunchResult;
 import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import io.quarkus.test.aesh.AeshLauncher;
@@ -99,22 +98,19 @@ public class H5mTest {
     //This test requires a running Horreum backup on port 6000 with username / password = horreum / horreum
     @Test @Disabled
     public void loadLegacyTests(){
-        String output = aeshLauncher.executeCommand("legacy load-tests testId=22 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", CMD_TIMEOUT);
-        System.out.println("output="+output);
-        output = aeshLauncher.executeCommand("node list from='EAP - standalone - web' as Graph");
-        System.out.println(output);
+        String output = aeshLauncher.executeCommand("legacy load-tests --testId=113 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", CMD_TIMEOUT);
+        output = aeshLauncher.executeCommand("node list from 'quarkus-spring-boot-comparison' as Graph");
         assertNotNull(output);
     }
     @Test @Disabled
     public void loadLegacyRuns(){
-        aeshLauncher.executeCommand("legacy load-tests testId=391 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", CMD_TIMEOUT);
-        String output = aeshLauncher.executeCommand("legacy load-runs testId=391 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", CMD_TIMEOUT);
-        System.out.println("output="+output);
+        aeshLauncher.executeCommand("legacy load-tests testId=113 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", CMD_TIMEOUT);
+        String output = aeshLauncher.executeCommand("node list from 'quarkus-spring-boot-comparison' as Graph");
+        output = aeshLauncher.executeCommand("legacy load-runs testId=113 limit=15 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", Duration.ofDays(1));
         assertNotNull(output);
     }
     @Test @Disabled
     public void veritaserum(QuarkusMainLauncher launcher){
-        LaunchResult result = null;
 //        result = launcher.launch("load-legacy-tests","testId=339","username=horreum","password=horreum","url=jdbc:postgresql://0.0.0.0:6000/horreum");
 //        assertEquals(0,result.exitCode());
 //        result = launcher.launch("load-legacy-runs","testId=339","limit=1","username=horreum","password=horreum","url=jdbc:postgresql://0.0.0.0:6000/horreum");
@@ -126,7 +122,6 @@ public class H5mTest {
 
         //String output = aeshLauncher.executeCommand("veritaserum --testId=339 limit=2 ignore-nulls=true --runId=214280 username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", Duration.ofHours(1));
         String output = aeshLauncher.executeCommand("veritaserum --testId=339 limit=1 ignore-nulls=true username=horreum password=horreum url=jdbc:postgresql://0.0.0.0:6000/horreum", Duration.ofHours(1));
-        System.out.println("output="+output);
     }
 
     @Test
@@ -1140,8 +1135,8 @@ public class H5mTest {
                 "Should contain calculated ratio -47.61904761904761\n" + output2);
 
         String output3 = results.get(results.size() - 2);
-        assertTrue(output3.contains("Count: 17"),
-            "After upload 3, expect 17 values from test (2 changes total)\n" + output3);
+        assertTrue(output3.contains("Count: 16"),
+            "After upload 3, expect 16 values from test (1 changes total)\n" + output3);
         assertTrue(output3.contains("\"domainvalue\":2"),
                 "Change should be detected for domain x=2\n" + output3);
 
@@ -1235,12 +1230,12 @@ public class H5mTest {
 
         int changeCount2 = output2.split("\"ratio\":", -1).length - 1;
         assertEquals(0, changeCount2,
-                "Upload 1: x=3 with only 1 sample should produce 0 changes (need minPrevious=2)");
+                "Upload 2: x=3 with only 1 sample should produce 0 changes (need minPrevious=2)");
 
         String output3 = results.get(results.size() - 4);
         int changeCount3 = output3.split("\"ratio\":", -1).length - 1;
         assertEquals(1, changeCount3,
-                "Upload 1: x=2 with only 1 sample should produce 0 changes (need minPrevious=2)");
+                "Upload 3: x=2 with only 1 sample should produce 0 changes (need minPrevious=2)");
         assertTrue(output3.contains("Count: 16"),
             "After upload 3, expect 16 values (expect 1 change here since it violates threshold value)\n" + output3);
         assertTrue(output3.contains("\"domainvalue\":4"),
@@ -1256,10 +1251,10 @@ public class H5mTest {
 
         String output4 = results.get(results.size() - 2);
         int changeCount4 = output4.split("\"ratio\":", -1).length - 1;
-        assertEquals(2, changeCount4,
-                "Upload 1: x=1 should have 2 changes\n" + output4);
-        assertTrue(output4.contains("Count: 22"),
-            "After upload 4, expect 22 values (expect 1 change here since it violates threshold value. With minPrevious=2 total changes=2)\n" + output4);
+        assertEquals(1, changeCount4,
+                "Upload 4: x=1 should have 1 change because it requires 3 values to find a change\n" + output4);
+        assertTrue(output4.contains("Count: 21"),
+            "After upload 4, expect 21 values (expect 1 change here since it violates threshold value. With minPrevious=2 total changes=2)\n" + output4);
 
         assertTrue(output4.contains("\"domainvalue\":3"),
                 "Change should be detected for domain x=3\n" + output4);
@@ -1273,7 +1268,7 @@ public class H5mTest {
     }
 
     @Test
-    public void relativedifference_Unordered_uploads() throws IOException {
+    public void relativedifference_unordered_uploads() throws IOException {
         String testName = StackWalker.getInstance()
                 .walk(s -> s.skip(0).findFirst())
                 .get()
@@ -1347,7 +1342,7 @@ public class H5mTest {
 
         String output2 = results.get(results.size() - 6);
         assertTrue(output2.contains("Count: 11"),
-                "After upload 2, expect 11 values (1 change detected for x=4)\n" + output2);
+                "After upload 2: x=2 expect 11 values (1 change detected for x=4)\n" + output2);
 
         assertTrue(output2.contains("\"domainvalue\":4"),
                 "Change should be detected for domain x=4\n" + output2);
@@ -1361,10 +1356,12 @@ public class H5mTest {
 
         String output3 = results.get(results.size() - 4);
         assertTrue(output3.contains("Count: 16"),
-                "After upload 3, expect 16 values (1 changes total)\n" + output3);
+                "After upload 3: x=3 expect 16 values (1 changes total)\n" + output3);
 
         assertTrue(output3.contains("\"domainvalue\":3"),
                 "Change should be detected for domain x=3\n" + output3);
+        assertFalse(output3.contains("\"domainvalue\":4"),
+                "Change should be deleted for domain x=4\n" + output2);
         assertTrue(output3.contains("\"previous\":2.1"),
                 "Should show previous y value of 2.1\n" + output3);
         assertTrue(output3.contains("\"last\":2.1"),
@@ -1374,10 +1371,12 @@ public class H5mTest {
 
         String output4 = results.get(results.size() - 2);
         assertTrue(output4.contains("Count: 22"),
-                "After upload 4, expect 22 values (2 changes total)\n" + output4);
+                "After upload 4: x=1 expect 22 values (2 changes total)\n" + output4);
 
         assertTrue(output4.contains("\"domainvalue\":2"),
                 "Change should be detected for domain x=2\n" + output4);
+        assertTrue(output4.contains("\"domainvalue\":4"),
+                "Change should be detected for domain x=4\n" + output2);
 
         assertTrue(output4.contains("\"previous\":4.1"),
                 "Should show previous y value of 4.1\n" + output4);
