@@ -660,11 +660,36 @@ public class VerifyLegacy implements Command<H5mCommandInvocation> {
                 .setParameter("testName", testName)
                 .getResultList();
 
+        // Map Horreum change-detection config IDs to their owning variable names.
+        // h5m detection nodes are named rd.<label>.<detectionId> (e.g.
+        // rd.avTimeToFirstRequest.3523655), so the suffix identifies exactly
+        // which Horreum variable each node belongs to. Without this, node pairs
+        // serving different variables that share a label (e.g. "Average Time to
+        // First Request" vs "Averge Time to First Request", both labelled
+        // avTimeToFirstRequest) get merged and counted twice.
+        Map<Long, String> detectionIdToVariable = new LinkedHashMap<>();
+        try (PreparedStatement ps = legacyConn.prepareStatement("""
+                SELECT cd.id, v.name
+                FROM changedetection cd
+                JOIN variable v ON v.id = cd.variable_id
+                WHERE v.testid = ?
+                """)) {
+            ps.setLong(1, testId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    detectionIdToVariable.put(rs.getLong(1), rs.getString(2));
+                }
+            }
+        }
+
         Map<String, Integer> h5mByVariable = new LinkedHashMap<>();
         for (Object[] row : h5mDetections) {
             String nodeName = (String) row[0];
             int count = ((Number) row[1]).intValue();
-            String variableName = extractVariableName(nodeName);
+            String variableName = resolveVariableByDetectionId(nodeName, detectionIdToVariable);
+            if (variableName == null) {
+                variableName = extractVariableName(nodeName);
+            }
             h5mByVariable.merge(variableName, count, Integer::sum);
         }
 
@@ -724,6 +749,25 @@ public class VerifyLegacy implements Command<H5mCommandInvocation> {
             System.out.println("  \u26a0 WARNING: " + warnings + " change detection differences found");
         } else if (totalHorreum > 0) {
             System.out.println("  All change detection counts match");
+        }
+    }
+
+    /**
+     * Resolves an h5m detection node name to its owning Horreum variable via
+     * the trailing change-detection config ID (rd.&lt;label&gt;.&lt;id&gt;).
+     * Returns null when the name has no numeric suffix or the ID is unknown,
+     * in which case callers fall back to label-based matching.
+     */
+    private static String resolveVariableByDetectionId(String nodeName, Map<Long, String> detectionIdToVariable) {
+        int lastDot = nodeName.lastIndexOf('.');
+        if (lastDot < 0 || lastDot == nodeName.length() - 1) {
+            return null;
+        }
+        try {
+            long detectionId = Long.parseLong(nodeName.substring(lastDot + 1));
+            return detectionIdToVariable.get(detectionId);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
