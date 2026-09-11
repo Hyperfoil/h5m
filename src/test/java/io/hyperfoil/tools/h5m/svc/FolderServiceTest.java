@@ -2,6 +2,8 @@ package io.hyperfoil.tools.h5m.svc;
 
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.EphemeralMode;
+import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.node.FixedThresholdConfig;
 import io.hyperfoil.tools.h5m.FreshDb;
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
 import io.hyperfoil.tools.h5m.entity.NodeEntity;
@@ -48,6 +50,9 @@ public class FolderServiceTest extends FreshDb {
 
     @Inject
     ValueService valueService;
+
+    @Inject
+    NodeService nodeService;
 
     private void awaitIdle(long timeoutMs) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
@@ -522,5 +527,49 @@ public class FolderServiceTest extends FreshDb {
         assertThrows(NotFoundException.class,
                 () -> folderService.create("folder-bad-team", 999999L),
                 "Creating a folder with a non-existent team should throw NotFoundException");
+    }
+
+    @Test
+    public void delete_folder_with_change_detection() throws Exception {
+        tm.begin();
+        long folderId = folderService.create("delete-detection-test").id();
+        tm.commit();
+
+        tm.begin();
+        FolderEntity folder = FolderEntity.find("name", "delete-detection-test").firstResult();
+        long groupId = folder.group.id;
+
+        JqNode rangeNode = new JqNode("range", ".y", folder.group.root);
+        rangeNode.group = folder.group;
+        rangeNode.persist();
+        long rangeId = rangeNode.id;
+
+        JqNode fpSource = new JqNode("fpSource", ".fp", folder.group.root);
+        fpSource.group = folder.group;
+        fpSource.persist();
+        long fpSourceId = fpSource.id;
+        tm.commit();
+
+        Long fpNodeId = nodeService.createConfigured("_fp", groupId,
+                NodeType.FINGERPRINT, List.of(fpSourceId), null).id();
+        Long ftNodeId = nodeService.createConfigured("ft", groupId,
+                NodeType.FIXED_THRESHOLD,
+                List.of(fpNodeId, folder.group.root.id, rangeId),
+                new FixedThresholdConfig(null, 50.0, false, true, null)).id();
+
+        processingService.awaitIngestion(valueService.createRootValue(folderId,
+                JqValues.parse("{\"y\": 100, \"fp\": \"default\"}")), 30, TimeUnit.SECONDS);
+
+        awaitIdle(10_000);
+        folderService.delete(folderId);
+
+        tm.begin();
+        assertNull(FolderEntity.find("name", "delete-detection-test").firstResult(), "Folder should be deleted after deletion");
+        assertNotNull(NodeGroupEntity.findById(groupId), "Node group should not be deleted after folder deletion");
+        assertNotNull(NodeEntity.findById(rangeId), "Range node should not be deleted");
+        assertNotNull(NodeEntity.findById(fpSourceId), "Fingerprint source node should not be deleted");
+        assertNotNull(NodeEntity.findById(fpNodeId), "Fingerprint node should not be deleted");
+        assertNotNull(NodeEntity.findById(ftNodeId), "Detection node should not be deleted");
+        tm.commit();
     }
 }

@@ -199,20 +199,20 @@ public class FolderService implements FolderServiceInterface {
     @Override
     @Transactional
     public void delete(long id){
-        FolderEntity folder = FolderEntity.findById(id);
-        if (folder == null) {
-            throw new NotFoundException("Folder not found: " + id);
-        }
 
-        valueService.deleteForFolder(id);
-        notificationService.deleteForFolder(id);
-        processingService.deleteForFolder(id);
+            FolderEntity folder = FolderEntity.findById(id);
+            if (folder == null) {
+                throw new NotFoundException("Folder not found: " + id);
+            }
+            valueService.deleteForFolder(id);
+            notificationService.deleteForFolder(id);
+            processingService.deleteForFolder(id);
 
-        em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id = :fid)")
-                .setParameter("fid", id).executeUpdate();
-        em.createNativeQuery("DELETE FROM folder_view WHERE folder_id = :fid")
-                .setParameter("fid", id).executeUpdate();
-        FolderEntity.delete("id", id);
+            em.createNativeQuery("DELETE FROM folder_view_component WHERE view_id IN (SELECT id FROM folder_view WHERE folder_id = :fid)")
+                    .setParameter("fid", id).executeUpdate();
+            em.createNativeQuery("DELETE FROM folder_view WHERE folder_id = :fid")
+                    .setParameter("fid", id).executeUpdate();
+            FolderEntity.delete("id", id);
     }
 
     @Override
