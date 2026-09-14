@@ -543,7 +543,11 @@ public class NodeService implements NodeServiceInterface {
                                 (int) (relDiff.getWindow() + minPrevious),
                                 (int) (relDiff.getWindow() + minPrevious + minPrevious)
                         );
-
+                        if(groupRangeValues.isEmpty()){
+                            //cannot perform calculation
+                            Log.debug(relDiff+" cannot calculate due to missing group range values");
+                            continue;
+                        }
                         List<JqValue> domainValues = new ArrayList<>(groupRangeValues.keys());
                         List<Double> reducedRangeValues =  new ArrayList<>();
                         for(JqValue domainValue : domainValues){
@@ -567,6 +571,7 @@ public class NodeService implements NodeServiceInterface {
                             }
                         }
                         if(reducedRangeValues.size() != domainValues.size()){
+                            //want to know when this happens because how were values missing?
                             Log.error("missing range values for domain\n"+relDiff+"\n  range: "+reducedRangeValues+"\n  domain: "+domainValues);
                             continue;//we cannot calculate change detection
                         }

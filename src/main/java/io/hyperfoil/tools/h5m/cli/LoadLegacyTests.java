@@ -38,7 +38,10 @@ import java.util.stream.Collectors;
 @CommandDefinition(name = "load-tests", description = "Import test definitions (folder + node graph) from a legacy Horreum PostgreSQL database", generateHelp = true)
 public class LoadLegacyTests implements Command<H5mCommandInvocation> {
 
+    public static final String COMBINE_LABEL_OPERATION = "obj=>Object.values(obj).find(v => v != null && v !== 'NaN' && (typeof v !== 'number' || !isNaN(v)))";
+
     public static final String DEFAULT_PREFIX = "_";
+    public static final String DEFAULT_VARIABLE_PREFIX = "_v_";
 
     @Option(name = "username", acceptNameWithoutDashes = true, description = "legacy db username", defaultValue = "quarkus")
     String username;
@@ -60,65 +63,6 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
 
     @Option(name = "combined-label-prefix", acceptNameWithoutDashes = true, description = "optional prefix for labels combined during schema merge",defaultValue = "")
     String combinedLabelPrefix = "";
-
-
-
-    public static String printTest(Test t){
-        StringBuilder sb = new StringBuilder();
-        sb.append("Test.id="+t.id()+" name="+t.name()+"\n");
-        if(!t.transformers().isEmpty()) {
-            sb.append("transformers:\n");
-            t.transformers().forEach(transformer -> {
-                sb.append("  " + transformer.name() + " .id=" + transformer.id() + "\n");
-                if (!transformer.extractors().isEmpty()) {
-                    sb.append("    extractors:\n");
-                    transformer.extractors().forEach(extractor -> {
-                        sb.append("      " + extractor.name() + " .isArray=" + extractor.isArray() + "\n");
-                    });
-                }
-            });
-        }
-        if(!t.schemaPaths().isEmpty()){
-            sb.append("schemaPaths:\n");
-            t.schemaPaths().forEach((k,lst)->{
-                sb.append("  "+k+"\n");
-                lst.forEach(lbl->{
-                    sb.append("    "+lbl.name()+" .id="+lbl.id()+"\n");
-                    if(!lbl.extractors().isEmpty()){
-                        sb.append("      extractors:\n");
-                        lbl.extractors().forEach(extractor -> {
-                            sb.append("        "+extractor.name()+" .isArray="+extractor.isArray()+"\n");
-                        });
-                    }
-                });
-            });
-        }
-        if(!t.variables().isEmpty()){
-            sb.append("variables:\n");
-            t.variables().forEach(variable->{
-                sb.append("  "+variable.name()+" .id="+variable.id()+"\n");
-                if(!variable.labels().isEmpty()){
-                    sb.append("    labels:\n");
-                    variable.labels().forEach(label->{
-                        sb.append("      "+label+"\n");
-                    });
-                }
-            });
-        }
-        if(!t.fingerprints().isEmpty()){
-            sb.append("fingerprints:\n");
-            t.fingerprints().forEach(fingerprint->{
-                sb.append("  "+fingerprint.labels()+" "+fingerprint.filter()+"\n");
-            });
-        }
-        if(!t.changeDetections().isEmpty()){
-            sb.append("changeDetections:\n");
-            t.changeDetections().forEach(changeDetection->{
-                sb.append("  "+changeDetection.id()+" "+changeDetection.model()+" "+changeDetection.variableId()+" "+changeDetection.config()+"\n");
-            });
-        }
-        return sb.toString();
-    }
 
     public static class NodeTracking {
 
@@ -142,6 +86,15 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
             // Without KEEP, the ephemeral system nullifies them as "intermediate"
             // nodes, but in Horreum these are the final label values.
             node.ephemeral = EphemeralMode.KEEP;
+        }
+        public void untagNodeAsLabel(NodeEntity node){
+            if(isLabelNode(node)){
+                Label l = getLabel(node);
+                if(node.equals(labelToNodes.get(l))){
+                    labelToNodes.remove(l);
+                }
+                nodeToLabel.remove(node);
+            }
         }
         public void renameNode(NodeEntity node,String oldName){
             nodesByName.remove(oldName,node);
@@ -179,7 +132,12 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
         public List<NodeEntity> getLabelNodes(String name){
             return getNodes(name).stream().filter(nodeToLabel::containsKey).collect(Collectors.toList());
         }
-
+        public boolean isLabelNode(NodeEntity node){
+            return nodeToLabel.containsKey(node);
+        }
+        public Label getLabel(NodeEntity node){
+            return nodeToLabel.getOrDefault(node,null);
+        }
     }
 
     @Inject
@@ -597,7 +555,7 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                     // from data that doesn't match their schema.
                     List<NodeEntity> reversedSources = new ArrayList<>(uniqueSourceNodes);
                     Collections.reverse(reversedSources);
-                    NodeEntity newNode = new JsNode(labelName, "obj=>Object.values(obj).find(v => v != null && v !== 'NaN' && (typeof v !== 'number' || !isNaN(v)))", reversedSources);
+                    NodeEntity newNode = new JsNode(labelName, COMBINE_LABEL_OPERATION, reversedSources);
                     if(combinedLabelPrefix != null && !combinedLabelPrefix.isEmpty()){
                         for(int i=0; i<reversedSources.size(); i++){
                             NodeEntity reversedSource = reversedSources.get(i);
@@ -605,6 +563,10 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                                 reversedSource.name = getLabelRename(labelName);
                             }
                         }
+                    }
+                    for(int i=0; i<uniqueSourceNodes.size(); i++){
+                        NodeEntity reversedSource = uniqueSourceNodes.get(i);
+                        nodeTracking.untagNodeAsLabel(reversedSource);
                     }
                     if(keepAll){
                         newNode.ephemeral = EphemeralMode.KEEP;
@@ -618,21 +580,25 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
 
         //create nodes from variables
         Map<Long,NodeEntity> variableIdToNode = new HashMap<>();
+        //store oldName -> newName for variables that changed names
+        Map<String,String> variableNameToRename = new HashMap<>();
+
         for(Variable variable : test.variables()){
-            if(variable.calculation() == null || variable.calculation().isEmpty()){
-                if(variable.labels().size()==1){
-                    String labelName = StringUtil.removeQuotes(variable.labels().get(0)).replaceAll(":","_");
-                    List<NodeEntity> found = nodeTracking.getLabelNodes(labelName);
-                    if(found.size()>=1){
-                        variableIdToNode.put(variable.id(),found.get(0));
-                        if(found.size()>1){
-                            log(4,"WARNING: variable "+variable.name()+" matched "+found.size()+" label nodes, using first");
-                        }
-                    }else {
-                        System.out.println("FAILED TO MAKE VARIABLE "+variable.id()+" for "+test.name+". Found count for "+labelName+" is 0\n labels="+variable.labels());
+            if( JsNode.isNullEmptyOrIdentityFunction(variable.calculation()) && variable.labels.size() ==1 ){
+                String labelName = StringUtil.removeQuotes(variable.labels().get(0)).replaceAll(":","_");
+                List<NodeEntity> found = nodeTracking.getLabelNodes(labelName);
+                if(found.size()>=1){
+
+                    if(found.size()>1){
+                        log(4,"WARNING: variable "+variable.name()+" matched "+found.size()+" label nodes, using first");
                     }
-                }else{
-                    //THIS IS NOT EXPECTED
+                    NodeEntity toUse = found.getFirst();
+                    if(!toUse.name.equals(variable.name)){
+                        variableNameToRename.put(variable.name,toUse.name);
+                    }
+                    variableIdToNode.put(variable.id,toUse);
+                }else {
+                    System.out.println("FAILED TO MAKE VARIABLE "+variable.id()+" for "+test.name+". Found count for "+labelName+" is 0\n labels="+variable.labels());
                 }
             }else{
                 //create a new Node
@@ -651,17 +617,23 @@ public class LoadLegacyTests implements Command<H5mCommandInvocation> {
                         //missing
                     }
                 }
+                String name = variable.name;
+                if(labelNames.contains(name)){
+                    name = DEFAULT_VARIABLE_PREFIX+name;
+                    variableNameToRename.put(variable.name,name);
+                }
                 // Try converting simple JS variable calculations to jq (issue #247)
                 String jqCalc = sources.size() == 1 ? JsToJqPatterns.tryConvert(variable.calculation()) : null;
                 NodeEntity variableNode = jqCalc != null
-                        ? new JqNode(variable.name(), jqCalc, sources)
-                        : new JsNode(variable.name(), variable.calculation(), sources);
-                if(keepAll){
+                        ? new JqNode(name, jqCalc, sources)
+                        : new JsNode(name, variable.calculation(), sources);
+                if (keepAll) {
                     variableNode.ephemeral = EphemeralMode.KEEP;
                 }
                 folder.group.addNode(variableNode);
                 nodeTracking.addNode(variableNode);
-                variableIdToNode.put(variable.id(),variableNode);
+                variableIdToNode.put(variable.id(), variableNode);
+
             }
 
         }

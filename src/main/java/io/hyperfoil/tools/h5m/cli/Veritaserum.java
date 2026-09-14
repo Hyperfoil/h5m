@@ -8,6 +8,7 @@ import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.yaup.Sets;
 import io.hyperfoil.tools.yaup.json.Json;
 import io.hyperfoil.tools.yaup.json.JsonComparison;
+import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import org.aesh.command.Command;
 import org.aesh.command.CommandDefinition;
@@ -27,6 +28,7 @@ import java.util.stream.IntStream;
 @CommandDefinition(name="veritaserum",description = "find the truth", generateHelp = true)
 public class Veritaserum implements Command<H5mCommandInvocation> {
 
+    public static final int TEXT_LIMIT = 120;
     private static final Logger log = LoggerFactory.getLogger(Veritaserum.class);
     @Inject
     FolderService folderService;
@@ -71,7 +73,6 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
     @Option(name = "combined-label-prefix", acceptNameWithoutDashes = true, description = "optional prefix for labels combined during schema merge",defaultValue = "")
     String combinedLabelPrefix = "";
 
-
     @Inject
     LoadLegacyTests loadLegacyTests;
 
@@ -103,11 +104,14 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
         return input;
     }
 
+
+
     @Override
     public CommandResult execute(H5mCommandInvocation invocation) throws InterruptedException {
         CommandResult exitCode = CommandResult.SUCCESS;
         try {
             List<Delta> deltas = new ArrayList<>();
+            Map<Long,Long> datasetToValueId = new HashMap<>();
 
 
             Map<String, String> props = new HashMap<>();
@@ -141,11 +145,11 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                         exitCode = CommandResult.USAGE_ERROR;
                         continue;
                     }
-                    System.out.println("Veritaserum "+testName+" id="+testId);
+                    invocation.println("Veritaserum "+testName+" id="+testId);
                     folder = folderService.find(testName);
                     boolean loadFolder = folder == null;
                     if (loadFolder) {
-                        System.out.println("loading test " + testName + " id=" + testId);
+                        invocation.println("loading test " + testName + " id=" + testId);
                         loadLegacyTests.username = username;
                         loadLegacyTests.password = password;
                         loadLegacyTests.url = url;
@@ -156,14 +160,14 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                         //int ec = loadLegacyTests.call();
                         CommandResult result = loadLegacyTests.execute(null);
                         if (result.getExitCode() != 0) {
-                            System.out.println("Error loading test " + testName + " id=" + testId);
+                            invocation.println("Error loading test " + testName + " id=" + testId);
                             exitCode = CommandResult.FAILURE;
                             continue;
                         }
                         folder = folderService.find(testName);
                     }
                     if (folder == null) {
-                        System.out.println("failed to find folder " + testName);
+                        invocation.println("failed to find folder " + testName);
                         exitCode = CommandResult.USAGE_ERROR;
                         continue;
                     }
@@ -173,35 +177,50 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                     if (runIds == null || runIds.isEmpty()) {
                         runIds = fetchRunIds(legacyConn, testId, limit, offset);
                     }
-                    System.out.println(runIds.size() + " runs");
+                    invocation.println(runIds.size() + " runs");
                     for (Long runId : runIds) {
                         JqValue runData = fetchRun(legacyConn, runId);
 
 
                         if (runData == null) {
-                            System.out.println("failed to find run " + runId);
+                            invocation.println("failed to find run " + runId);
                             exitCode = CommandResult.USAGE_ERROR;
                             continue;
                         }
-                        System.out.println("Uploading run " + runId);
+                        invocation.println("Uploading run " + runId);
                         long uploadId = valueService.createRootValue(folder.id(),runData);
                         boolean ok = processingService.awaitIngestion(uploadId,3,TimeUnit.MINUTES);
                         if (!ok) {
-                            System.out.println("upload failed");
+                            invocation.println("upload failed");
                             continue;
                         }
 
                         List<LoadLegacyTests.Transformer> transformers = loadTransformers(legacyConn, testId);
                         if (!transformers.isEmpty()) {
                             for (LoadLegacyTests.Transformer transformer : transformers) {
-                                System.out.println("\nTransformer: " + transformer.name());
                                 List<Node> transformerMatches = nodeService.findNodeByFqdn(transformer.name(), folder.groupId());
                                 if (transformerMatches.isEmpty()) {
                                     String name = LoadLegacyTests.getRename(transformer, transformers.size());
                                     transformerMatches = nodeService.findNodeByFqdn(name, folder.groupId());
                                 }
                                 if (transformerMatches.isEmpty()) {
-                                    System.out.println("failed to find match for transformer " + transformer.name());
+                                    invocation.println("failed to find match for transformer " + transformer.name());
+                                    Delta missingTransformer = new Delta(
+                                            DeltaType.MissingLabel,
+                                            folder.name(),
+                                            runId,
+                                            -1,
+                                            "transform",
+                                            transformer.name(),
+                                            transformer.id(),
+                                            transformer.function(),
+                                            JqObject.EMPTY,
+                                            "-",
+                                            -1L,
+                                            "-",
+                                            JqNull.NULL
+                                    );
+                                    deltas.add(missingTransformer);
                                     exitCode = CommandResult.FAILURE;
                                     continue;
                                 }
@@ -210,7 +229,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
 
                                     var matchingExtractor = transformer.extractors().stream().filter(e -> extractorNode.name().equals(loadLegacyTests.getExtractorRename( e.name() )) || extractorNode.name().equals(LoadLegacyTests.DEFAULT_PREFIX+loadLegacyTests.getExtractorRename( e.name() ))).findFirst().orElse(null);
                                     if (matchingExtractor == null) {
-                                        System.out.println("failed to find match for transformer extractor " + extractorNode.name());
+                                        invocation.println("failed to find match for transformer extractor " + extractorNode.name());
                                         exitCode = CommandResult.FAILURE;
                                         continue;
                                     }
@@ -220,17 +239,17 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                                     boolean eq = equalish(fromExtractor, fromH5m);
                                     if (!eq) {
                                         Delta d = new Delta(
+                                                DeltaType.DifferentValue,
                                                 folder.name(),
-                                                extractorNode.id(),
-                                                extractorNode.name(),
+                                                runId,
+                                                -1L,
                                                 "transformer_extractors",
                                                 matchingExtractor.name(),
-                                                transformer.id(),
-                                                "run",
-                                                runId,
-                                                uploadId,
+                                                transformer.id(),//transformer_extractors do not have an id
                                                 matchingExtractor.jsonpath(),
                                                 fromExtractor,
+                                                extractorNode.name(),
+                                                extractorNode.id(),
                                                 extractorNode.operation(),
                                                 fromH5m
                                         );
@@ -248,7 +267,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                         if(!transformers.isEmpty()){
                             List<Node> datasetNodes = nodeService.findNodeByFqdn("dataset", folder.groupId());
                             if (datasetNodes.isEmpty()) {
-                                System.out.println("Cannot find dataset node for " + folder.name() + " groupId=" + folder.groupId());
+                                invocation.println("Cannot find dataset node for " + folder.name() + " groupId=" + folder.groupId());
                                 exitCode = CommandResult.FAILURE;
                                 continue;
                             }
@@ -260,24 +279,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                         }
 
                         if (datasetIds.size() != datasetValues.size()) {
-                            System.out.println("INCORRECT NUMBER OF DATASETS h5m=" + datasetValues.size() + " horreum=" + datasetIds.size());
-                            //TODO do we stop doing this because now we have comparison?
-//                        Delta d = new Delta(
-//                                folder.name(),
-//                                datasetNode.id(),
-//                                "dataset",
-//                                "-",
-//                                transformers.stream().map(t->t.name()+"="+t.id()).collect(Collectors.joining(",")),
-//                                -1,
-//                                "run",
-//                                runId,
-//                                -1,
-//                                "",
-//                                JqNumber.of(datasetIds.size()),
-//                                datasetNode.operation(),
-//                                JqNumber.of(datasetValues.size())
-//                        );
-//                        deltas.add(d);
+                            invocation.println("INCORRECT NUMBER OF DATASETS h5m=" + datasetValues.size() + " horreum=" + datasetIds.size());
                         }
                         //find the best match between datasets
                         List<DatasetValuePair> pairs = matchDatasetToValue(legacyConn, datasetIds, datasetValues);
@@ -289,47 +291,48 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                             long h5mDatasetId = pair.valueId;
                             if (horreumDatasetId == -1 || h5mDatasetId == -1) {
                                 Delta d = new Delta(
-                                        testName,
-                                        datasetNode.id(),
-                                        datasetNode.name(),
-                                        "-",
-                                        transformers.stream().map(t -> t.name() + "=" + t.id()).collect(Collectors.joining(",")),
-                                        -1,
-                                        "run",
+                                        DeltaType.MissingDataset,
+                                        folder.name(),
+                                        runId,
                                         horreumDatasetId,
-                                        h5mDatasetId,
-                                        "",
+                                        "dataset",
+                                        "-",
+                                        horreumDatasetId,
+                                        "-",
                                         horreumDatasetId == -1 ? JqNull.NULL : JqObject.EMPTY,
-                                        datasetNode.operation(),
+                                        "dataset",
+                                        h5mDatasetId,
+                                        transformers.stream().map(t -> t.name() + "=" + t.id()).collect(Collectors.joining(",")),
                                         h5mDatasetId == -1 ? JqNull.NULL : JqObject.EMPTY
                                 );
                                 deltas.add(d);
                                 continue;
+                            }else{
+                                datasetToValueId.put(horreumDatasetId, h5mDatasetId);
                             }
-                            System.out.println("Dataset: " + horreumDatasetId + " value: " + h5mDatasetId + " label_values " + getLabelValueCount(legacyConn, horreumDatasetId) + "\n");
 
                             for (LoadLegacyTests.Label label : usedLabels) {
                                 JqValue horreumLabelValue = getLabelValue(legacyConn,horreumDatasetId,label.id());
 
                                 List<Node> matchingNodes = nodeService.findNodeByFqdn(label.name(), folder.groupId());
                                 if(matchingNodes.size()>1){
-                                    System.out.println("too many matching nodes for "+label.name()+"\n"+matchingNodes.stream().map(n->n.name()+"="+n.id()).collect(Collectors.joining(", ")));
+                                    invocation.println("ERROR: too many matching nodes for "+label.name()+"\n"+matchingNodes.stream().map(n->n.name()+"="+n.id()).collect(Collectors.joining(", ")));
                                 }
                                 if (matchingNodes.isEmpty()) {
-                                    System.out.println("ERROR: failed to find match for label " + label.name());
+                                    invocation.println("ERROR: failed to find match for label " + label.name());
                                     exitCode = CommandResult.FAILURE;
                                     Delta d = new Delta(
+                                            DeltaType.MissingLabel,
                                             folder.name(),
-                                            -1,
-                                            "-",
+                                            runId,
+                                            horreumDatasetId,
                                             "label",
                                             label.name(),
                                             label.id(),
-                                            "dataset",
-                                            horreumDatasetId,
-                                            h5mDatasetId,
                                             label.function(),
                                             horreumLabelValue,
+                                            "<missingNode>",
+                                            -1L,
                                             "-",
                                             JqNull.NULL
                                     );
@@ -345,15 +348,55 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                                     }else{//this is just right
                                         boolean labelValueEq = equalish(horreumLabelValue,matchingNodeValues.getFirst().data());
                                         if(!labelValueEq){
+                                            Delta labelValueDelta = new Delta(
+                                                    DeltaType.DifferentValue,
+                                                    folder.name(),
+                                                    runId,
+                                                    horreumDatasetId,
+                                                    "label",
+                                                    label.name(),
+                                                    label.id(),
+                                                    label.function(),
+                                                    horreumLabelValue,
+                                                    matchingNode.name(),
+                                                    matchingNode.id(),
+                                                    matchingNode.operation(),
+                                                    matchingNodeValues.getFirst().data()
+                                            );
+                                            deltas.add(labelValueDelta);
                                             //investigate why the value is different
                                             if(matchingNode.type().equals(NodeType.JS)){
+                                                //TODO this fails if the node is a combination node
+
+                                                if(matchingNode.operation().equals(LoadLegacyTests.COMBINE_LABEL_OPERATION)){
+                                                    //does one of the combined values match?
+                                                    List<JqValue> combinedValues = matchingNode.sources().stream().map(n->{
+                                                        List<Value> existing = valueService.getDescendantValues(h5mDatasetId,List.of(n.id()));
+                                                        if(existing.size()>0){
+                                                            return existing.getFirst().data();
+                                                        }else{
+                                                            return JqNull.NULL;
+                                                        }
+                                                    }).toList();
+                                                    List<Double> combinedScores = combinedValues.stream().map(v-> score( horreumLabelValue , v )).toList();
+                                                    double maxScore = Collections.max(combinedScores);
+                                                    double matchingNodeScore = score(horreumLabelValue,matchingNodeValues.get(0).data());
+                                                        //this is a better match
+                                                    int idx = combinedScores.indexOf(maxScore);
+                                                    Log.debug("changing matchingNode for label " + label.name() + " to a combined node = " + matchingNode.sources().get(idx).name() + "=" + matchingNode.sources().get(idx).id() + "\n  horreummValue=" + horreumLabelValue + "\n  combinedNodeValue=" + matchingNodeValues.getFirst().data() + "\n  sourceNodeValue=" + combinedValues.get(idx));
+                                                    matchingNode = matchingNode.sources().get(idx);
+                                                }
+                                                if(matchingNode.sources().size() != label.extractors().size()){
+                                                    Log.error("unexpected source difference\n  sources="+matchingNode.sources().stream().map(n->n.name()).collect(Collectors.joining(", "))
+                                                    +"\n  extractors="+label.extractors().stream().map(n->n.name()).collect(Collectors.joining(", ")));
+                                                }
                                                 for (Node node : matchingNode.sources()) {
                                                     var matchingExtractor = label.extractors().stream().filter(e -> equalish(loadLegacyTests.getExtractorRename( e.name() ), node.name())).findFirst().orElse(null);
                                                     if (matchingExtractor == null) {
                                                         if (label.extractors().size() == 1) {
                                                             matchingExtractor = label.extractors().iterator().next();
                                                         } else {
-                                                            System.out.println("failed to find match for label extractor \"" + node.name() + "\" (" + nameSanitize(node.name()) + ") from: " + label.extractors().stream().map(e -> e.name() + "=(" + nameSanitize(e.name()) + ")").collect(Collectors.joining(", ")));
+                                                            Log.error("failed to find match for label extractor \"" + node.name() + "\" (" + nameSanitize(node.name()) + ") from: " + label.extractors().stream().map(e -> e.name() + "=(" + nameSanitize(e.name()) + ")").collect(Collectors.joining(", ")));
                                                             exitCode = CommandResult.FAILURE;
                                                             continue;
                                                         }
@@ -364,17 +407,17 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                                                     boolean eq = equalish(fromExtractor, fromH5m);
                                                     if (!eq) {
                                                         Delta d = new Delta(
+                                                                DeltaType.DifferentValue,
                                                                 folder.name(),
-                                                                node.id(),
-                                                                node.name(),
+                                                                runId,
+                                                                horreumDatasetId,
                                                                 "label_extractors",
                                                                 matchingExtractor.name(),
                                                                 label.id(),
-                                                                "dataset",
-                                                                horreumDatasetId,
-                                                                h5mDatasetId,
                                                                 matchingExtractor.jsonpath(),
                                                                 fromExtractor,
+                                                                node.name(),
+                                                                node.id(),
                                                                 node.operation(),
                                                                 fromH5m
                                                         );
@@ -382,33 +425,44 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                                                     }
                                                 }
                                             }else{
-                                                Delta d = new Delta(
-                                                        folder.name(),
-                                                        matchingNode.id(),
-                                                        matchingNode.name(),
-                                                        "label",
-                                                        label.name(),
-                                                        label.id(),
-                                                        "dataset",
-                                                        horreumDatasetId,
-                                                        h5mDatasetId,
-                                                        label.function(),
-                                                        horreumLabelValue,
-                                                        matchingNode.operation(),
-                                                        matchingNodeValues.getFirst().data()
-                                                );
-                                                deltas.add(d);
+                                                //this delta is already handled before the if block
                                             }
                                         }
                                     }
                                 }
                             }
+                            //ch ch ch changes
+                            List<Change> changes = getChanges(legacyConn,horreumDatasetId);
+                            List<Node> detectionNodes = nodeGroup.sources().stream().filter(n->n.type().isDetection()).toList();
+                            List<Value> detectionValues = detectionNodes.isEmpty() ? Collections.emptyList() : valueService.getDescendantValues(h5mDatasetId, detectionNodes.stream().map(n->n.id()).collect(Collectors.toList()) );
+                            if(detectionValues.size()!= changes.size()){
+                                //there a difference in change detection
+                                String variableNames = changes.stream().map(c->c.variableName()).distinct().collect(Collectors.joining(", "));
+
+                                Delta changeDiff = new Delta(
+                                        DeltaType.MissingChange,
+                                        folder.name(),
+                                        runId,
+                                        horreumDatasetId,
+                                        "change",
+                                        "<all-changes>",
+                                        -1L,
+                                        variableNames,
+                                        JqNumber.of(changes.size()),
+                                        detectionNodes.stream().map(n->n.name()+"="+n.id()).collect(Collectors.joining(", ")),
+                                        -1L,
+                                        "-",
+                                        JqNumber.of(detectionValues.size())
+                                );
+                                deltas.add(changeDiff);
+
+                            }
                         }
                     }// for runId
                     if (pause) {
-                        System.out.println(deltas.size() + " DELTAS");
+                        invocation.println(deltas.size() + " DELTAS for testId="+testId+" "+folder.name());
                         for (Delta d : deltas) {
-                            System.out.println(d);
+                            invocation.println(d.toString());
                         }
                         invocation.getShell().readLine(new Prompt("Press Enter to continue..."));
                         deltas.clear();
@@ -416,23 +470,27 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                     runIds.clear(); //clear for next loop
                 }// for testid
             }
-            System.out.println(deltas.size() + " DELTAS");
-            for (Delta d : deltas) {
-                System.out.println(d);
+            if(!pause) {
+                System.out.println(deltas.size() + " DELTAS");
+                for (Delta d : deltas) {
+                    invocation.println(d.toString());
+                }
             }
+            invocation.println(datasetToValueId.size()+" datasets to values: {"+datasetToValueId.entrySet().stream().map(e->e.getKey()+":"+e.getValue()).collect(Collectors.joining(", "))+"}");
         }catch(SQLException e){
             exitCode = CommandResult.FAILURE;
         }
         return exitCode;
     }
-    record Delta(String folderName, long nodeId, String nodeName, String horreumTable, String horreumName, long parentId, String dataTable, long dataId, long valueId, String jsonpath, JqValue horreum, String jq, JqValue h5m){
+    enum DeltaType {DifferentValue,ExtraValue,MissingLabel,MissingDataset,MissingLabelValue,MissingChange,}
+    record Delta(DeltaType type,String folderName,long runId,long datasetId,String horreumEntityType,String horreumEntityName,long horreumEntityId,String horreumOperation,JqValue horreumValue,String nodeName,long nodeId,String nodeOperation,JqValue nodeValue){
 
         @Override
         public String toString() {
             StringBuilder extra = new StringBuilder();
-            if(horreum !=null && h5m!=null && ((horreum.toString().length()>=120) || (h5m.toString().length()>=120)) ){
-                Json horreumJson = horreum == null ? new Json() : Json.fromString(horreum.toString());
-                Json h5mJson = h5m == null ? new Json() : Json.fromString(h5m.toString());
+            if(horreumValue !=null && nodeValue!=null && ((horreumValue.toString().length()>=TEXT_LIMIT) || (nodeValue.toString().length()>=TEXT_LIMIT)) ){
+                Json horreumJson = horreumValue == null ? new Json() : Json.fromString(horreumValue.toString());
+                Json h5mJson = nodeValue == null ? new Json() : Json.fromString(nodeValue.toString());
                 JsonComparison comp = new JsonComparison();
                 if(horreumJson != null && h5mJson != null){
                     comp.load("hrm", horreumJson);
@@ -450,13 +508,13 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                     });
                 }
             }
-            return folderName+" "+dataTable+"="+dataId+" "+ horreumTable +" label/transform="+parentId+" valueId="+valueId+"\n"
-                    +"  hrm: "+ horreumName +"\n"
-                    +"    filter: "+jsonpath+"\n"
-                    +"    value: "+(horreum==null ? "null" : (horreum.toString().length()<120)?horreum.toString():("length="+horreum.toString().length()))+"\n"
-                    +"  h5m: "+nodeName+"\n"
-                    +"    filter: "+jq+"\n"
-                    +"    value: "+(h5m == null ? "null" : (h5m.toString().length()<120)?h5m.toString():("length="+h5m.toString().length()))+"\n"
+            return type+" "+folderName+" runId="+runId+" datasetId="+datasetId+" "+horreumEntityType+"\n"
+                    +"  hrm: "+ horreumEntityName+"="+horreumEntityId+"\n"
+                    +"    filter: "+horreumOperation+"\n"
+                    +"    value: "+(horreumValue==null ? "null" : (horreumValue.toString().length()<TEXT_LIMIT)?horreumValue.toString():("length="+horreumValue.toString().length()))+"\n"
+                    +"  h5m: "+nodeName+"="+nodeId+"\n"
+                    +"    filter: "+nodeOperation+"\n"
+                    +"    value: "+(nodeValue == null ? "null" : (nodeValue.toString().length()<TEXT_LIMIT)?nodeValue.toString():("length="+nodeValue.toString().length()))+"\n"
                     +(extra.length()>0 ?("  diffs:\n    "+extra.toString().replaceAll("\n","\n    ")):"");
         }
     }
@@ -481,7 +539,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                 );
                 if (jqObjects.isEmpty()) {
                     //this shouldn't happen, what do we do?
-                    System.out.println("Error: value " + v.id() + " from node=" + v.node().name() + "=" + v.node().id() + " is missing grouped values");
+                    Log.error("Error: value " + v.id() + " from node=" + v.node().name() + "=" + v.node().id() + " is missing grouped values");
                 } else {
                     valueLabelValues.add(jqObjects.getFirst());
                 }
@@ -491,7 +549,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
             double scores[][] = new double[datasetLabelValues.size()][valueLabelValues.size()];
             for (int d = 0; d < datasetLabelValues.size(); d++) {
                 for (int v = 0; v < valueLabelValues.size(); v++) {
-                    scores[d][v] = score(datasetLabelValues.get(d), valueLabelValues.get(v));
+                    scores[d][v] = scoreObjects(datasetLabelValues.get(d), valueLabelValues.get(v));
                 }
             }
             //pick the best matches
@@ -523,6 +581,21 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
         }
         return pairs;
     }
+
+    record Change(long id,long variableId,long datasetId,String description,String variableName){}
+    public List<Change> getChanges(Connection conn,long datasetId) throws SQLException {
+        List<Change> changes = new ArrayList<>();
+        try(PreparedStatement statement = conn.prepareStatement("select c.id,c.variable_id,c.dataset_id,c.description,v.name from change c join variable v on c.variable_id = v.id where dataset_id = ?")){
+            statement.setLong(1, datasetId);
+            try(ResultSet rs = statement.executeQuery()){
+                while(rs.next()){
+                    changes.add(new Change(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getString(4), rs.getString(5)));
+                }
+            }
+        }
+        return changes;
+    }
+
     private boolean equalish(JqValue horreum, JqValue h5m){
         return horreum.equals(h5m) || (horreum.isNull() && (h5m == null || h5m.isNull()));
     }
@@ -530,6 +603,9 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
         return nameSanitize(a).equalsIgnoreCase(nameSanitize(b));
     }
     private static String nameSanitize(String s){
+        if(s==null){
+            return "null";
+        }
         return s.replaceAll("[ \\-_]","").toLowerCase();
     }
 
@@ -627,103 +703,6 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
         }
         return rtrn;
     }
-    private int compareLabelValues(AgroalDataSource legacyDs,long testId,long runId) throws SQLException {
-        JqValue runLabelValues = null;
-        Folder folder = null;
-        try (Connection legacyConn = legacyDs.getConnection()) {
-            String testName = getTestName(legacyConn,testId);
-            if (testName == null) {
-                System.err.println("Test not found: " + testId);
-                return 1;
-            }
-            folder = folderService.find(testName);
-            if (folder == null) {
-                System.out.println("failed to find folder "+testName);
-                return 1;
-            }
-            System.out.println("Verifying test: " + testName + " (id=" + testId + ")");
-
-            runLabelValues = fetchRunLabelValues(legacyConn,runId);
-        }
-        if(runLabelValues == null){
-            System.out.println("No labelValues found for "+runId);
-            return 1;
-        }
-        List<JqObject> horreumValues = new ArrayList<>();
-        for(int i=0;i<runLabelValues.length(); i++){
-            JqObject h = (JqObject)runLabelValues.getElement(i);
-            JqObject.Builder b = JqObject.builder();
-            h.forEach((k,v)->{
-                if(!v.isNull()){
-                    b.put(k,v);
-                }
-            });
-            horreumValues.add(b.build());
-        }
-        List<Node> datasetNodes = nodeService.findNodeByFqdn("dataset",folder.groupId());
-        NodeGroup nodeGroup = nodeGroupService.byId(folder.groupId());
-        long nodeId = datasetNodes.size()==1 ? datasetNodes.getFirst().id() : nodeGroup.root().id();
-        List<Value> rootValues = valueService.getNodeValues(nodeGroup.root().id());
-
-        List<JqValue> tmp = valueService.getGroupedValues(nodeId,rootValues.getFirst().id(),null,null,null);
-        List<JqObject> h5mValues = new ArrayList<>();
-        for(JqValue t:tmp){
-            JqObject.Builder b = JqObject.builder();
-            ((JqObject)t).forEach((k,v)->{
-                if(!v.isNull()){
-                    b.put(k,v);
-                }
-            });
-            h5mValues.add(b.build());
-        }
-
-        System.out.println("values.size="+h5mValues.size());
-        System.out.println("labelValues.size="+runLabelValues.length());
-
-        double[][] eqs = new double[horreumValues.size()][h5mValues.size()];
-
-        for(int h=0; h<horreumValues.size(); h++){
-            for(int m=0; m<h5mValues.size(); m++){
-                eqs[h][m] = score( horreumValues.get(h), h5mValues.get(m));
-            }
-        }
-        System.out.print("    ");
-        for(int h=0; h<h5mValues.size(); h++){
-            System.out.print(h<10 ? ("  "+h+"  "):(" "+h+" "));
-        }
-        System.out.println("");
-        for(int h=0; h<horreumValues.size(); h++){
-            System.out.print((h<10 ? ("  "+h+"  "):("  "+h+"  ")));
-            for(int m=0; m<h5mValues.size(); m++){
-                System.out.printf(" %.1f ",eqs[h][m]);
-            }
-            System.out.println("");
-        }
-        for(int i=0; i<h5mValues.size(); i++){
-            System.out.println(i+":");
-            JqObject h = (JqObject) horreumValues.get(i);
-            JqObject m = (JqObject) h5mValues.get(i);
-            Set<String> keys = Sets.join(h.keys(),m.keys());
-            for(String k : keys){
-                System.out.println("  "+k+" "+(h.has(k) && m.has(k) && h.get(k).equals(m.get(k))));
-                System.out.println("    h="+(h.has(k) ? s(h.get(k)) : ""));
-                System.out.println("    m="+(m.has(k) ? s(m.get(k)) : ""));
-            }
-        }
-
-        return 0;
-    }
-    private JqObject stripNull(JqObject input){
-        JqObject.Builder b = JqObject.builder();
-        input.forEach((k,v)->{
-            if(v==null || v.isNull()){
-
-            }else{
-                b.put(k,v);
-            }
-        });
-        return b.build();
-    }
 
     private JqObject fetchDatasetLabelValues(Connection conn, long datasetId) {
         JqObject value = null;
@@ -776,8 +755,7 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
                 }
             }
         } catch (SQLException e){
-            System.out.println("datasetId = "+datasetId);
-            e.printStackTrace();
+            Log.error("datasetId = "+datasetId,e);
         }
         return value == null ? JqObject.EMPTY : value;
     }
@@ -914,7 +892,55 @@ public class Veritaserum implements Command<H5mCommandInvocation> {
         }else
             return s;
     }
-    private double score(JqObject a, JqObject b){
+    private double score(JqValue a,JqValue b){
+        if( a.isObject() && b.isObject()){
+            return scoreObjects((JqObject)a,(JqObject)b);
+        }else{
+            //using Levenshtein edit distance as percent of total length Distance
+            String s1 = a.toString();
+            String s2 = b.toString();
+            if (s1.length() > s2.length()) {
+                String temp = s1;
+                s1 = s2;
+                s2 = temp;
+            }
+
+            int l1 = s1.length();
+            int l2 = s2.length();
+
+            // Arrays to store costs of the current and previous rows
+            int[] prevRow = new int[l1 + 1];
+            int[] currRow = new int[l1 + 1];
+
+            // Initialize the base case for the first row
+            for (int i = 0; i <= l1; i++) {
+                prevRow[i] = i;
+            }
+
+            // Iteratively fill the rows
+            for (int j = 1; j <= l2; j++) {
+                currRow[0] = j; // Deletion cost from s2
+
+                for (int i = 1; i <= l1; i++) {
+                    // If characters match, cost is 0, otherwise 1
+                    int cost = (s1.charAt(i - 1) == s2.charAt(j - 1)) ? 0 : 1;
+
+                    // Calculate minimum of insertion, deletion, and substitution
+                    currRow[i] = Math.min(
+                            Math.min(currRow[i - 1] + 1,   // Insertion
+                                    prevRow[i] + 1),      // Deletion
+                            prevRow[i - 1] + cost          // Substitution
+                    );
+                }
+
+                // Move the current row data to the previous row for the next iteration
+                System.arraycopy(currRow, 0, prevRow, 0, prevRow.length);
+            }
+
+            return ( (double)Math.max(s1.length(), s2.length()) - prevRow[l1] ) / (double) Math.max(s1.length(), s2.length());
+        }
+    }
+    private double scoreObjects(JqObject a, JqObject b){
         int div = Math.max(a.length(),b.length());
         Set<String> keys = Sets.join(a.keys(),b.keys());
         int count = 0;

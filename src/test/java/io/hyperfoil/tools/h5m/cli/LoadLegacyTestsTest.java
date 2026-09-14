@@ -151,6 +151,47 @@ public class LoadLegacyTestsTest extends FreshDb {
     }
 
     @Test
+    public void createFolder_variable_matches_label_name_with_identity_js(){
+        LoadLegacyTests.Extractor extractor1 = new LoadLegacyTests.Extractor("extractor","$[0].one",false);
+        LoadLegacyTests.Label label1 = new LoadLegacyTests.Label(-1,"label","foo=>foo",List.of(extractor1));
+
+        HashedSets<String,LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"",label1);
+
+        LoadLegacyTests.Variable v = new LoadLegacyTests.Variable(-1,"label",List.of(label1.name()),"value => value");
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths,Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),List.of(v));
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+
+        assertNotNull(folder);
+        assertNotNull(folder.group);
+
+        assertEquals(1,folder.group.sources.size(),"folder should have 1 node:\n"+folder.group.sources.stream().map(n->n.toString()).collect(Collectors.joining("\n")));
+    }
+    @Test
+    public void createFolder_variable_matches_label_name(){
+        LoadLegacyTests.Extractor extractor1 = new LoadLegacyTests.Extractor("extractor","$[0].one",false);
+        LoadLegacyTests.Label label1 = new LoadLegacyTests.Label(-1,"label","foo=>foo*2",List.of(extractor1));
+
+        HashedSets<String,LoadLegacyTests.Label> schemaPaths = new HashedSets<>();
+        schemaPaths.put("$.\"$schema\"",label1);
+
+        LoadLegacyTests.Variable v = new LoadLegacyTests.Variable(-1,"label",List.of(label1.name()),"value => value");
+
+        LoadLegacyTests.Test test = new LoadLegacyTests.Test(-1,"test",schemaPaths,Collections.emptyList(),Collections.emptyList(),Collections.emptyList(),List.of(v));
+
+        FolderEntity folder = loadLegacyTests.createFolder(test).folder();
+
+        assertNotNull(folder);
+        assertNotNull(folder.group);
+
+        assertEquals(2,folder.group.sources.size(),"folder should have 1 node:\n"+folder.group.sources.stream().map(n->n.toString()).collect(Collectors.joining("\n")));
+        assertEquals(1,folder.group.sources.stream().filter(n->n.name.equals("label")).count(),"only one label should be named label");
+    }
+
+
+    @Test
     public void createFolder_one_transform_one_label_duplicate_extractor_name(){
         LoadLegacyTests.Extractor transformExtractor = new LoadLegacyTests.Extractor("extractor","$.one",false);
         LoadLegacyTests.Extractor extractor1 = new LoadLegacyTests.Extractor("extractor","$[0].one",false);
@@ -166,7 +207,7 @@ public class LoadLegacyTestsTest extends FreshDb {
         assertNotNull(folder.group);
 
 
-        System.out.println(folder.group.sources.stream().map(ne->ne.toString()).collect(Collectors.joining("\n")));
+
 
         assertEquals(4,folder.group.sources.size(),"Expect 3 jq nodes and 1 js node\n"+folder.group.sources.stream().map(ne->ne.toString()).collect(Collectors.joining("\n")));
         assertEquals(1,folder.group.sources.stream().filter(v -> (v instanceof JsNode)).count(),"Expect 1 Js \n"+folder.group.sources.stream().map(ne->ne.toString()).collect(Collectors.joining("\n")));
