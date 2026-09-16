@@ -1,0 +1,10 @@
+---
+layout: page
+title: Core Tasks
+weight: 40
+---
+{|
+How-to guides for common h5m operations.
+|}
+
+These task-oriented guides focus on accomplishing specific goals. They assume you are already familiar with h5m's [core concepts](../concepts/).
