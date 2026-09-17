@@ -5,6 +5,7 @@ import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import io.quarkus.test.aesh.AeshLauncher;
 import io.quarkus.test.aesh.AeshLauncherImpl;
+import org.aesh.command.CommandResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,11 +44,11 @@ public class NotificationTest {
     @Test
     public void add_webhook_with_url_option() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "webhook_test"},
-                new String[]{"cd", "webhook_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--url", "https://hooks.example.com/endpoint"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add webhook_test",
+                "cd webhook_test",
+                "notification add WEBHOOK --url https://hooks.example.com/endpoint",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -64,11 +65,11 @@ public class NotificationTest {
     @Test
     public void add_webhook_with_auth_header() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "webhook_auth_test"},
-                new String[]{"cd", "webhook_auth_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--url", "https://hooks.example.com/ep", "--auth-header", "Bearer mytoken123"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add webhook_auth_test",
+                "cd webhook_auth_test",
+                "notification add WEBHOOK --url https://hooks.example.com/ep --auth-header \"Bearer mytoken123\"",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -81,11 +82,11 @@ public class NotificationTest {
     @Test
     public void add_email_with_option() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "email_test"},
-                new String[]{"cd", "email_test"},
-                new String[]{"notification", "add", "EMAIL", "--email", "team@example.com"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add email_test",
+                "cd email_test",
+                "notification add EMAIL --email team@example.com",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -100,11 +101,11 @@ public class NotificationTest {
     @Test
     public void add_email_with_subject() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "email_subj_test"},
-                new String[]{"cd", "email_subj_test"},
-                new String[]{"notification", "add", "EMAIL", "--email", "alice@example.com,bob@example.com", "--subject", "Perf Alert"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add email_subj_test",
+                "cd email_subj_test",
+                "notification add EMAIL --email alice@example.com,bob@example.com --subject \"Perf Alert\"",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -118,11 +119,11 @@ public class NotificationTest {
     @Test
     public void add_slack_with_options() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "slack_test"},
-                new String[]{"cd", "slack_test"},
-                new String[]{"notification", "add", "SLACK", "--channel", "#perf-alerts", "--token", "xoxb-test-token"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add slack_test",
+                "cd slack_test",
+                "notification add SLACK --channel #perf-alerts --token xoxb-test-token",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -137,11 +138,11 @@ public class NotificationTest {
     @Test
     public void add_github_issue_with_options() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "github_test"},
-                new String[]{"cd", "github_test"},
-                new String[]{"notification", "add", "GITHUB_ISSUE", "--owner", "myorg", "--repo", "perf-results", "--token", "ghp_testtoken123"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add github_test",
+                "cd github_test",
+                "notification add GITHUB_ISSUE --owner myorg --repo perf-results --token ghp_testtoken123",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -157,12 +158,11 @@ public class NotificationTest {
     @Test
     public void add_github_issue_with_optional_fields() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "github_opts_test"},
-                new String[]{"cd", "github_opts_test"},
-                new String[]{"notification", "add", "GITHUB_ISSUE", "--owner", "myorg", "--repo", "perf",
-                        "--token", "ghp_test", "--title", "Regression detected", "--labels", "regression,automated"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add github_opts_test",
+                "cd github_opts_test",
+                "notification add GITHUB_ISSUE --owner myorg --repo perf --token ghp_test --title \"Regression detected\" --labels regression,automated",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -176,11 +176,11 @@ public class NotificationTest {
     @Test
     public void add_with_raw_data_json() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "raw_json_test"},
-                new String[]{"cd", "raw_json_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--data", "{\"url\":\"https://raw.example.com/hook\"}"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add raw_json_test",
+                "cd raw_json_test",
+                "notification add WEBHOOK --data '{\"url\":\"https://raw.example.com/hook\"}'",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -194,10 +194,10 @@ public class NotificationTest {
     @Test
     public void list_notifications_empty() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "empty_notif_test"},
-                new String[]{"cd", "empty_notif_test"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add empty_notif_test",
+                "cd empty_notif_test",
+                "notification list",
+                "cd .."
         );
 
         String listOutput = results.get(2);
@@ -208,12 +208,12 @@ public class NotificationTest {
     @Test
     public void list_notifications_multiple() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "multi_notif_test"},
-                new String[]{"cd", "multi_notif_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--url", "https://hook1.example.com"},
-                new String[]{"notification", "add", "EMAIL", "--email", "dev@example.com"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add multi_notif_test",
+                "cd multi_notif_test",
+                "notification add WEBHOOK --url https://hook1.example.com",
+                "notification add EMAIL --email dev@example.com",
+                "notification list",
+                "cd .."
         );
 
         String listOutput = results.get(4);
@@ -226,14 +226,14 @@ public class NotificationTest {
     @Test
     public void remove_notification_by_id() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "remove_id_test"},
-                new String[]{"cd", "remove_id_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--url", "https://hook.example.com"},
-                new String[]{"notification", "list"},
+                "folder add remove_id_test",
+                "cd remove_id_test",
+                "notification add WEBHOOK --url https://hook.example.com",
+                "notification list",
                 // Use id=1 since it's the first entity in a fresh DB
-                new String[]{"notification", "remove", "1"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "notification remove 1",
+                "notification list",
+                "cd .."
         );
 
         String listBefore = results.get(3);
@@ -250,13 +250,13 @@ public class NotificationTest {
     @Test
     public void remove_notification_by_name() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "remove_name_test"},
-                new String[]{"cd", "remove_name_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--name", "my-hook", "--url", "https://hook.example.com"},
-                new String[]{"notification", "list"},
-                new String[]{"notification", "remove", "my-hook"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add remove_name_test",
+                "cd remove_name_test",
+                "notification add WEBHOOK --name my-hook --url https://hook.example.com",
+                "notification list",
+                "notification remove my-hook",
+                "notification list",
+                "cd .."
         );
 
         String listBefore = results.get(3);
@@ -274,11 +274,11 @@ public class NotificationTest {
     public void add_notification_with_folder_option() {
         // Test using --to instead of cd context
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "folder_opt_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--to", "folder_opt_test", "--url", "https://hook.example.com"},
-                new String[]{"notification", "list", "--from", "folder_opt_test"},
+                "folder add folder_opt_test",
+                "notification add WEBHOOK --to folder_opt_test --url https://hook.example.com",
+                "notification list --from folder_opt_test",
                 // listing all without folder context
-                new String[]{"notification", "list"}
+                "notification list"
         );
 
         String addOutput = results.get(1);
@@ -294,12 +294,11 @@ public class NotificationTest {
     @Test
     public void add_notification_with_template() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "template_test"},
-                new String[]{"cd", "template_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--url", "https://hook.example.com",
-                        "--template", "Alert: {folderName} - {nodeName} has {changeCount} changes"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add template_test",
+                "cd template_test",
+                "notification add WEBHOOK --url https://hook.example.com --template \"Alert: {folderName} - {nodeName} has {changeCount} changes\"",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -312,10 +311,12 @@ public class NotificationTest {
     @Test
     public void add_invalid_method() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "invalid_method_test"},
-                new String[]{"cd", "invalid_method_test"},
-                new String[]{"notification", "add", "INVALID_METHOD", "--url", "https://hook.example.com"},
-                new String[]{"cd", ".."}
+                new CommandResult[]{CommandResult.SUCCESS, CommandResult.SUCCESS,
+                        CommandResult.FAILURE, CommandResult.SUCCESS},
+                "folder add invalid_method_test",
+                "cd invalid_method_test",
+                "notification add INVALID_METHOD --url https://hook.example.com",
+                "cd .."
         );
 
         String output = results.get(2);
@@ -327,11 +328,11 @@ public class NotificationTest {
     @Test
     public void add_webhook_case_insensitive_method() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "case_test"},
-                new String[]{"cd", "case_test"},
-                new String[]{"notification", "add", "webhook", "--url", "https://hook.example.com"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add case_test",
+                "cd case_test",
+                "notification add webhook --url https://hook.example.com",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -344,11 +345,11 @@ public class NotificationTest {
     @Test
     public void add_with_explicit_name() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "named_test"},
-                new String[]{"cd", "named_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--name", "prod-hook", "--url", "https://hook.example.com"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add named_test",
+                "cd named_test",
+                "notification add WEBHOOK --name prod-hook --url https://hook.example.com",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -361,11 +362,11 @@ public class NotificationTest {
     @Test
     public void add_auto_generated_name() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "autogen_test"},
-                new String[]{"cd", "autogen_test"},
-                new String[]{"notification", "add", "SLACK", "--channel", "#alerts", "--token", "xoxb-test"},
-                new String[]{"notification", "list"},
-                new String[]{"cd", ".."}
+                "folder add autogen_test",
+                "cd autogen_test",
+                "notification add SLACK --channel #alerts --token xoxb-test",
+                "notification list",
+                "cd .."
         );
 
         String addOutput = results.get(2);
@@ -379,11 +380,13 @@ public class NotificationTest {
     @Test
     public void add_duplicate_name_fails() {
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "dup_test"},
-                new String[]{"cd", "dup_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--name", "my-hook", "--url", "https://hook1.example.com"},
-                new String[]{"notification", "add", "WEBHOOK", "--name", "my-hook", "--url", "https://hook2.example.com"},
-                new String[]{"cd", ".."}
+                new CommandResult[]{CommandResult.SUCCESS, CommandResult.SUCCESS, CommandResult.SUCCESS,
+                        CommandResult.FAILURE, CommandResult.SUCCESS},
+                "folder add dup_test",
+                "cd dup_test",
+                "notification add WEBHOOK --name my-hook --url https://hook1.example.com",
+                "notification add WEBHOOK --name my-hook --url https://hook2.example.com",
+                "cd .."
         );
 
         String firstAdd = results.get(2);
@@ -397,10 +400,10 @@ public class NotificationTest {
     public void remove_with_folder_option() {
         // Test removal using --from instead of cd context
         List<String> results = H5mTest.run(aeshLauncher,
-                new String[]{"folder", "add", "remove_from_test"},
-                new String[]{"notification", "add", "WEBHOOK", "--to", "remove_from_test", "--name", "hook1", "--url", "https://hook.example.com"},
-                new String[]{"notification", "remove", "hook1", "--from", "remove_from_test"},
-                new String[]{"notification", "list", "--from", "remove_from_test"}
+                "folder add remove_from_test",
+                "notification add WEBHOOK --to remove_from_test --name hook1 --url https://hook.example.com",
+                "notification remove hook1 --from remove_from_test",
+                "notification list --from remove_from_test"
         );
 
         String removeOutput = results.get(2);
