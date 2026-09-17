@@ -1,6 +1,6 @@
 package io.hyperfoil.tools.h5m.svc;
 
-import io.hyperfoil.tools.h5m.antlr4.RefactorJs;
+import io.hyperfoil.tools.h5m.javascript.RefactorJs;
 import io.hyperfoil.tools.jjq.jsonata.JsonataCompiler;
 import io.hyperfoil.tools.jjq.jsonata.JsonataException;
 import io.hyperfoil.tools.jjq.value.*;
@@ -43,8 +43,6 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.DoubleBinaryOperator;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @ApplicationScoped

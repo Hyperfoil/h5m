@@ -57,6 +57,7 @@
         <h5m.cli.native>true</h5m.cli.native>
 
         <!-- dependencies -->
+        <lib.antlr>4.13.2</lib.antlr>
         <lib.jdbi>3.41.3</lib.jdbi>
         <lib.jhunter>0.1.0</lib.jhunter>
         <lib.jjq>0.1.11</lib.jjq>
@@ -222,7 +223,7 @@
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr4-runtime</artifactId>
-            <version>4.13.2</version>
+            <version>${lib.antlr}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -351,6 +352,24 @@
                         <id>make-index</id>
                         <goals>
                             <goal>jandex</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.antlr</groupId>
+                <artifactId>antlr4-maven-plugin</artifactId>
+                <version>${lib.antlr}</version>
+                <configuration>
+                    <sourceDirectory>${project.basedir}/src/main/java</sourceDirectory>
+                    <includes>
+                        <include>io/hyperfoil/tools/h5m/javascript/*.g4</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>antlr4</goal>
                         </goals>
                     </execution>
                 </executions>

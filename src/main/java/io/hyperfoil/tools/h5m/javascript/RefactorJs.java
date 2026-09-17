@@ -1,19 +1,19 @@
-package io.hyperfoil.tools.h5m.antlr4;
+package io.hyperfoil.tools.h5m.javascript;
 
-
-import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.RuleContext;
+import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.antlr.v4.runtime.tree.TerminalNode;
-import org.antlr.v4.runtime.tree.Trees;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class RefactorJs extends JavaScriptParserBaseListener{
-
+public class RefactorJs extends JavaScriptParserBaseListener {
 
     private enum State {Starting,SingleParam,Destructured,AddRename,RenameVariable}
 
@@ -41,27 +41,16 @@ public class RefactorJs extends JavaScriptParserBaseListener{
         return quoteChar+input.replace(""+quoteChar,"\\\\"+quoteChar)+quoteChar;
     }
     public int scopeDepth(String name){
-        scopeDepth.putIfAbsent(name, new AtomicInteger(0));
-        return scopeDepth.get(name).get();
+        return scopeDepth.computeIfAbsent(name, (_) -> new AtomicInteger(0)).get();
     }
     public int increment(String name){
-
-        scopeDepth.putIfAbsent(name, new AtomicInteger(0));
-        int rtrn = scopeDepth.get(name).incrementAndGet();
-        return rtrn;
-
+        return scopeDepth.computeIfAbsent(name, (_) -> new AtomicInteger(0)).incrementAndGet();
     }
     public boolean isCorrectScope(String name){
         return scopeDepth(name) == 1;
     }
     public int decrement(String name){
-
-        if(scopeDepth.containsKey(name)){
-            int rtrn = scopeDepth.get(name).decrementAndGet();
-            return rtrn;
-        }else{
-            return 0;
-        }
+        return scopeDepth.containsKey(name) ? scopeDepth.get(name).decrementAndGet() : 0;
     }
 
     public static String refactor(String input,Map<String,String> renames){
@@ -119,7 +108,7 @@ public class RefactorJs extends JavaScriptParserBaseListener{
                             increment(name);
                             if(State.Starting == state && isCorrectScope(name)){
                                 state = State.Destructured;
-                                if(sectxs.get(0) instanceof JavaScriptParser.IdentifierExpressionContext iectx){
+                                if(sectxs.getFirst() instanceof JavaScriptParser.IdentifierExpressionContext iectx){
                                     rewriter.replace(iectx.identifier().Identifier().getSymbol(),renames.get(name));
                                 }
                             }
@@ -164,7 +153,7 @@ public class RefactorJs extends JavaScriptParserBaseListener{
                         }
                     }
                 }
-                if (afpc.formalParameterList().formalParameterArg().size() >= 1 && state == State.Starting) {
+                if (!afpc.formalParameterList().formalParameterArg().isEmpty() && state == State.Starting) {
                     JavaScriptParser.IdentifierContext id = afpc.formalParameterList().formalParameterArg(0).assignable().identifier();
                     if (id != null) {
                         if (renames.containsKey(id.getText())) {
@@ -389,7 +378,7 @@ public class RefactorJs extends JavaScriptParserBaseListener{
     @Override public void enterMemberIndexExpression(JavaScriptParser.MemberIndexExpressionContext ctx) {
         if(state==State.SingleParam && paramName.equals(ctx.singleExpression().getText())){
             if(ctx.expressionSequence().singleExpression()!=null && ctx.expressionSequence().singleExpression().size()==1){
-                JavaScriptParser.SingleExpressionContext expressionContext = ctx.expressionSequence().singleExpression().get(0);
+                JavaScriptParser.SingleExpressionContext expressionContext = ctx.expressionSequence().singleExpression().getFirst();
                 if(expressionContext instanceof JavaScriptParser.LiteralExpressionContext lectx){
                     if(lectx.literal()!=null){
                         if(lectx.literal().StringLiteral()!=null){
@@ -406,8 +395,6 @@ public class RefactorJs extends JavaScriptParserBaseListener{
                         }
                     }
                 }
-            }else{
-
             }
         }
     }

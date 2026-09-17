@@ -1,4 +1,4 @@
-package io.hyperfoil.tools.h5m.antlr4;
+package io.hyperfoil.tools.h5m.javascript;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;

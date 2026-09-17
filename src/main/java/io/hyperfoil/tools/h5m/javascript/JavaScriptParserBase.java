@@ -1,4 +1,4 @@
-package io.hyperfoil.tools.h5m.antlr4;
+package io.hyperfoil.tools.h5m.javascript;
 
 import org.antlr.v4.runtime.*;
 
