@@ -26,15 +26,23 @@ class JsToJqPatternsTest {
     void simpleDivision() {
         String jq = JsToJqPatterns.tryConvert("time => time / 1000000");
         assertNotNull(jq);
-        assertEquals(". / 1000000", jq);
+        assertEquals("(. // 0) / 1000000", jq);
         assertJqResult(jq, JqNumber.of(5000000), JqNumber.of(5.0));
+    }
+
+    @Test
+    void simpleDivisionNullInput() {
+        // JavaScript coerces null to 0; jq would error without the // 0 guard
+        String jq = JsToJqPatterns.tryConvert("time => time / 1000000");
+        assertNotNull(jq);
+        assertJqResult(jq, JqNull.NULL, JqNumber.of(0));
     }
 
     @Test
     void simpleDivisionScientific() {
         String jq = JsToJqPatterns.tryConvert("v => v / 1e+6;");
         assertNotNull(jq);
-        assertEquals(". / 1000000", jq);
+        assertEquals("(. // 0) / 1000000", jq);
     }
 
     @Test
@@ -52,22 +60,39 @@ class JsToJqPatternsTest {
         assertJqResult(jq, JqNumber.of(5123456), JqNumber.of(5.12));
     }
 
+    @Test
+    void divisionToFixedNullInput() {
+        // JavaScript: parseFloat((null/1000000).toFixed(2)) === 0
+        String jq = JsToJqPatterns.tryConvert("value => parseFloat((value / 1000000).toFixed(2))");
+        assertNotNull(jq);
+        assertJqResult(jq, JqNull.NULL, JqNumber.of(0));
+    }
+
     // --- Pattern 3: Simple array mean ---
 
     @Test
     void arrayMeanSimple() {
         String jq = JsToJqPatterns.tryConvert("fd => fd.reduce((a,b) => a+b) / fd.length");
         assertNotNull(jq);
-        assertEquals("add / length", jq);
+        assertEquals("if . == null or length == 0 then null else add / length end", jq);
         JqArray input = JqArray.of(JqNumber.of(10), JqNumber.of(20), JqNumber.of(30));
         assertJqResult(jq, input, JqNumber.of(20.0));
+    }
+
+    @Test
+    void arrayMeanSimpleEmpty() {
+        // JavaScript: [].reduce((a,b) => a+b, 0) / [].length === NaN, serializes as null
+        String jq = JsToJqPatterns.tryConvert("fd => fd.reduce((a,b) => a+b) / fd.length");
+        assertNotNull(jq);
+        assertJqResult(jq, JqArray.of(), JqNull.NULL);
+        assertJqResult(jq, JqNull.NULL, JqNull.NULL);
     }
 
     @Test
     void arrayMeanSimpleWithParens() {
         String jq = JsToJqPatterns.tryConvert("(start) => start.reduce((a,b) => a+b) / start.length");
         assertNotNull(jq);
-        assertEquals("add / length", jq);
+        assertEquals("if . == null or length == 0 then null else add / length end", jq);
     }
 
     // --- Pattern 4: Array mean with null guard ---
@@ -110,6 +135,9 @@ class JsToJqPatternsTest {
         // Test with non-matching workload
         JqValue nonMatch = JqValues.parse("{\"workload\":\"other\",\"results\":[10]}");
         assertJqResult(jq, nonMatch, JqNull.NULL);
+        // Test with empty results array (JS: 0/0 is NaN, serializes as null)
+        JqValue emptyResults = JqValues.parse("{\"workload\":\"autobench\",\"results\":[]}");
+        assertJqResult(jq, emptyResults, JqNull.NULL);
     }
 
     // --- Pattern 6: Array max ---

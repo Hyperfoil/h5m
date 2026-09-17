@@ -107,19 +107,21 @@ public class JsToJqPatterns {
         Matcher m;
 
         // Pattern 2: Division + toFixed (check before simple division since it's more specific)
+        // (. // 0): JavaScript coerces null to 0, jq errors on null division
         m = DIVISION_TOFIXED.matcher(normalized);
         if (m.matches()) {
             double divisor = parseNumber(m.group(1));
             int decimals = Integer.parseInt(m.group(2));
             long multiplier = (long) Math.pow(10, decimals);
-            return String.format(". / %s * %d | round / %d", formatNumber(divisor), multiplier, multiplier);
+            return String.format("(. // 0) / %s * %d | round / %d", formatNumber(divisor), multiplier, multiplier);
         }
 
         // Pattern 1: Simple division
+        // (. // 0): JavaScript coerces null to 0, jq errors on null division
         m = SIMPLE_DIVISION.matcher(normalized);
         if (m.matches()) {
             double divisor = parseNumber(m.group(1));
-            return ". / " + formatNumber(divisor);
+            return "(. // 0) / " + formatNumber(divisor);
         }
 
         // Pattern 5: Conditional filter + array mean (check before guarded mean since it's more specific)
@@ -131,8 +133,8 @@ public class JsToJqPatterns {
             int decimals = Integer.parseInt(m.group(4));
             long multiplier = (long) Math.pow(10, decimals);
             return String.format(
-                    "if .\"%s\" != \"%s\" then null elif (.\"%s\" == null or .\"%s\" == false) then 0 else (.\"%s\" | add / length * %d | round / %d) end",
-                    filterField, filterValue, arrayField, arrayField, arrayField, multiplier, multiplier);
+                    "if .\"%s\" != \"%s\" then null elif (.\"%s\" == null or .\"%s\" == false) then 0 elif (.\"%s\" | length) == 0 then null else (.\"%s\" | add / length * %d | round / %d) end",
+                    filterField, filterValue, arrayField, arrayField, arrayField, arrayField, multiplier, multiplier);
         }
 
         // Pattern 4: Array mean with null guard + toFixed
@@ -153,9 +155,11 @@ public class JsToJqPatterns {
         }
 
         // Pattern 3: Simple array mean
+        // Empty (or missing) arrays yield null like JavaScript NaN serializes
+        // to null; jq would error on null / 0 instead.
         m = ARRAY_MEAN_SIMPLE.matcher(normalized);
         if (m.matches()) {
-            return "add / length";
+            return "if . == null or length == 0 then null else add / length end";
         }
 
         // Pattern 6: Array max
