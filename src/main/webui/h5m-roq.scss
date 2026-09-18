@@ -184,9 +184,3 @@ cds-side-nav {
   --cds-background-hover: #2c2c2c;
   --cds-layer-hover: #2c2c2c;
 }
-
-// Avoid a white flash before the g90 theme is applied.
-html,
-body {
-  background-color: #161616;
-}

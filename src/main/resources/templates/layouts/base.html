@@ -20,6 +20,24 @@
       SPA fallback and load index.html as text/html.
     !}
     <link rel="stylesheet" href="/h5m-roq.css" />
+    {!
+      h5m-roq.js is tiny and only imports carbon-wc (the ui-shell components that render
+      cds-header / cds-side-nav). Without this the browser cannot start fetching the chunk
+      until it has parsed the entry, delaying the shell by a whole round trip. In dev Vite
+      serves unbundled modules, so there is no carbon-wc chunk to preload.
+    !}
+    <link rel="modulepreload" href="/carbon-wc.js" />
+    {!
+      The IBM Plex subsets the docs actually render with. They are declared inside h5m-roq.css, so without these the browser cannot even
+      discover them until that 177 kB stylesheet has downloaded and parsed — and every @font-face is font-display:swap, so the page paints
+      in the system fallback and then visibly reflows into Plex. Preloading starts them alongside the stylesheet instead, so they are
+      usually there by the time it applies. Latin1 only, and only the weights the emitted rules use: 300 (heading-05/06), 400 and 600.
+      The remaining 56 subsets (Latin2/3, Cyrillic, Pi, italics) stay lazy — unicode-range already keeps them off English pages.
+    !}
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-Regular-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-SemiBold-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-Light-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexMono-Regular-Latin1.woff2" />
   {/if}
   <script type="module" src="/h5m-roq.js"></script>
   <style> /* prevent white canvas flash during initial render by setting carbon g90 background */
