@@ -33,13 +33,13 @@
         <build.build-helper-maven-plugin>3.6.1</build.build-helper-maven-plugin>
         <build.buildnumber-maven-plugin>3.2.1</build.buildnumber-maven-plugin>
         <build.exec-maven-plugin>3.6.2</build.exec-maven-plugin>
-        <build.hugo-maven-plugin>0.2.20</build.hugo-maven-plugin>
         <build.jandex-maven-plugin>3.1.6</build.jandex-maven-plugin>
         <build.maven-compiler-plugin>3.14.0</build.maven-compiler-plugin>
         <build.maven-enforcer-plugin>3.6.2</build.maven-enforcer-plugin>
         <build.maven-failsafe-plugin>3.2.5</build.maven-failsafe-plugin>
         <build.maven-project-info-reports-plugin>3.9.0</build.maven-project-info-reports-plugin>
         <build.maven-release-plugin>3.1.1</build.maven-release-plugin>
+        <build.maven-resources-plugin>3.5.0</build.maven-resources-plugin>
         <build.maven-surefire-plugin>3.5.3</build.maven-surefire-plugin>
         <build.spotless-maven-plugin>3.3.0</build.spotless-maven-plugin>
         <build.versions-maven-plugin>2.21.0</build.versions-maven-plugin>
@@ -79,6 +79,7 @@
         <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
         <quarkiverse.oidc-proxy>0.7.0</quarkiverse.oidc-proxy>
         <quarkiverse.quinoa>2.8.1</quarkiverse.quinoa>
+        <quarkiverse.roq>2.1.8</quarkiverse.roq>
 
         <!-- quarkus -->
         <quarkus.graalvm.version>25.2.4</quarkus.graalvm.version>
@@ -155,6 +156,11 @@
             <groupId>io.quarkiverse.quinoa</groupId>
             <artifactId>quarkus-quinoa</artifactId>
             <version>${quarkiverse.quinoa}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkiverse.roq</groupId>
+            <artifactId>quarkus-roq-frontmatter</artifactId>
+            <version>${quarkiverse.roq}</version>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -671,6 +677,16 @@
                     <artifactId>quarkus-oidc-proxy</artifactId>
                     <version>${quarkiverse.oidc-proxy}</version>
                 </dependency>
+                <dependency>
+                    <groupId>io.quarkiverse.roq</groupId>
+                    <artifactId>quarkus-roq</artifactId>
+                    <version>${quarkiverse.roq}</version>
+                </dependency>
+                <dependency>
+                    <groupId>io.quarkiverse.roq</groupId>
+                    <artifactId>quarkus-roq-generator</artifactId>
+                    <version>${quarkiverse.roq}</version>
+                </dependency>
             </dependencies>
             <build>
                 <plugins>
@@ -694,41 +710,29 @@
                         </executions>
                     </plugin>
                     <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <version>${build.exec-maven-plugin}</version>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <version>${build.maven-resources-plugin}</version>
                         <executions>
                             <execution>
-                                <id>docs-npm-install</id>
+                                <id>sync-roq-assets</id>
                                 <goals>
-                                    <goal>exec</goal>
+                                    <goal>copy-resources</goal>
                                 </goals>
-                                <phase>generate-resources</phase>
+                                <phase>package</phase>
                                 <configuration>
-                                    <executable>npm</executable>
-                                    <workingDirectory>${project.basedir}/docs/site</workingDirectory>
-                                    <arguments>
-                                        <argument>install</argument>
-                                    </arguments>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.echocat.maven.plugins</groupId>
-                        <artifactId>hugo-maven-plugin</artifactId>
-                        <version>${build.hugo-maven-plugin}</version>
-                        <executions>
-                            <execution>
-                                <id>generate-hugo-site</id>
-                                <goals>
-                                    <goal>build</goal>
-                                </goals>
-                                <phase>generate-resources</phase>
-                                <configuration>
-                                    <workingDirectory>${project.basedir}/docs/site</workingDirectory>
-                                    <config>${project.basedir}/docs/site/hugo.toml</config>
-                                    <output>${project.basedir}/src/main/webui/public/site</output>
+                                    <outputDirectory>${project.build.directory}/roq</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.build.directory}/quinoa/build</directory>
+                                            <includes>
+                                                <include>h5m-roq.*</include>
+                                                <include>assets/carbon-wc-*.js</include>
+                                                <include>assets/rolldown-*.js</include>
+                                                <include>assets/es-*.js</include>
+                                                <include>assets/*.woff2</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
                                 </configuration>
                             </execution>
                         </executions>

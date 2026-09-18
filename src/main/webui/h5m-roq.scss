@@ -1,0 +1,186 @@
+// =============================================================================
+// h5m docs — Carbon styles entry (compiled by Vite)
+// =============================================================================
+// Carbon primitives (grid, type, tokens, g90 theme) come from @carbon/styles
+// in node_modules. Vite resolves @use paths directly, no CDN.
+//
+// The Carbon UI-shell web components (<cds-header>, <cds-side-nav>) already
+// position themselves. What Carbon does NOT do is offset the page
+// content out from under them — both overlay the page. So the only styling we
+// own here is that content offset, keyed to Carbon's own dimensions, plus a few
+// prose defaults. (A docs layout like this is also what IBM's gatsby-theme-carbon
+// does; we don't depend on it — this is our own thin layer.)
+// =============================================================================
+
+// We deliberately do NOT `@use '@carbon/styles'`: its index pulls in the CSS for
+// every Carbon component. The web components we do use carry their own styles in
+// shadow DOM, so all we need globally are the primitives below plus the two
+// component stylesheets whose light-DOM classes the templates reference
+// (.cds--header__global, code-snippet layout).
+
+// Carbon's default font resolver uses the per-family Plex packages (@ibm/plex-mono, @ibm/plex-sans) from node_modules, no CDN.
+@use '@carbon/styles/scss/config' with (
+  $use-per-family-plex: true,
+  $font-path: '@ibm/plex'
+);
+@use '@carbon/styles/scss/themes' as themes;
+// Serif is unused by the docs; dropping it avoids emitting its @font-face rules
+// and the ~40 IBMPlexSerif woff2 subsets Vite would otherwise copy into dist/.
+@use '@carbon/styles/scss/fonts' with (
+  $fonts: (IBM-Plex-Serif: false)
+);
+@use '@carbon/styles/scss/reset';
+@use '@carbon/styles/scss/theme';
+// Only the g90 zone: the page is hardcoded to `class="cds--g90"`, so emitting the
+// white/g10/g100 token sets is dead weight.
+@use '@carbon/styles/scss/zone' with (
+  $zones: (g90: themes.$g90)
+);
+@use '@carbon/styles/scss/grid';
+@use '@carbon/styles/scss/layer';
+@use '@carbon/styles/scss/layout';
+@use '@carbon/styles/scss/components/ui-shell'; // cds-header / cds-side-nav light-DOM classes
+@use '@carbon/styles/scss/components/code-snippet';
+@use '@carbon/styles/scss/spacing' as *; // $spacing-0X
+@use '@carbon/styles/scss/type' as *; // type-style() mixin + Carbon type sets
+
+// highlight.js color theme for syntax-highlighted code snippets. github-dark suits the Carbon g90 dark docs theme.
+@use 'highlight.js/styles/github-dark.css';
+
+// Offset the page content from under the fixed Carbon header and where the side-nav is shown.
+// Below 66rem the side-nav collapses to 0, so no left offset is needed.
+.page-content {
+  margin-top: 3rem;
+  padding: $spacing-07 $spacing-09;
+}
+
+@media (min-width: 66rem) {
+  .page-content {
+    margin-left: 16rem;
+  }
+}
+
+// The prose column is Carbon's own `cds--content-block` wrapper (set by the page/home leaf layouts).
+
+// Prose typography using Carbon's real type-set.
+// Each element maps to a named Carbon type token (heading-0X / body-0X / code-01) via the type-style() mixin.
+.cds--content-block {
+  h1 {
+    @include type-style('heading-06');
+    margin: $spacing-01 0 $spacing-06;
+  }
+
+  h2 {
+    @include type-style('heading-05');
+    margin: $spacing-09 0 $spacing-05;
+  }
+
+  h3 {
+    @include type-style('heading-04');
+    margin: $spacing-08 0 $spacing-04;
+  }
+
+  h4 {
+    @include type-style('heading-03');
+    margin: $spacing-06 0 $spacing-03;
+  }
+
+  p,
+  li {
+    @include type-style('body-02');
+  }
+
+  p {
+    margin: 0 0 $spacing-06;
+  }
+
+  ul,
+  ol {
+    margin: 0 0 $spacing-06;
+    padding-left: $spacing-07;
+  }
+
+  li {
+    margin: 0 0 $spacing-03;
+  }
+
+  a {
+    color: var(--cds-link-primary);
+
+    &:hover {
+      color: var(--cds-link-primary-hover);
+    }
+  }
+
+  // Inline code uses Carbon's code type set on the layer token.
+  :not(pre) > code {
+    @include type-style('code-01');
+    padding: 0 $spacing-02;
+    background-color: var(--cds-layer);
+    border-radius: 2px;
+  }
+
+  // Fenced code blocks: Carbon code type-set on the layer surface. Scrolls horizontally only when a line overflows.
+  // The inner <code> resets the inline background/padding so it doesn't double up.
+  //pre {
+  //  @include type-style('code-02');
+  //  margin: 0 0 $spacing-07;
+  //  padding: $spacing-06;
+  //  background-color: var(--cds-layer);
+  //  overflow-x: auto;
+  //
+  //  code {
+  //    padding: 0;
+  //    background: none;
+  //  }
+  //}
+
+  img {
+    max-width: 100%;
+  }
+
+  // Code blocks are upgraded to <cds-code-snippet> in docs.js; just give them block flow and vertical rhythm.
+  cds-code-snippet {
+    display: block;
+    margin: 0 0 $spacing-06;
+  }
+
+  // Tables — Carbon data-table look. Markdown emits a plain <table>; we apply
+  // Carbon's own table tokens (surface, accent header, borders, cell rhythm) so
+  // it reads as a Carbon data table without the <cds-table> web component.
+  table {
+    @include type-style('body-01');
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 $spacing-07;
+    background-color: var(--cds-layer);
+  }
+
+  thead {
+    background-color: var(--cds-layer-accent);
+  }
+
+  th {
+    @include type-style('heading-compact-01');
+    text-align: left;
+    padding: $spacing-04 $spacing-05;
+    border-bottom: 1px solid var(--cds-border-strong);
+  }
+
+  td {
+    padding: $spacing-04 $spacing-05;
+    border-bottom: 1px solid var(--cds-border-subtle);
+  }
+}
+
+// Match the h5m webui header colour (g100) instead of the default g90.
+cds-header {
+  background-color: #161616;
+}
+
+// Darken the side-nav to g100 matching the header.
+cds-side-nav {
+  --cds-background: #161616;
+  --cds-background-hover: #2c2c2c;
+  --cds-layer-hover: #2c2c2c;
+}

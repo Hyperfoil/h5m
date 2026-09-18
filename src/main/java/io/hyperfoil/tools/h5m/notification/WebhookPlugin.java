@@ -46,7 +46,7 @@ public class WebhookPlugin implements NotificationPlugin {
     @Inject
     Vertx vertx;
 
-    @Location("webhook_notification")
+    @Location("webhook_notification.txt")
     Template defaultTemplate;
 
     private WebClient webClient;

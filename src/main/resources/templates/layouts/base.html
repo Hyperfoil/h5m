@@ -1,0 +1,66 @@
+{@io.quarkiverse.roq.frontmatter.runtime.model.Page page}
+{@io.quarkiverse.roq.frontmatter.runtime.model.Site site}
+<!DOCTYPE html>
+<html lang="en" class="cds--g90">
+<head>
+  <title>h5m Documentation</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  {#seo page site /}
+  {!
+    Carbon Design System and Roq docs styles are built by Vite:
+      - h5m-roq.scss → @carbon/styles (grid, type, tokens, g90 theme) + prose layout (injected by h5m-roq.js)
+      - h5m-roq.js   → @carbon/web-components (ui-shell, header actions, side-nav)
+    Both @carbon/* packages come from node_modules, no CDN.
+  !}
+  {#if config:property('quarkus.profile') != 'dev'}
+    {!
+      Vite only emits h5m-roq.css on a production build; in dev the Vite-served
+      h5m-roq.js injects the styles itself, and linking the file would hit Quinoa's
+      SPA fallback and load index.html as text/html.
+    !}
+    <link rel="stylesheet" href="/h5m-roq.css" />
+    {!
+      h5m-roq.js is tiny and only imports carbon-wc (the ui-shell components that render
+      cds-header / cds-side-nav). Without this the browser cannot start fetching the chunk
+      until it has parsed the entry, delaying the shell by a whole round trip. In dev Vite
+      serves unbundled modules, so there is no carbon-wc chunk to preload.
+    !}
+    <link rel="modulepreload" href="/carbon-wc.js" />
+    {!
+      The IBM Plex subsets the docs actually render with. They are declared inside h5m-roq.css, so without these the browser cannot even
+      discover them until that 177 kB stylesheet has downloaded and parsed — and every @font-face is font-display:swap, so the page paints
+      in the system fallback and then visibly reflows into Plex. Preloading starts them alongside the stylesheet instead, so they are
+      usually there by the time it applies. Latin1 only, and only the weights the emitted rules use: 300 (heading-05/06), 400 and 600.
+      The remaining 56 subsets (Latin2/3, Cyrillic, Pi, italics) stay lazy — unicode-range already keeps them off English pages.
+    !}
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-Regular-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-SemiBold-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexSans-Light-Latin1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/IBMPlexMono-Regular-Latin1.woff2" />
+  {/if}
+  <script type="module" src="/h5m-roq.js"></script>
+  <style> /* prevent white canvas flash during initial render by setting carbon g90 background */
+    html, body { background-color: #262625; color: #f4f4f4; margin: 0; }
+  </style>
+</head>
+<body class="cds--g90">
+  <cds-header aria-label="Documentation" role="banner">
+    <cds-header-menu-button button-label-active="Close menu" button-label-inactive="Open menu" collapse-mode="responsive"></cds-header-menu-button>
+    <cds-header-name href="{site.url}" prefix="h5m">Documentation</cds-header-name>
+    <div class="cds--header__global">
+       <a href="https://github.com/Hyperfoil/h5m" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
+        <cds-header-global-action aria-label="GitHub" tooltip-alignment="end" tooltip-text="GitHub Repository">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="20" height="20" fill="currentColor" slot="icon" aria-hidden="true">
+            <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+          </svg>
+        </cds-header-global-action>
+       </a>
+    </div>
+  </cds-header>
+  {#include partials/side-nav.html /}
+  <main id="main-content" class="page-content" role="main">
+    {#insert}{/insert}
+  </main>
+</body>
+</html>
