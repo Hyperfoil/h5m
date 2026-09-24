@@ -1,8 +1,9 @@
+
 import type { Node as ApiNode } from '@client/types.gen.ts';
 
+import DetectionChart from '@app/components/chart/DetectionChart';
 import { DataTab } from '@app/components/DataTab';
 import { NodeGraphVisualizer } from '@app/components/NodeGraphVisualizer';
-import { useState } from 'react';
 import {
   Button,
   ErrorBoundary,
@@ -23,6 +24,7 @@ import {
   Tabs,
   Tag,
 } from '@carbon/react';
+import { useState } from 'react';
 import { byIdOptions, getRecalculationStatusOptions, listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect } from 'react';
@@ -32,6 +34,8 @@ import { CreateNodeModal } from '@app/components/CreateNodeModal';
 import { DeleteNodeModal } from '@app/components/DeleteNodeModal';
 import { EditNodeModal } from '@app/components/EditNodeModal';
 import  AddNotificationConfig  from '@app/components/Notification/AddNotificationConfig';
+
+
 
 const NodesTab = ({ groupId }: { groupId: number }) => {
   const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
@@ -149,7 +153,7 @@ const GraphVisualizer = ({ groupId }: { groupId: number }) => {
   );
 };
 
-const TAB_ANCHORS = ['data', 'nodes', 'graph','Notification'];
+const TAB_ANCHORS = ['data', 'nodes', 'graph','Notification','chart'];
 
 const FolderContent = ({ folderId }: { folderId: number }) => {
   const { data: folders } = useSuspenseQuery(listFoldersOptions());
@@ -170,6 +174,7 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
         <Tab>Nodes</Tab>
         <Tab>Graph</Tab>
         <Tab>Notification</Tab>
+        <Tab>Chart</Tab>
       </TabList>
       <TabPanels>
         <TabPanel>
@@ -211,7 +216,21 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
                  ) : (
                    <p>No notification config associated with this folder</p>
                  )}
-               </TabPanel>
+        </TabPanel>
+
+      <TabPanel>
+          {folder.id != null && folder.groupId != null ? (
+            selectedIndex === TAB_ANCHORS.indexOf('chart') ? (
+              <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load chart" />}>
+                <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
+                  <DetectionChart folderId={folder.id} groupId={folder.groupId} />
+                </Suspense>
+              </ErrorBoundary>
+            ) : null
+          ) : (
+            <p>No detection associated with this folder</p>
+          )}
+        </TabPanel>
       </TabPanels>
     </Tabs>
   );
