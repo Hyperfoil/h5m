@@ -965,6 +965,19 @@ public class RestEndpointTest extends FreshDb {
     }
 
     @Test
+    public void openapi_spec_declares_string_formats() {
+        given()
+                .accept(MediaType.APPLICATION_JSON)
+                .when().get("/q/openapi")
+                .then()
+                .statusCode(200)
+                // collection elements carry their format through the item type, scalars declare it directly
+                .body("components.schemas.EmailConfig.properties.to.items.'$ref'", endsWith("/EmailAddress"))
+                .body("components.schemas.EmailAddress.format", equalTo("email"))
+                .body("components.schemas.WebhookConfig.properties.url.format", equalTo("uri"));
+    }
+
+    @Test
     public void labelValues_returns_grouped_values() throws InterruptedException {
         Long folderId = given()
                 .contentType(MediaType.APPLICATION_JSON)
