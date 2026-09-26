@@ -129,6 +129,10 @@ public class NotificationService implements NotificationServiceInterface {
         }
     }
 
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
     /** Resolve a channel entity by name or id within a folder (internal, entity-typed). */
     private NotificationChannelEntity findEntity(long folderId, String nameOrId) {
         try {
@@ -185,7 +189,7 @@ public class NotificationService implements NotificationServiceInterface {
         }
         if (name != null) checkName(name, folderId, null);
         NotificationChannelEntity entity = new NotificationChannelEntity(folder, method, config, secret);
-        entity.template = template;
+        entity.template = blankToNull(template);
         entity.enabled = enabled == null || enabled;
         entity.persist();
         // Auto-generate name if not provided: "{method}-{id}"
@@ -208,7 +212,8 @@ public class NotificationService implements NotificationServiceInterface {
         }
         if (channel.config() != null) entity.setConfig(channel.config());
         if (channel.secret() != null) entity.setSecret(channel.secret());
-        if (channel.template() != null) entity.template = channel.template();
+        // a blank template clears the stored one: plugins treat blank as absent, so it is normalized to null
+        if (channel.template() != null) entity.template = blankToNull(channel.template());
         if (channel.enabled() != null) entity.enabled = channel.enabled();
         return apiMapper.toNotificationChannel(entity);
     }

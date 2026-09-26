@@ -6,6 +6,10 @@
   max-inline-size: 100%;
 }
 
+.cds--tag {
+  margin-inline: var(--cds-spacing-02); /* Carbon's default 0.125rem leaves tags cramped against text and each other */
+}
+
 .notification-container {
   position: fixed;
   top: 3rem;
