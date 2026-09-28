@@ -10,11 +10,11 @@ export const TeamsPage = () => {
   return (
     <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load teams" />}>
       <Suspense fallback={<SkeletonText paragraph lineCount={5} />}>
-        <Grid fullWidth className="page-grid">
-          <Column lg={5} md={3} sm={4}>
+        <Grid fullWidth>
+          <Column lg={{ span: 4, offset: 3 }} md={3} sm={4}>
             <TeamsPanel onSelect={setSelectedTeam} />
           </Column>
-          <Column lg={11} md={5} sm={4}>
+          <Column lg={6} md={5} sm={4}>
             {selectedTeam ? (
               <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load members" />}>
                 <Suspense fallback={<SkeletonText paragraph lineCount={5} />}>

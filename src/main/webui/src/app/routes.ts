@@ -1,4 +1,5 @@
 import { AppHeader } from '@app/layout/AppHeader';
+import { AdministratorsPage } from '@app/pages/AdministratorsPage';
 import { DashboardPage } from '@app/pages/DashboardPage';
 import { FolderPage } from '@app/pages/FolderPage';
 import { SitePage } from '@app/pages/SitePage';
@@ -30,6 +31,10 @@ const router = createBrowserRouter([
       {
         Component: TeamsPage,
         path: 'teams',
+      },
+      {
+        Component: AdministratorsPage,
+        path: 'administrators',
       },
     ],
   },

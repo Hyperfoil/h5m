@@ -6,11 +6,6 @@
   max-inline-size: 100%;
 }
 
-.page-grid.cds--grid {
-  margin-left: 0;
-  margin-right: 0;
-}
-
 .notification-container {
   position: fixed;
   top: 3rem;

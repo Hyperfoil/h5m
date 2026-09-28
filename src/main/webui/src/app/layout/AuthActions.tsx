@@ -2,7 +2,7 @@ import { setAppNavigator } from '@app/context/navigation.tsx';
 import { useNotification } from '@app/context/useNotification.tsx';
 import { useRoles } from '@app/context/useRoles.tsx';
 import { useTeams } from '@app/context/useTeams.tsx';
-import { GroupAccess, Login, Logout, UserAvatar } from '@carbon/icons-react';
+import { Events, GroupAccess, Login, Logout, UserAdmin, UserAvatarFilledAlt } from '@carbon/icons-react';
 import { HeaderGlobalAction, HeaderPanel, SideNavDivider, SideNavItems, SideNavLink, SideNavMenuItem } from '@carbon/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
@@ -77,7 +77,7 @@ export const AuthActions = () => {
           setPanelOpen((prev) => !prev);
         }}
       >
-        <UserAvatar size={24} />
+        <UserAvatarFilledAlt size={24} />
       </HeaderGlobalAction>
       <HeaderPanel aria-label="User panel" expanded={panelOpen}>
         <SideNavItems>
@@ -92,7 +92,7 @@ export const AuthActions = () => {
               {teams.map((t) => (
                 <SideNavLink
                   key={t.id}
-                  renderIcon={GroupAccess}
+                  renderIcon={Events}
                   onClick={() => {
                     setPanelOpen(false);
                     void navigate(`/team/${String(t.id)}`);
@@ -115,6 +115,15 @@ export const AuthActions = () => {
                 }}
               >
                 Teams
+              </SideNavLink>
+              <SideNavLink
+                renderIcon={UserAdmin}
+                onClick={() => {
+                  setPanelOpen(false);
+                  void navigate('/administrators');
+                }}
+              >
+                Administrators
               </SideNavLink>
             </>
           )}

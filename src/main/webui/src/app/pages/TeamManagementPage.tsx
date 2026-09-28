@@ -1,5 +1,5 @@
 import { TeamMembersPanel } from '@app/components/team/TeamMembersPanel';
-import { ErrorBoundary, InlineLoading, SkeletonText } from '@carbon/react';
+import { Column, ErrorBoundary, Grid, InlineLoading, SkeletonText } from '@carbon/react';
 import { listTeamsOptions } from '@client/@tanstack/react-query.gen.ts';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense } from 'react';
@@ -11,9 +11,13 @@ export const TeamManagementPage = () => {
   const team = teams.find((t) => t.id === Number(teamId));
   return (
     <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load team" />}>
-      <Suspense fallback={<SkeletonText paragraph lineCount={5} />}>
-        {team ? <TeamMembersPanel team={team} /> : <InlineLoading status="error" description="Team not found" />}
-      </Suspense>
+      <Grid fullWidth>
+        <Column lg={{ span: 6, offset: 5 }} md={{ span: 6, offset: 1 }} sm={4}>
+          <Suspense fallback={<SkeletonText paragraph lineCount={5} />}>
+            {team ? <TeamMembersPanel team={team} /> : <InlineLoading status="error" description="Team not found" />}
+          </Suspense>
+        </Column>
+      </Grid>
     </ErrorBoundary>
   );
 };
