@@ -13,7 +13,8 @@ export const groupValidator = (schema: ZodType) => ({ value }: { value: unknown 
   if (!result.success) {
     const fields: Record<string, string> = {};
     for (const issue of result.error.issues) {
-      const key = issue.path.join('.');
+      // a list is edited as a single input, so an issue on one of its elements belongs to the property
+      const key = issue.path.filter((p) => typeof p !== 'number').join('.');
       if (key && !fields[key]) fields[key] = issue.message;
     }
     return { fields };

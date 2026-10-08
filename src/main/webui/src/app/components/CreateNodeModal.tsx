@@ -298,7 +298,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                     {(field) => {
                       const sourceItems = availableNodes
                         .filter((n) => n.type !== 'ROOT')
-                        .map((n) => ({ id: String(n.id), label: `${n.name ?? '?'} (${n.type ?? '?'})`, name: n.name ?? '' }));
+                        .map((n) => ({ id: String(n.id), label: `${n.name} (${n.type})`, name: n.name}));
                       return (
                         <MultiSelect
                           key={nodeType}
@@ -334,7 +334,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                       >
                         <SelectItem value="" text="Root (no parent source)" />
                         {availableNodes.map((n) => (
-                          <SelectItem key={n.id} value={String(n.id)} text={`${n.name ?? '?'} (${n.type ?? '?'})`} />
+                          <SelectItem key={n.id} value={String(n.id)} text={`${n.name} (${n.type})`} />
                         ))}
                       </Select>
                     )}
@@ -355,7 +355,7 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                         disabled={nodesLoading}
                         items={availableNodes
                           .filter((n): n is ApiNode & { id: number } => n.id !== undefined)
-                          .map((n) => ({ id: String(n.id), label: `${n.name ?? '?'} (${n.type ?? '?'})`, nodeId: n.id }))}
+                          .map((n) => ({ id: String(n.id), label: `${n.name} (${n.type})`, nodeId: n.id }))}
                         itemToString={(item) => item.label}
                         invalid={field.state.meta.errors.length > 0}
                         invalidText={fieldError(field.state.meta.errors)}
@@ -385,9 +385,9 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                           >
                             <SelectItem value="" text={`Select ${src.label.toLowerCase()}`} />
                             {availableNodes
-                              .filter((n) => n.type && src.allowedTypes.includes(n.type))
+                              .filter((n) => src.allowedTypes.includes(n.type))
                               .map((n) => (
-                                <SelectItem key={n.id} value={String(n.id)} text={`${n.name ?? '?'} (${n.type ?? '?'})`} />
+                                <SelectItem key={n.id} value={String(n.id)} text={`${n.name} (${n.type})`} />
                               ))}
                           </Select>
                         )}
@@ -407,9 +407,9 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
                           >
                             <SelectItem value="" text="None" />
                             {availableNodes
-                              .filter((n) => n.type && NODE_TYPES.filter((type) => type.category == 'Extraction').find((type) => type.value === n.type))
+                              .filter((n) => NODE_TYPES.filter((type) => type.category == 'Extraction').find((type) => type.value === n.type))
                               .map((n) => (
-                                <SelectItem key={n.id} value={String(n.id)} text={`${n.name ?? '?'} (${n.type ?? '?'})`} />
+                                <SelectItem key={n.id} value={String(n.id)} text={`${n.name} (${n.type})`} />
                               ))}
                           </Select>
                         )}
