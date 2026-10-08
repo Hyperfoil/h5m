@@ -181,4 +181,20 @@ public class FolderResource {
             {
                 return valueService.getLabelValues(folderId, groupById,nodeIds,sortById);
             }
+
+    @GET
+    @Path("{id}/alignedValues")
+    @PermitAll
+    @Operation(description = "Get node values aligned by upload, ordered by domain (or upload order without domainNodeId)")
+    public List<JqValue> getAlignedValues(
+                    @PathParam("id") Long folderId,
+                    @QueryParam("rangeNodeId") long rangeNodeId,
+                    @QueryParam("domainNodeId") Long domainNodeId,
+                    @QueryParam("fingerprintNodeId") Long fingerprintNodeId)
+            {
+                if (domainNodeId == null) {
+                    return valueService.getAlignedValues(rangeNodeId, folderId, fingerprintNodeId);
+                }
+                return valueService.getAlignedValues(rangeNodeId, domainNodeId, folderId, fingerprintNodeId);
+            }
 }
