@@ -5,13 +5,12 @@ import io.hyperfoil.tools.jjq.value.JqValues;
 import io.hyperfoil.tools.h5m.api.Folder;
 import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.Processing;
-import io.hyperfoil.tools.h5m.api.Role;
 import io.hyperfoil.tools.h5m.api.svc.FolderServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ValueServiceInterface;
 import io.hyperfoil.tools.h5m.api.svc.ProcessingServiceInterface;
+import io.hyperfoil.tools.h5m.svc.AuthorizationService;
 import io.quarkus.runtime.configuration.MemorySize;
 import io.quarkus.security.Authenticated;
-import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -56,7 +55,7 @@ public class FolderResource {
     ProcessingServiceInterface processingService;
 
     @Inject
-    SecurityIdentity identity;
+    AuthorizationService authorizationService;
 
     @GET
     @PermitAll
@@ -95,9 +94,7 @@ public class FolderResource {
     @Operation(description = "Create a new folder")
     public Folder createFolder(@Valid @NotNull Folder folder) {
         if (folder.teamId() != null) {
-            if (!identity.getRoles().contains(Role.teamRole(folder.teamId()))) {
-                throw new ForbiddenException("You are not allowed to perform this action");
-            }
+            authorizationService.requireTeamMember(folder.teamId());
             return folderService.create(folder.name(), folder.teamId());
         }
         return folderService.create(folder.name());
@@ -108,6 +105,7 @@ public class FolderResource {
     @Authenticated
     @Operation(description = "Delete a folder by its ID")
     public void deleteFolder(@PathParam("id") long id) {
+        authorizationService.requireFolderModify(id);
         folderService.delete(id);
     }
 
@@ -123,6 +121,8 @@ public class FolderResource {
             @RestForm("raw") String raw,
             @RestForm("url") URL url,
             @RestForm("file") FileUpload file) {
+
+        authorizationService.requireFolderModify(id);
 
         if (Stream.of(url, raw == null || raw.isBlank() ? null : raw, file).filter(Objects::nonNull).count() != 1) {
             throw new BadRequestException("Provide exactly one of 'file', 'raw', or 'url'");

@@ -41,9 +41,10 @@ public class UserResource {
     SecurityIdentity identity;
 
     @GET
+    @Authenticated
     @Operation(description = "List all users")
     public List<User> listUsers() {
-        return identity.isAnonymous() ? List.of() : userService.list();
+        return userService.list();
     }
 
     @GET

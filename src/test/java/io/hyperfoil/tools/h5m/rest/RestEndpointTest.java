@@ -2,6 +2,7 @@ package io.hyperfoil.tools.h5m.rest;
 
 import io.hyperfoil.tools.jjq.value.*;
 import io.hyperfoil.tools.h5m.api.NodeType;
+import io.hyperfoil.tools.h5m.api.Role;
 import io.hyperfoil.tools.h5m.FreshDb;
 
 import io.hyperfoil.tools.h5m.entity.FolderEntity;
@@ -11,8 +12,10 @@ import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.entity.node.RootNode;
 import io.hyperfoil.tools.h5m.svc.FolderService;
 import io.hyperfoil.tools.h5m.svc.ProcessingService;
+import io.hyperfoil.tools.h5m.svc.TeamService;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.hyperfoil.tools.h5m.svc.WorkService;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.specification.RequestSpecification;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -32,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 
 @QuarkusTest
+@TestSecurity(user = "test-user", roles = {Role.USER_ROLE})
 public class RestEndpointTest extends FreshDb {
 
     /** Serialize a View record to JSON string for REST request bodies. */
@@ -66,6 +70,9 @@ public class RestEndpointTest extends FreshDb {
 
     @Inject
     ProcessingService processingService;
+
+    @Inject
+    TeamService teamService;
 
     private long createFolder(String name) {
         return given()
@@ -349,6 +356,7 @@ public class RestEndpointTest extends FreshDb {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {Role.ADMIN_ROLE})
     public void value_purge() throws Exception {
         tm.begin();
         RootNode rootNode = new RootNode();
@@ -1071,7 +1079,7 @@ public class RestEndpointTest extends FreshDb {
                 .multiPart("raw", "{\"cpu\": 95}")
                 .when().post("/api/folder/999999/upload")
                 .then()
-                .statusCode(400);
+                .statusCode(404);
     }
 
     @Test
@@ -1366,6 +1374,55 @@ public class RestEndpointTest extends FreshDb {
                 .when().post("/api/node/configured")
                 .then()
                 .statusCode(400);
+    }
+    
+    @Test
+    public void folder_create_with_team_rejected_for_non_member() {
+        long teamId = teamService.create("other-team").id();
+
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "team-folder-denied", "teamId", teamId))
+                .when().post("/api/folder")
+                .then()
+                .statusCode(403);
+    }
+
+    @Test
+    public void folder_delete_rejected_for_non_team_member() {
+        long teamId = teamService.create("owner-team").id();
+        long folderId = folderService.create("team-owned-folder", teamId).id();
+
+        given()
+                .when().delete("/api/folder/" + folderId)
+                .then()
+                .statusCode(403);
+    }
+
+    @Test
+    @TestSecurity(user = "admin", roles = {Role.ADMIN_ROLE})
+    public void folder_delete_allowed_for_admin_regardless_of_team() {
+        long teamId = teamService.create("owner-team-admin").id();
+        long folderId = folderService.create("admin-can-delete", teamId).id();
+
+        given()
+                .when().delete("/api/folder/" + folderId)
+                .then()
+                .statusCode(204);
+    }
+
+    @Test
+    public void node_create_rejected_for_non_team_member() {
+        long teamId = teamService.create("node-owner-team").id();
+        folderService.create("node-team-folder", teamId);
+        Long groupId = getGroupId("node-team-folder");
+
+        given()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "denied-node", "groupId", groupId, "type", NodeType.JQ.name(), "operation", "."))
+                .when().post("/api/node")
+                .then()
+                .statusCode(403);
     }
 
 }

@@ -10,17 +10,11 @@ import io.quarkus.security.identity.IdentityProviderManager;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.request.AuthenticationRequest;
 import io.quarkus.security.identity.request.BaseAuthenticationRequest;
-import io.quarkus.security.runtime.QuarkusPrincipal;
-import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import io.quarkus.vertx.http.runtime.security.ChallengeData;
 import io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism;
 import io.quarkus.vertx.http.runtime.security.HttpCredentialTransport;
 import io.smallrye.mutiny.Uni;
 import io.vertx.ext.web.RoutingContext;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
-
-import static io.hyperfoil.tools.h5m.api.Role.ADMIN_ROLE;
-import static io.hyperfoil.tools.h5m.api.Role.USER_ROLE;
 
 @ApplicationScoped
 public class ApiKeyAuthenticationMechanism implements HttpAuthenticationMechanism {
@@ -28,19 +22,8 @@ public class ApiKeyAuthenticationMechanism implements HttpAuthenticationMechanis
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String H5M_PREFIX = "H5M_";
 
-    @ConfigProperty(name = "h5m.security.enabled", defaultValue = "false")
-    boolean securityEnabled;
-
     @Override
     public Uni<SecurityIdentity> authenticate(RoutingContext context, IdentityProviderManager identityProviderManager) {
-        if (!securityEnabled) {
-            SecurityIdentity localAdmin = QuarkusSecurityIdentity.builder()
-                    .setPrincipal(new QuarkusPrincipal("h5m.local"))
-                    .addRole(ADMIN_ROLE)
-                    .addRole(USER_ROLE)
-                    .build();
-            return Uni.createFrom().item(localAdmin);
-        }
         String authorization = context.request().headers().get("Authorization");
         if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
             return Uni.createFrom().nullItem();

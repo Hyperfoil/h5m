@@ -57,9 +57,6 @@ public class FolderService implements FolderServiceInterface {
     ProcessingService processingService;
 
     @Inject
-    AuthorizationService authService;
-
-    @Inject
     ApiMapper apiMapper;
 
     @Inject

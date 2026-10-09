@@ -13,6 +13,7 @@ import io.hyperfoil.tools.h5m.entity.NodeEntity;
 import io.hyperfoil.tools.h5m.entity.ProcessingEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
 import io.hyperfoil.tools.h5m.entity.mapper.CycleAvoidingContext;
+import io.hyperfoil.tools.h5m.svc.AuthorizationService;
 import io.hyperfoil.tools.h5m.svc.NodeService;
 import io.hyperfoil.tools.h5m.svc.ValueService;
 import io.quarkus.security.Authenticated;
@@ -54,11 +55,16 @@ public class NodeResource {
     @Inject
     ApiMapper apiMapper;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
+    @Transactional
     @Operation(description = "Create a new node with an operation")
     public Node createNode(@Valid @NotNull Node node) {
+        authorizationService.requireGroupModify(node.groupId());
         return nodeService.create(node.name(), node.groupId(), node.type(), node.operation());
     }
 
@@ -66,6 +72,7 @@ public class NodeResource {
     @Path("configured")
     @Consumes(MediaType.APPLICATION_JSON)
     @Authenticated
+    @Transactional
     @Operation(description = "Create a new node with sources and configuration")
     public Node createConfigured(
             @QueryParam("name") @NotEmpty @Pattern(regexp = ReservedNamespace.ALLOWED_NAME_PATTERN, message = "names starting with 'h5m.' are reserved for internal use") String name,
@@ -73,6 +80,7 @@ public class NodeResource {
             @QueryParam("type") @NotNull NodeType type,
             @QueryParam("sources") @NotNull @NotEmpty @UniqueElements(message = "Duplicate source nodes are not allowed: each source node must serve a unique role") List<Long> sources,
             @RequestBody(required = false) @Valid NodeConfiguration configuration) {
+        authorizationService.requireGroupModify(groupId);
         try {
             return nodeService.createConfigured(name, groupId, type, sources, configuration);
         } catch (IllegalArgumentException e) {
@@ -92,6 +100,9 @@ public class NodeResource {
         NodeEntity existing = NodeEntity.findById(id);
         if (existing == null) {
             throw new NotFoundException("Node not found: " + id);
+        }
+        if (existing.group != null) {
+            authorizationService.requireGroupModify(existing.group.id);
         }
         if (name != null && name.isEmpty()) {
             throw new BadRequestException("Node name cannot be empty");
@@ -116,16 +127,32 @@ public class NodeResource {
     @POST
     @Path("{id}/recalculate")
     @Authenticated
+    @Transactional
     @Operation(description = "Recalculate a specific node and its dependents. Returns immediately with a status for progress polling.")
     public Processing recalculateNode(@PathParam("id") Long nodeId) {
+        NodeEntity existing = NodeEntity.findById(nodeId);
+        if (existing == null) {
+            throw new NotFoundException("Node not found: " + nodeId);
+        }
+        if (existing.group != null) {
+            authorizationService.requireGroupModify(existing.group.id);
+        }
         return processingService.recalculateNode(nodeId);
     }
 
     @DELETE
     @Path("{id}")
     @Authenticated
+    @Transactional
     @Operation(description = "Delete a node by its ID")
     public void deleteNode(@PathParam("id") Long nodeId) {
+        NodeEntity node = NodeEntity.findById(nodeId);
+        if (node == null) {
+            throw new NotFoundException("Node not found: " + nodeId);
+        }
+        if (node.group != null) {
+            authorizationService.requireGroupModify(node.group.id);
+        }
         nodeService.delete(nodeId);
     }
 
@@ -140,6 +167,9 @@ public class NodeResource {
         NodeEntity node = NodeEntity.findById(nodeId);
         if (node == null) {
             throw new NotFoundException("Node not found: " + nodeId);
+        }
+        if (node.group != null) {
+            authorizationService.requireGroupModify(node.group.id);
         }
         EphemeralMode ephemeralMode;
         try {
