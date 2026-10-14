@@ -5,11 +5,22 @@ import io.hyperfoil.tools.h5m.api.Role;
 import io.hyperfoil.tools.h5m.api.User;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,6 +32,9 @@ public class UserServiceTest extends FreshDb {
 
     @Inject
     SessionFactory sessionFactory;
+
+    @Inject
+    TeamService teamService;
 
     @Test
     void create_user() {
@@ -89,5 +103,98 @@ public class UserServiceTest extends FreshDb {
 
         assertEquals(hitsAfterFirst + 1, stats.getQueryCacheHitCount(),
                 "second identical lookup should be a query-cache hit, not another miss");
+    }
+
+    @Test
+    void create_by_username_is_idempotent() throws Exception {
+        long first = userService.create("alice", Role.USER);
+        long second = userService.create("alice", Role.ADMIN);
+        assertEquals(first, second, "re-creating an existing user should adopt the existing row");
+        assertEquals(1, countRows("h5m_user"));
+        assertEquals(Role.USER, userService.byUsername("alice").role(),
+                "adopting an existing user must not overwrite the role it was created with");
+    }
+
+    @Test
+    void create_by_sub_is_idempotent() throws Exception {
+        String sub = "sub-idempotent";
+        String iss = "https://issuer.example";
+        long first = userService.create(sub, iss, "charles", Role.USER);
+        long second = userService.create(sub, iss, "charles", Role.USER);
+        assertEquals(first, second, "re-creating an existing OIDC user should adopt the existing row");
+        assertEquals(1, countRows("h5m_user"));
+    }
+
+    /**
+     * Creating from inside a caller's transaction that already wrote must join it: a nested
+     * transaction would never get SQLite's single writer lock, which the caller still holds.
+     */
+    @Test
+    @Timeout(60)
+    @Transactional
+    void create_joins_an_active_transaction_that_already_wrote() {
+        teamService.create("writes-first");
+
+        long id = userService.create("erin", Role.USER);
+        assertTrue(id > 0);
+        assertEquals(id, userService.create("erin", Role.USER),
+                "a second create in the same transaction should see the row it just inserted");
+    }
+
+    /** A username clash between two different identities is a real conflict, not a lost race. */
+    @Test
+    void create_by_sub_does_not_adopt_a_different_identity_with_the_same_username() throws Exception {
+        userService.create("dennis", Role.ADMIN);
+
+        assertThrows(RuntimeException.class,
+                () -> userService.create("dennis", "https://issuer.example", "dennis", Role.USER),
+                "an OIDC identity must not silently take over an existing account with that username");
+        assertEquals(1, countRows("h5m_user"));
+    }
+
+    /** Parallel provisioning of the same unknown user must insert one row and throw at no caller. */
+    @Test
+    @Timeout(60)
+    void concurrent_create_by_sub_provisions_once() throws Exception {
+        String sub = "alice";
+        String iss = "http://localhost:34561";
+        int threads = 4;
+
+        List<Long> ids = inParallel(threads, () -> userService.create(sub, iss, "alice", Role.USER));
+
+        assertEquals(1, countRows("h5m_user"), "concurrent provisioning must insert exactly one row");
+        assertEquals(1, Set.copyOf(ids).size(), "every caller should get the id of the single row, was " + ids);
+    }
+
+    @Test
+    @Timeout(60)
+    void concurrent_create_by_username_provisions_once() throws Exception {
+        int threads = 4;
+
+        List<Long> ids = inParallel(threads, () -> userService.create("bob", Role.USER));
+
+        assertEquals(1, countRows("h5m_user"), "concurrent provisioning must insert exactly one row");
+        assertEquals(1, Set.copyOf(ids).size(), "every caller should get the id of the single row, was " + ids);
+    }
+
+    /** Runs {@code action} on {@code threads} threads released simultaneously, and returns the results. */
+    private <T> List<T> inParallel(int threads, Callable<T> action) throws Exception {
+        CyclicBarrier startLine = new CyclicBarrier(threads);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<T>> futures = IntStream.range(0, threads)
+                    .mapToObj(_ -> pool.submit(() -> {
+                        startLine.await(10, TimeUnit.SECONDS);
+                        return action.call();
+                    })).toList();
+            List<T> results = new ArrayList<>();
+            for (Future<T> future : futures) {
+                results.add(future.get(30, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            // shutdownNow, not close(): close() waits forever on a task that is already stuck
+            pool.shutdownNow();
+        }
     }
 }

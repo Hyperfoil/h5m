@@ -5,14 +5,18 @@ import io.hyperfoil.tools.h5m.api.User;
 import io.hyperfoil.tools.h5m.api.svc.UserServiceInterface;
 import io.hyperfoil.tools.h5m.entity.UserEntity;
 import io.hyperfoil.tools.h5m.entity.mapper.ApiMapper;
+import io.quarkus.logging.Log;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Status;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.hibernate.Session;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @ApplicationScoped
 public class UserService implements UserServiceInterface {
@@ -25,6 +29,9 @@ public class UserService implements UserServiceInterface {
 
     @Inject
     Session session;
+
+    @Inject
+    WorkService workService;
 
     @Override
     @Transactional
@@ -50,19 +57,45 @@ public class UserService implements UserServiceInterface {
     }
 
     @Override
-    @Transactional
     public long create(String username, Role role) {
-        UserEntity user = new UserEntity(username, role);
-        user.persist();
-        return user.id;
+        return createIfAbsent(
+                () -> new UserEntity(username, role),
+                () -> UserEntity.find("username", username).firstResult());
     }
 
     @Override
-    @Transactional
     public long create(String sub, String iss, String username, Role role) {
-        UserEntity user = new UserEntity(sub, iss, username, role);
-        user.persist();
-        return user.id;
+        return createIfAbsent(
+                () -> new UserEntity(sub, iss, username, role),
+                () -> findBySubAndIss(sub, iss));
+    }
+
+    /** Adopts the existing row if a concurrent provisioning won the race */
+    private long createIfAbsent(Supplier<UserEntity> factory, Supplier<UserEntity> lookup) {
+        Supplier<Long> createIfAbsent = () -> {
+            UserEntity existing = lookup.get();
+            if (existing != null) {
+                return existing.id;
+            }
+            UserEntity user = factory.get();
+            user.persist();
+            return user.id;
+        };
+        if (QuarkusTransaction.getStatus() != Status.STATUS_NO_TRANSACTION) {
+            // join the caller's transaction: a nested insert would deadlock on SQLite, where the caller already holds the single writer lock
+            return createIfAbsent.get();
+        }
+        try {
+            return workService.callInNewTransaction(createIfAbsent::get);
+        } catch (RuntimeException e) {
+            // the failed insert left its transaction rollback-only
+            UserEntity existing = workService.callInNewTransaction(lookup::get);
+            if (existing == null) {
+                throw e;
+            }
+            Log.debugf("Adopting concurrently provisioned %s", existing);
+            return existing.id;
+        }
     }
 
     @Override
