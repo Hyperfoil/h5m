@@ -972,7 +972,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setNodes(fingerprintNode, rootNode, rangeNode, null);
 
         // Use the first root value as the trigger
-        ValueEntity firstRoot = ValueEntity.find("node.id", rootNode.id).firstResult();
+        ValueEntity firstRoot = ValueEntity.find("node.id = ?1 order by id", rootNode.id).firstResult();
         List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff, firstRoot, 0);
         assertNotNull(found);
         assertFalse(found.isEmpty(), "Should detect a change with null domain using created_at ordering:\n  "+found.stream().map(e->e.id+"="+e.data).collect(Collectors.joining("\n  ")));
@@ -1020,7 +1020,7 @@ public class NodeServiceTest extends FreshDb {
         relDiff.setThreshold(0.2);
         relDiff.setNodes(fingerprintNode, rootNode, rangeNode, null);
 
-        ValueEntity firstRoot = ValueEntity.find("node.id", rootNode.id).firstResult();
+        ValueEntity firstRoot = ValueEntity.find("node.id = ?1 order by id", rootNode.id).firstResult();
         List<ValueEntity> found = nodeService.calculateRelativeDifferenceValues(relDiff, firstRoot, 0);
         assertNotNull(found);
         assertTrue(found.isEmpty(), "Should not detect changes when insufficient samples (2 < minPrevious+window=6)");

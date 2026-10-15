@@ -513,11 +513,12 @@ public class ValueService implements ValueServiceInterface {
                                  from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                         )
                         select v.id from value v join descendant d on v.id=d.vid
-                            where v.node_id=:sourceId order by sortable ORDER_DIRECTION, created_at ORDER_DIRECTION
+                            where v.node_id=:sourceId order by sortable ORDER_DIRECTION, created_at ORDER_DIRECTION, v.id ORDER_DIRECTION
                         """).replace("DATA_TO_SORTABLE", dataToSortable);
             sql = sql.replace("DOMAIN_VALUE_COMP",domainValue != null ? domainValueComp : "");
         }else{
-            //sorting by created_at
+            // sorting by created_at and id (which follows insertion order) to break ties and keep the window deterministic
+            // created_at is only microsecond precision and every value of an upload is persisted in one transaction, so ties are common
             // No domain sorting — order by created_at. Both dialects share the same SQL.
             sql+= """
                         descendant(vid) as (
@@ -529,7 +530,7 @@ public class ValueService implements ValueServiceInterface {
                                  from value v join value_edge ve on v.id = ve.child_id join descendant d on d.vid = ve.parent_id
                         )
                         select v.id from value v join descendant d on v.id=d.vid
-                            where v.node_id=:sourceId order by created_at ORDER_DIRECTION
+                            where v.node_id=:sourceId order by created_at ORDER_DIRECTION, v.id ORDER_DIRECTION
                         """;
         }
         sql = sql
