@@ -35,6 +35,17 @@ jobs:
           -Dquarkus.container-image.username=${{ github.actor }}
           -Dquarkus.container-image.password=${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build and push CLI container image
+        run: >
+          mvn -B package -Dcli -P'!web' -Dquarkus.quinoa=false -DskipTests
+          -Dh5m.cli.native=false -Dquarkus.package.jar.type=uber-jar
+          -Dquarkus.package.jar.add-runner-suffix=false
+          -Dquarkus.container-image.build=true
+          -Dquarkus.container-image.push=true
+          -Dquarkus.container-image.tag=latest-cli
+          -Dquarkus.container-image.username=${{ github.actor }}
+          -Dquarkus.container-image.password=${{ secrets.GITHUB_TOKEN }}
+
       - name: Clean up old untagged container versions
         uses: actions/delete-package-versions@v5
         with:
