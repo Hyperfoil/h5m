@@ -52,6 +52,30 @@ public interface ValueServiceInterface {
     List<Value> getNodeValues(Long nodeId);
 
     /**
+     * Values of two nodes aligned by shared root ancestor, ordered by the
+     * domain node's value. Rows carry range, domain and optional fingerprint
+     * values keyed by node name.
+     *
+     * @param rangeNodeId node ID for the primary values
+     * @param domainNodeId node ID for ordering
+     * @param folderId folder ID (reserved for future scoping)
+     * @param fingerprintNodeId optional fingerprint node ID (null to skip)
+     * @return one row per upload with values keyed by node name
+     */
+    List<JqValue> getAlignedValues(long rangeNodeId, long domainNodeId, long folderId, Long fingerprintNodeId);
+
+    /**
+     * Values of one node aligned by upload (root ID ascending). Rows carry
+     * range and optional fingerprint values keyed by node name; no domain field.
+     *
+     * @param rangeNodeId node ID for the primary values
+     * @param folderId folder ID (reserved for future scoping)
+     * @param fingerprintNodeId optional fingerprint node ID (null to skip)
+     * @return one row per upload with values keyed by node name
+     */
+    List<JqValue> getAlignedValues(long rangeNodeId, long folderId, Long fingerprintNodeId);
+
+    /**
      * Returns the total count of values for a specific node.
      *
      * @param nodeId The ID of the node.
