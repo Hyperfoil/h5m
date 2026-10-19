@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { channelsOptions } from '@client/@tanstack/react-query.gen';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import type { NotificationChannel } from '@client/types.gen';
+import { useFolderPermission } from '@app/context/usePermission.tsx';
 import CreateNotificationModal from '@app/components/Notification/CreateNotificationModal';
 import DeleteNotiConfigModal from '@app/components/Notification/DeleteNotiConfigModal';
 import EditNotiConfigModal from '@app/components/Notification/EditNotiConfigModal';
@@ -34,6 +35,7 @@ function getDestination(channel: NotificationChannel): string {
 }
 
 export default function AddNotificationConfig({ folderId }: { folderId: number }) {
+  const canModify = useFolderPermission(folderId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [channelToDelete, setChannelToDelete] = useState<NotificationChannel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<NotificationChannel | null>(null);
@@ -41,7 +43,14 @@ export default function AddNotificationConfig({ folderId }: { folderId: number }
 
   return (
     <>
-      <Button kind="primary" size="md" onClick={() => setIsCreateOpen(true)} className="create-notification-btn" style={{ margin: 'var(--cds-spacing-05)' }}>
+      <Button
+        kind="primary"
+        size="md"
+        onClick={() => setIsCreateOpen(true)}
+        className="create-notification-btn"
+        disabled={!canModify}
+        style={{ margin: 'var(--cds-spacing-05)' }}
+      >
         Create Notification Channel
       </Button>
       <CreateNotificationModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} folderId={folderId} />
@@ -69,8 +78,17 @@ export default function AddNotificationConfig({ folderId }: { folderId: number }
                 <StructuredListCell>{getDestination(channel)}</StructuredListCell>
                 <StructuredListCell>
                   <MenuButton label="Action" kind="ghost" size="sm" menuAlignment="bottom-end">
-                    <MenuItem label="Delete" kind="danger" onClick={() => setChannelToDelete(channel)} />
-                    <MenuItem label="Edit" onClick={() => setChannelToEdit(channel)} />
+                    <MenuItem
+                      label="Delete"
+                      kind="danger"
+                      disabled={!canModify}
+                      onClick={() => setChannelToDelete(channel)}
+                    />
+                    <MenuItem
+                      label="Edit"
+                      disabled={!canModify}
+                      onClick={() => setChannelToEdit(channel)}
+                    />
                   </MenuButton>
                 </StructuredListCell>
               </StructuredListRow>

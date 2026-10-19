@@ -11,8 +11,9 @@ import {
   Tag,
 } from '@carbon/react';
 import { useEffect, useState } from 'react';
-
+import { useFolderPermission } from '@app/context/usePermission.tsx';
 export const UploadTab = ({ folderId }: { folderId: number }) => {
+  const canModify = useFolderPermission(folderId);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [recentUploads, setRecentUploads] = useState<{ fileName: string; uploadId: number; uploadedAt: Date }[]>([]);
   const [uploadsPage, setUploadsPage] = useState(1);
@@ -31,6 +32,7 @@ export const UploadTab = ({ folderId }: { folderId: number }) => {
       <Button
         kind="primary"
         size="md"
+        disabled={!canModify}
         onClick={() => {
           setUploadModalOpen(true);
         }}

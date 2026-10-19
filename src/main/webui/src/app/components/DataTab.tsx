@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@carbon/react';
 import { getViewDataOptions, getViewsOptions } from '@client/@tanstack/react-query.gen.ts';
+import { useFolderPermission } from '@app/context/usePermission.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useMemo, useState } from 'react';
 
@@ -89,6 +90,7 @@ const ViewDataTable = ({
 };
 
 export const DataTab = ({ folderId, groupId }: { folderId: number; groupId: number }) => {
+  const canModify = useFolderPermission(folderId);
   const { data: views, isLoading: viewsLoading } = useQuery(
     getViewsOptions({ path: { folderId } }),
   );
@@ -139,6 +141,7 @@ export const DataTab = ({ folderId, groupId }: { folderId: number; groupId: numb
         <Button
           kind="ghost"
           size="md"
+          disabled={!canModify}
           onClick={() => {
             const latestView = views?.find((v: View) => v.id === selectedView?.id) ?? selectedView;
             setEditingView(latestView);
@@ -151,6 +154,7 @@ export const DataTab = ({ folderId, groupId }: { folderId: number; groupId: numb
         <Button
           kind="ghost"
           size="md"
+          disabled={!canModify}
           onClick={() => {
             setEditingView(null);
             setModalKey((k) => k + 1);

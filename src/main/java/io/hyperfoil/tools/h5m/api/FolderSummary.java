@@ -15,5 +15,6 @@ public record FolderSummary(
     @Schema(description = "Number of configured nodes") int nodeCount,
     @Schema(description = "Number of detected changes") int changeCount,
     @Schema(description = "Timestamp of last upload") LocalDateTime lastUpload,
-    @Schema(description = "Timestamp of last detected change") LocalDateTime lastChange
+    @Schema(description = "Timestamp of last detected change") LocalDateTime lastChange,
+    @Schema(description = "Team Id") Long teamId
 ) {}

@@ -27,6 +27,7 @@ import {
 } from '@carbon/react';
 import { useState } from 'react';
 import { byIdOptions, getRecalculationStatusOptions, listFoldersOptions } from '@client/@tanstack/react-query.gen.ts';
+import { useFolderPermission } from '@app/context/usePermission.tsx';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -36,8 +37,9 @@ import { DeleteNodeModal } from '@app/components/DeleteNodeModal';
 import { EditNodeModal } from '@app/components/EditNodeModal';
 import  AddNotificationConfig  from '@app/components/Notification/AddNotificationConfig';
 
-const NodesTab = ({ groupId }: { groupId: number }) => {
+const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) => {
   const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
+  const canModify = useFolderPermission(folderId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [nodeToDelete, setNodeToDelete] = useState<ApiNode | null>(null);
   const [nodeToEdit, setNodeToEdit] = useState<ApiNode | null>(null);
@@ -63,6 +65,7 @@ const NodesTab = ({ groupId }: { groupId: number }) => {
           size="md"
           onClick={() => setIsCreateOpen(true)}
           className="create-folder-btn"
+          disabled={!canModify}
           style={{ margin: 'var(--cds-spacing-05)' }}>
           Create Node
       </Button>
@@ -119,8 +122,17 @@ const NodesTab = ({ groupId }: { groupId: number }) => {
                 <StructuredListCell>{node.operation}</StructuredListCell>
                 <StructuredListCell>
                   <MenuButton label="Action" kind="ghost" size="sm" menuAlignment="bottom-end">
-                    <MenuItem label="Delete" kind="danger" onClick={() => setNodeToDelete(node)} />
-                    <MenuItem label="Edit" onClick={() => setNodeToEdit(node)} />
+                    <MenuItem
+                      label="Delete"
+                      kind="danger"
+                      disabled={!canModify}
+                      onClick={() => setNodeToDelete(node)}
+                    />
+                    <MenuItem
+                      label="Edit"
+                      disabled={!canModify}
+                      onClick={() => setNodeToEdit(node)}
+                    />
                   </MenuButton>
                 </StructuredListCell>
               </StructuredListRow>
@@ -196,10 +208,10 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
           )}
         </TabPanel>
         <TabPanel>
-          {folder.groupId != null ? (
+          {folder.id != null && folder.groupId != null ? (
             <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load nodes" />}>
               <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
-                <NodesTab groupId={folder.groupId} />
+                <NodesTab folderId={folder.id} groupId={folder.groupId} />
               </Suspense>
             </ErrorBoundary>
           ) : (

@@ -18,6 +18,7 @@ import io.hyperfoil.tools.h5m.entity.ValueEntity;
 import io.hyperfoil.tools.h5m.entity.node.JqNode;
 import io.hyperfoil.tools.h5m.api.Notification;
 import io.hyperfoil.tools.h5m.api.NotificationMethod;
+import io.hyperfoil.tools.h5m.api.FolderSummary;
 import io.hyperfoil.tools.h5m.api.notification.WebhookConfig;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -529,6 +530,28 @@ public class FolderServiceTest extends FreshDb {
         assertThrows(NotFoundException.class,
                 () -> folderService.create("folder-bad-team", 999999L),
                 "Creating a folder with a non-existent team should throw NotFoundException");
+    }
+
+    @Test
+    public void dashboard_summary_includes_team_id() throws Exception {
+        tm.begin();
+        TeamEntity team = new TeamEntity("team-dashboard-test");
+        team.persist();
+        long teamId = team.id;
+        tm.commit();
+
+        folderService.create("dashboard-team-folder", teamId);
+        folderService.create("dashboard-no-team-folder");
+
+        List<FolderSummary> summaries = folderService.getDashboardSummaries();
+
+        FolderSummary teamFolder = summaries.stream()
+                .filter(s -> s.name().equals("dashboard-team-folder")).findFirst().orElseThrow();
+        FolderSummary noTeamFolder = summaries.stream()
+                .filter(s -> s.name().equals("dashboard-no-team-folder")).findFirst().orElseThrow();
+
+        assertEquals(teamId, teamFolder.teamId(), "Dashboard summary should carry the folder's team id");
+        assertNull(noTeamFolder.teamId(), "Unteamed folders should report a null team id");
     }
 
     @Test
