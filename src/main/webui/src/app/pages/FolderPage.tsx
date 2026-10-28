@@ -179,25 +179,8 @@ const GraphVisualizer = ({ groupId }: { groupId: number }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   return (
     <>
-      <Button
-        kind="primary"
-        size="md"
-        onClick={() => {
-          setIsCreateOpen(true);
-        }}
-        className="create-folder-btn"
-        style={{ margin: 'var(--cds-spacing-05)' }}
-      >
-        Create Node
-      </Button>
-      <CreateNodeModal
-        open={isCreateOpen}
-        onClose={() => {
-          setIsCreateOpen(false);
-        }}
-        groupId={groupId}
-      />
-      <NodeGraphVisualizer nodeGroup={nodeGroup} />
+      <CreateNodeModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} groupId={groupId} />
+      <NodeGraphVisualizer nodeGroup={nodeGroup} groupId={groupId} />
     </>
   );
 };
