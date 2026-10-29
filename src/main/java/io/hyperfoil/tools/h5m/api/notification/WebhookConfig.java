@@ -8,7 +8,8 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * Configuration for the Webhook notification plugin
  */
 @Schema(description = "Configuration for the Webhook notification plugin")
-public record WebhookConfig(NotificationMethod method, @NotBlank String url) implements NotificationConfiguration {
+public record WebhookConfig(NotificationMethod method, @NotBlank @Schema(format = "uri") String url)
+        implements NotificationConfiguration {
     public WebhookConfig {
         method = NotificationMethod.WEBHOOK;
     }
