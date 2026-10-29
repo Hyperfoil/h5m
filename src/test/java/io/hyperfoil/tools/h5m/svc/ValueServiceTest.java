@@ -2613,4 +2613,92 @@ public class ValueServiceTest extends FreshDb {
         }
     }
 
+    @Test
+    public void getAlignedValues_uploadOrder_ignoresDomain() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".r", rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".d", rootNode);
+        domainNode.persist();
+        NodeEntity fingerprintNode = new JqNode("fingerprint", ".f", rootNode);
+        fingerprintNode.persist();
+
+        // Upload order is deliberately NOT domain order (30, 10, 20).
+        // Root payloads exercise each upload-label source: timing.start,
+        // env.BUILD_ID, and bare fallback.
+        String[] payloads = {
+                "{\"timing\":{\"start\":\"2022-01-31T12:44:35Z\"}}",
+                "{\"env\":{\"BUILD_ID\":50}}",
+                "{}"};
+        double[][] uploads = {{30, 1}, {10, 2}, {20, 3}};
+        for (int i = 0; i < 3; i++) {
+            ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse(payloads[i]));
+            rootValue.persist();
+            new ValueEntity(null, rangeNode, JqNumber.of(uploads[i][1]), List.of(rootValue)).persist();
+            new ValueEntity(null, domainNode, JqNumber.of(uploads[i][0]), List.of(rootValue)).persist();
+            new ValueEntity(null, fingerprintNode, JqString.of("fp"), List.of(rootValue)).persist();
+        }
+        tm.commit();
+
+        List<JqValue> rows = valueService.getAlignedValues(rangeNode.id, 0L, fingerprintNode.id);
+        assertEquals(3, rows.size(), "should return one row per upload: " + rows);
+        // Upload order preserved: ranges 1, 2, 3 (not domain-sorted)
+        String[] expectedLabels = {"22-01-31", "b50", "#3"};
+        for (int i = 0; i < 3; i++) {
+            JqValue range = rows.get(i).getField("range");
+            assertNotNull(range, "row should carry the range value: " + rows.get(i));
+            assertEquals(i + 1, range.asDouble(0), 0.01, "wrong range at row " + i);
+            assertNotNull(rows.get(i).getField("fp"), "row should carry the fingerprint value");
+            assertTrue(rows.get(i).getField("domain") == null || rows.get(i).getField("domain").isNull(),
+                    "upload-ordered rows must not carry a domain field");
+            JqValue uploaded = rows.get(i).getField(ValueService.UPLOADED_FIELD);
+            assertNotNull(uploaded, "row should carry the upload label: " + rows.get(i));
+            assertEquals(expectedLabels[i], uploaded.asText(), "wrong upload label at row " + i);
+        }
+    }
+
+    @Test
+    public void getAlignedValues_numericDomain_sortedNumerically() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        NodeEntity rootNode = new RootNode();
+        rootNode.persist();
+        NodeEntity rangeNode = new JqNode("range", ".r", rootNode);
+        rangeNode.persist();
+        NodeEntity domainNode = new JqNode("domain", ".d", rootNode);
+        domainNode.persist();
+
+        // Insert out of numeric order: domain values 9, 10, 2, 100
+        double[][] uploads = {{9, 90}, {10, 100}, {2, 20}, {100, 1000}};
+        for (double[] upload : uploads) {
+            ValueEntity rootValue = new ValueEntity(null, rootNode, JqValues.parse("{}"));
+            rootValue.persist();
+            new ValueEntity(null, rangeNode, JqNumber.of(upload[1]), List.of(rootValue)).persist();
+            new ValueEntity(null, domainNode, JqNumber.of(upload[0]), List.of(rootValue)).persist();
+        }
+        tm.commit();
+
+        List<JqValue> rows = valueService.getAlignedValues(rangeNode.id, domainNode.id, 0L, null);
+        assertEquals(4, rows.size());
+        // Must be sorted numerically: 2, 9, 10, 100 (not lexicographically: 10, 100, 2, 9)
+        double[] expectedDomains = {2, 9, 10, 100};
+        double[] expectedRanges = {20, 90, 100, 1000};
+        for (int i = 0; i < 4; i++) {
+            assertEquals(expectedDomains[i], rows.get(i).getField("domain").asDouble(0), 0.01,
+                    "wrong domain order at row " + i);
+            assertEquals(expectedRanges[i], rows.get(i).getField("range").asDouble(0), 0.01,
+                    "wrong range at row " + i);
+        }
+    }
+
+    @Test
+    public void uploadLabelPrefersTimingOverBuildId() {
+        JqValue both = JqValues.parse("{\"timing\":{\"start\":\"2024-04-15T16:10:40Z\"},\"env\":{\"BUILD_ID\":151}}");
+        assertEquals("24-04-15", ValueService.uploadLabel(both, 7));
+        assertEquals("b151", ValueService.uploadLabel(JqValues.parse("{\"env\":{\"BUILD_ID\":151}}"), 7));
+        assertEquals("#7", ValueService.uploadLabel(JqValues.parse("{}"), 7));
+        assertEquals("#7", ValueService.uploadLabel(null, 7));
+    }
+
 }
