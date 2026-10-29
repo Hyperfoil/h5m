@@ -74,6 +74,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- quarkiverse -->
+        <quarkiverse.goblin>1.0.1</quarkiverse.goblin>
         <quarkiverse.http-problem>3.38.2</quarkiverse.http-problem>
         <quarkiverse.jdbc-sqlite>3.0.11</quarkiverse.jdbc-sqlite>
         <quarkiverse.mapstruct>1.1.0</quarkiverse.mapstruct>
@@ -739,6 +740,18 @@
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <profile>
+            <!-- goblin is a dev-only chaos extension. run dev mode with -Pgoblin to get it -->
+            <id>goblin</id>
+            <dependencies>
+                <dependency>
+                    <groupId>io.quarkiverse.goblin</groupId>
+                    <artifactId>quarkus-goblin</artifactId>
+                    <version>${quarkiverse.goblin}</version>
+                    <scope>provided</scope>
+                </dependency>
+            </dependencies>
         </profile>
     </profiles>
 </project>
