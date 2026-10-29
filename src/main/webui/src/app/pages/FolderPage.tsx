@@ -159,7 +159,7 @@ const GraphVisualizer = ({ groupId }: { groupId: number }) => {
         Create Node
       </Button>
       <CreateNodeModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} groupId={groupId} />
-      <NodeGraphVisualizer nodeGroup={nodeGroup} />
+      <NodeGraphVisualizer nodeGroup={nodeGroup} groupId={groupId} />
     </>
   );
 };

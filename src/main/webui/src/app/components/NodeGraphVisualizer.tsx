@@ -4,12 +4,15 @@ import type { Edge, EdgeProps, Node as FlowNode } from '@xyflow/react';
 
 import { blue50, gray40, gray90, green50, red60, yellow30, teal50 } from '@carbon/colors';
 import { Code, Compare, FingerprintRecognition, FlowData, ForkNode, Home, Login, Rule, Script } from '@carbon/icons-react';
-import { Tooltip } from '@carbon/react';
+import { Menu, MenuItem, Tooltip } from '@carbon/react';
 import dagre from '@dagrejs/dagre';
 import { Graph } from '@dagrejs/graphlib';
 import { BaseEdge, Controls, getSmoothStepPath, Handle, MarkerType, Position, ReactFlow, useEdgesState, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ComponentType, useCallback, useEffect, useMemo, useState } from 'react';
+import { ComponentType, type MouseEvent, useCallback, useEffect, useMemo, useState } from 'react';
+
+import { CreateNodeModal } from './CreateNodeModal';
+import { DeleteNodeModal } from './DeleteNodeModal';
 
 const TYPE_COLORS: Record<string, string> = {
   ROOT: yellow30,
@@ -127,7 +130,7 @@ export function collectNodes(node: Node, map: Map<string, GraphNode>) {
   });
 }
 
-export function buildGraph(nodeGroup: NodeGroup): { nodes: FlowNode[]; edges: Edge[] } {
+export function buildGraph(nodeGroup: NodeGroup): { nodes: FlowNode[]; edges: Edge[]; nodeMap: Map<string, GraphNode> } {
   const nodeMap = new Map<string, GraphNode>();
   if (nodeGroup.root) collectNodes(nodeGroup.root, nodeMap);
   nodeGroup.sources?.forEach((s) => {
@@ -183,7 +186,7 @@ export function buildGraph(nodeGroup: NodeGroup): { nodes: FlowNode[]; edges: Ed
     };
   });
 
-  return { nodes, edges };
+  return { nodes, edges, nodeMap };
 }
 
 const HighlightManager = ({ selectedId }: { selectedId?: string }) => {
@@ -218,11 +221,15 @@ const HighlightManager = ({ selectedId }: { selectedId?: string }) => {
   return null;
 };
 
-export const NodeGraphVisualizer = ({ nodeGroup }: { nodeGroup: NodeGroup }) => {
+export const NodeGraphVisualizer = ({ nodeGroup, groupId }: { nodeGroup: NodeGroup; groupId: number }) => {
   const graph = useMemo(() => buildGraph(nodeGroup), [nodeGroup]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [contextMenu, setContextMenu] = useState<{ nodeId?: string; x: number; y: number } | null>(null);
+  const [createSourceId, setCreateSourceId] = useState<string | undefined>();
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [nodeToDelete, setNodeToDelete] = useState<Node | null>(null);
 
   useEffect(() => {
     setNodes(graph.nodes);
@@ -235,6 +242,16 @@ export const NodeGraphVisualizer = ({ nodeGroup }: { nodeGroup: NodeGroup }) => 
   const onPaneClick = useCallback(() => {
     setSelectedId(undefined);
   }, []);
+  const onNodeContextMenu = useCallback((event: MouseEvent, node: FlowNode) => {
+    event.preventDefault();
+    setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
+  }, []);
+  const onPaneContextMenu = useCallback((event: MouseEvent | globalThis.MouseEvent) => {
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, []);
+
+  const contextNode = contextMenu?.nodeId ? graph.nodeMap.get(contextMenu.nodeId) : undefined;
 
   if (nodes.length === 0) {
     return <p>No nodes defined</p>;
@@ -251,6 +268,8 @@ export const NodeGraphVisualizer = ({ nodeGroup }: { nodeGroup: NodeGroup }) => 
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
+        onNodeContextMenu={onNodeContextMenu}
+        onPaneContextMenu={onPaneContextMenu}
         fitView
         snapToGrid
         snapGrid={[GRID_UNIT, GRID_UNIT]}
@@ -262,6 +281,49 @@ export const NodeGraphVisualizer = ({ nodeGroup }: { nodeGroup: NodeGroup }) => 
         <HighlightManager selectedId={selectedId} />
         <Controls position="top-right" showInteractive={false} />
       </ReactFlow>
+      <Menu
+        label="Node actions"
+        open={contextMenu !== null}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onClose={() => {
+          setContextMenu(null);
+        }}
+      >
+        <MenuItem
+          label={contextMenu?.nodeId ? 'Create child node' : 'Create Node'}
+          onClick={() => {
+            setCreateSourceId(contextMenu?.nodeId);
+            setIsCreateOpen(true);
+            setContextMenu(null);
+          }}
+        />
+        {contextMenu?.nodeId && (
+          <MenuItem
+            label="Delete node"
+            kind="danger"
+            disabled={contextNode?.type === 'ROOT'}
+            onClick={() => {
+              if (contextNode) setNodeToDelete({ ...contextNode, id: Number(contextNode.id), sources: undefined });
+              setContextMenu(null);
+            }}
+          />
+        )}
+      </Menu>
+      <CreateNodeModal
+        open={isCreateOpen}
+        onClose={() => {
+          setIsCreateOpen(false);
+        }}
+        groupId={groupId}
+        initialSourceId={createSourceId}
+      />
+      <DeleteNodeModal
+        node={nodeToDelete}
+        onClose={() => {
+          setNodeToDelete(null);
+        }}
+      />
     </div>
   );
 };

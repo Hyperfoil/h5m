@@ -25,7 +25,7 @@ import { byIdOptions, createConfiguredMutation, createNodeMutation } from '@clie
 import { zCreateNodeBody } from '@client/zod.gen.ts';
 import { useForm, useSelector } from '@tanstack/react-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import { DETECTION_SOURCES, DetectionConfigStep, buildConfig } from './DetectionConfigStep';
@@ -34,6 +34,7 @@ interface CreateNodeModalProps {
   open: boolean;
   onClose: () => void;
   groupId: number;
+  initialSourceId?: string;
 }
 
 type StepKey = 'type' | 'sources' | 'operation' | 'detection';
@@ -116,7 +117,7 @@ const DEFAULT_VALUES: FormValues = {
   edConfig: { windowLen: 50, maxPvalue: 0.001, minMagnitude: 0.0, maxSeriesLength: 500, fingerprintFilter: '' },
 };
 
-export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps) => {
+export const CreateNodeModal = ({ open, onClose, groupId, initialSourceId }: CreateNodeModalProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -189,6 +190,13 @@ export const CreateNodeModal = ({ open, onClose, groupId }: CreateNodeModalProps
       form.setFieldValue('operation', names.length > 0 ? `{${names.join(',')}}:${stripped}` : stripped);
     }
   };
+
+  useEffect(() => {
+    if (!open || !initialSourceId || !nodeGroup) return;
+    form.setFieldValue('sources', [initialSourceId]);
+    const selected = availableNodes.find((n) => String(n.id) === initialSourceId);
+    if (selected?.name) setSourcePrefix([selected.name]);
+  }, [open, initialSourceId, nodeGroup]);
 
   const handleSourceSelect = (nodeId: string) => {
     form.setFieldValue('sources', nodeId ? [nodeId] : []);
