@@ -18,3 +18,4 @@ jmh-result.*
 hs_err_pid*.log
 AGENTS.md
 CLAUDE.md
+.goblin-state.json
