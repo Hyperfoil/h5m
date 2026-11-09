@@ -255,7 +255,7 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
               <Grid fullWidth>
                 <Column lg={{ span: 6, offset: 5 }} md={{ span: 6, offset: 1 }} sm={4}>
                   <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
-                    <NotificationChannelPanel folderId={folder.id} />
+                    <NotificationChannelPanel key={folder.id} folderId={folder.id} />
                   </Suspense>
                 </Column>
               </Grid>
