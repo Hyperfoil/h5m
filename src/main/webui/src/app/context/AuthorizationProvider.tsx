@@ -16,7 +16,8 @@ export const AuthorizationProvider = ({ children }: { children: ReactNode }) => 
     client.setConfig({ auth: isAuthenticated ? token : undefined });
     // Permission-bearing data (e.g. Folder.canModify) may have been fetched before the
     // token was attached above, or under a different identity — refetch it now that the
-    // client carries the current one.
+    // client carries the current one. Deliberately left unscoped: almost every cached
+    // response is permission/identity-scoped, so there's no narrower key to target here.
     void queryClient.invalidateQueries();
   }, [token, isAuthenticated, queryClient]);
 

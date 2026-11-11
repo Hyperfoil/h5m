@@ -17,7 +17,7 @@ import {
   Tile,
 } from '@carbon/react';
 import { FolderAdd, TrashCan } from '@carbon/icons-react';
-import { getDashboardSummariesOptions,deleteFolderMutation } from '@client/@tanstack/react-query.gen.ts';
+import { getDashboardSummariesOptions, getDashboardSummariesQueryKey, deleteFolderMutation, listFoldersQueryKey } from '@client/@tanstack/react-query.gen.ts';
 import { CreateFolderModal } from '@app/components/CreateFolderModal';
 import { AuthorizationContext } from '@app/context/AuthorizationContext.tsx';
 import { canModifyTeam } from '@app/context/usePermission.tsx';
@@ -100,7 +100,8 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
   const deleteFolder = useMutation({
     ...deleteFolderMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({ queryKey: listFoldersQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: getDashboardSummariesQueryKey() });
       notifications.success(`Folder '${confirmFolder?.name}' deleted`);
       setConfirmFolder(null);
     },
