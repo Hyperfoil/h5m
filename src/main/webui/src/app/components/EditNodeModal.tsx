@@ -9,7 +9,7 @@ import {
   TextArea,
   TextInput,
 } from '@carbon/react';
-import { setEphemeralMutation, updateMutation } from '@client/@tanstack/react-query.gen.ts';
+import { byIdQueryKey, setEphemeralMutation, updateMutation } from '@client/@tanstack/react-query.gen.ts';
 import type { EphemeralMode, Node as ApiNode } from '@client/types.gen.ts';
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,7 +43,7 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
   const updateNode = useMutation({
     ...updateMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries();
+      if (node) void queryClient.invalidateQueries({ queryKey: byIdQueryKey({ path: { id: node.groupId } }) });
       if (operation.trim() !== (node?.operation ?? '') && node?.id) {
         onRecalculation?.(node.id);
       }
@@ -57,7 +57,7 @@ export const EditNodeModal = ({ node, onClose, onRecalculation }: EditNodeModalP
   const updateEphemeral = useMutation({
     ...setEphemeralMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries();
+      if (node) void queryClient.invalidateQueries({ queryKey: byIdQueryKey({ path: { id: node.groupId } }) });
       onClose();
     },
     onError: (e) => {

@@ -1,7 +1,7 @@
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { fieldError } from '@app/validation.ts';
 import { Button, ComposedModal, Form, InlineNotification, ModalBody, ModalFooter, ModalHeader, Select, SelectItem, Stack, TextInput } from '@carbon/react';
-import { createFolderMutation } from '@client/@tanstack/react-query.gen.ts';
+import { createFolderMutation, getDashboardSummariesQueryKey, listFoldersQueryKey } from '@client/@tanstack/react-query.gen.ts';
 import { zCreateFolderBody } from '@client/zod.gen.ts';
 import { useForm } from '@tanstack/react-form';
  import { useTeams } from '@app/context/useTeams.tsx';
@@ -21,7 +21,8 @@ export const CreateFolderModal = ({ open, onClose }: CreateFolderModalProps) => 
   const createFolder = useMutation({
     ...createFolderMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({ queryKey: listFoldersQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: getDashboardSummariesQueryKey() });
       handleClose();
     },
     onError: (e) => {

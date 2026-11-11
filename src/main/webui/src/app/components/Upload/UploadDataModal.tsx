@@ -16,7 +16,7 @@ import {
   TextInput,
 } from '@carbon/react';
 import type { UploadData } from '@client/types.gen.ts';
-import { uploadMutation } from '@client/@tanstack/react-query.gen.ts';
+import { getDashboardSummariesQueryKey, getLabelValuesQueryKey, uploadMutation } from '@client/@tanstack/react-query.gen.ts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useNotification } from '@app/context/useNotification.tsx';
@@ -102,7 +102,14 @@ export const UploadDataModal = ({ open, onClose, folderId, onUploadSuccess }: Up
 
       try {
         const uploadId = await upload.mutateAsync({ path: { id: folderId }, body: item.body });
-        void queryClient.invalidateQueries();
+        void queryClient.invalidateQueries({ queryKey: getDashboardSummariesQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: getLabelValuesQueryKey({ path: { id: folderId } }) });
+        void queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey[0] as { _id?: string; path?: { folderId?: number } } | undefined;
+            return key?._id === 'getViewData' && key.path?.folderId === folderId;
+          },
+        });
         onUploadSuccess(item.label, uploadId);
         setCurrentStatus('success');
         successCount++;

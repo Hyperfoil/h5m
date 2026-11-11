@@ -1,5 +1,5 @@
 import { Modal } from '@carbon/react';
-import { deleteNodeMutation } from '@client/@tanstack/react-query.gen.ts';
+import { byIdQueryKey, deleteNodeMutation } from '@client/@tanstack/react-query.gen.ts';
 import type { Node as ApiNode } from '@client/types.gen.ts';
 import { extractErrorMessage } from '@app/context/NotificationProvider.tsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ export const DeleteNodeModal = ({ node, onClose }: DeleteNodeModalProps) => {
   const deleteNode = useMutation({
     ...deleteNodeMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries();
+      if (node) void queryClient.invalidateQueries({ queryKey: byIdQueryKey({ path: { id: node.groupId } }) });
       onClose();
     },
     onError: (e) => {

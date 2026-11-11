@@ -21,7 +21,7 @@ import {
   TextArea,
   TextInput,
 } from '@carbon/react';
-import { byIdOptions, createConfiguredMutation, createNodeMutation } from '@client/@tanstack/react-query.gen.ts';
+import { byIdOptions, byIdQueryKey, createConfiguredMutation, createNodeMutation } from '@client/@tanstack/react-query.gen.ts';
 import { zCreateNodeBody } from '@client/zod.gen.ts';
 import { useForm, useSelector } from '@tanstack/react-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -131,7 +131,7 @@ export const CreateNodeModal = ({ open, onClose, groupId, initialSourceId }: Cre
   const availableNodes: ApiNode[] = [...(nodeGroup?.root ? [nodeGroup.root] : []), ...(nodeGroup?.sources ?? [])];
 
   const onSuccess = () => {
-    void queryClient.invalidateQueries();
+    void queryClient.invalidateQueries({ queryKey: byIdQueryKey({ path: { id: groupId } }) });
     notifications.success('Node created');
     handleClose();
   };
