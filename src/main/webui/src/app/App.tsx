@@ -2,7 +2,7 @@ import { AuthorizationProvider } from '@app/context/AuthorizationProvider.tsx';
 import { navigateSigninLocation, navigateSignoutLocation } from '@app/context/navigation.tsx';
 import { NotificationProvider } from '@app/context/NotificationProvider.tsx';
 import router from '@app/routes.ts';
-import { GlobalTheme } from '@carbon/react';
+import { ErrorBoundary, GlobalTheme, Modal } from '@carbon/react';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { formDevtoolsPlugin } from '@tanstack/react-form-devtools';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,6 +23,26 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const AuthFailureFallback = () => (
+  <Modal
+    danger
+    open
+    size="sm"
+    modalHeading="Something went wrong"
+    primaryButtonText="Retry"
+    preventCloseOnClickOutside
+    onRequestClose={() => {
+      // Nothing to fall back to — reload is the only way out of this state.
+      window.location.reload();
+    }}
+    onRequestSubmit={() => {
+      window.location.reload();
+    }}
+  >
+    <p>We couldn't reach the server. Please check your connection and retry.</p>
+  </Modal>
+);
 
 const oidcConfig: AuthProviderProps = {
   authority: '/q/oidc',
@@ -48,15 +68,12 @@ export const App: FunctionComponent = () => {
       <QueryClientProvider client={queryClient}>
         <NotificationProvider>
           <AuthProvider {...oidcConfig} onRemoveUser={navigateSignoutLocation} onSigninCallback={navigateSigninLocation}>
-            <AuthorizationProvider>
-              <RouterProvider router={router} />
-              <TanStackDevtools
-              plugins={[
-                formDevtoolsPlugin(),
-                { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> },
-              ]}
-            />
-            </AuthorizationProvider>
+            <ErrorBoundary fallback={<AuthFailureFallback />}>
+              <AuthorizationProvider>
+                <RouterProvider router={router} />
+                <TanStackDevtools plugins={[formDevtoolsPlugin(), { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> }]} />
+              </AuthorizationProvider>
+            </ErrorBoundary>
           </AuthProvider>
         </NotificationProvider>
       </QueryClientProvider>
