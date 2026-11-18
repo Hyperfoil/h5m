@@ -18,6 +18,7 @@ import {
   InlineNotification,
   MenuButton,
   MenuItem,
+  Pagination,
   SkeletonText,
   StructuredListBody,
   StructuredListCell,
@@ -45,6 +46,16 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
   const [nodeToDelete, setNodeToDelete] = useState<ApiNode | null>(null);
   const [nodeToEdit, setNodeToEdit] = useState<ApiNode | null>(null);
   const [recalculationId, setRecalculationId] = useState<number | null>(null);
+  const [nodesPage, setNodesPage] = useState(1);
+  const [nodesPageSize, setNodesPageSize] = useState(10);
+
+  useEffect(() => {
+    setNodesPage(1);
+  }, [groupId]);
+
+  const nodes = nodeGroup.sources ?? [];
+  const nodesStart = (nodesPage - 1) * nodesPageSize;
+  const pagedNodes = nodes.slice(nodesStart, nodesStart + nodesPageSize);
 
   const { data: recalcStatus } = useQuery({
     ...getRecalculationStatusOptions({ path: { id: recalculationId ?? 0 } }),
@@ -124,9 +135,10 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
         }}
         onRecalculation={setRecalculationId}
       />
-      {nodeGroup.sources?.length === 0 ? (
+      {nodes.length === 0 ? (
         <p style={{ margin: 'var(--cds-spacing-05)' }}>No nodes defined yet. Use the Create Node button above to get started.</p>
       ) : (
+        <>
         <StructuredListWrapper>
           <StructuredListHead>
             <StructuredListRow head>
@@ -138,7 +150,7 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
             </StructuredListRow>
           </StructuredListHead>
           <StructuredListBody>
-            {nodeGroup.sources?.map((node: ApiNode) => (
+            {pagedNodes.map((node: ApiNode) => (
               <StructuredListRow key={node.id}>
                 <StructuredListCell>{node.name}</StructuredListCell>
                 <StructuredListCell>
@@ -169,6 +181,18 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
             ))}
           </StructuredListBody>
         </StructuredListWrapper>
+        <Pagination
+          totalItems={nodes.length}
+          pageSize={nodesPageSize}
+          pageSizes={[10, 25, 50]}
+          page={nodesPage}
+          onChange={({ page: newPage, pageSize: newPageSize }) => {
+            setNodesPage(newPage);
+            setNodesPageSize(newPageSize);
+          }}
+          size="sm"
+        />
+        </>
       )}
     </>
   );
