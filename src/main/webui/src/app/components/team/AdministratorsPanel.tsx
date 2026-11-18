@@ -1,7 +1,8 @@
 import { useNotification } from '@app/context/useNotification.tsx';
+import { usePaginatedQuery } from '@app/context/usePaginatedQuery.tsx';
 import { useRoles } from '@app/context/useRoles.tsx';
 import { Add, Subtract } from '@carbon/icons-react';
-import { ContainedList, ContainedListItem, ExpandableSearch, IconButton, InlineNotification, Stack } from '@carbon/react';
+import { ContainedList, ContainedListItem, ExpandableSearch, IconButton, InlineNotification, Pagination, Stack } from '@carbon/react';
 import { addAdministratorMutation, listAdministratorsOptions, listUsersOptions, removeAdministratorMutation } from '@client/@tanstack/react-query.gen.ts';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -12,8 +13,10 @@ export const AdministratorsPanel = () => {
   const notifications = useNotification();
   const [filter, setFilter] = useState('');
 
+  // Full list: needed to exclude existing administrators from the "add" candidates.
   const { data: administrators } = useSuspenseQuery(listAdministratorsOptions());
   const { data: allUsers } = useSuspenseQuery(listUsersOptions());
+  const { pageRows: pagedAdministrators, totalItems, page, pageSize, onChange } = usePaginatedQuery(listAdministratorsOptions(), (users) => users);
 
   const administratorsQueryKey = listAdministratorsOptions().queryKey;
   const usersQueryKey = listUsersOptions().queryKey;
@@ -45,7 +48,7 @@ export const AdministratorsPanel = () => {
   return (
     <Stack gap={2}>
       <ContainedList label="Administrators" kind="on-page">
-        {administrators.map((user) => (
+        {pagedAdministrators.map((user) => (
           <ContainedListItem
             key={user.id}
             action={
@@ -66,8 +69,9 @@ export const AdministratorsPanel = () => {
             {user.username ?? ''}
           </ContainedListItem>
         ))}
-        {administrators.length === 0 && <InlineNotification kind="info" title="There are no administrators" lowContrast hideCloseButton />}
+        {totalItems === 0 && <InlineNotification kind="info" title="There are no administrators" lowContrast hideCloseButton />}
       </ContainedList>
+      {totalItems > 0 && <Pagination totalItems={totalItems} pageSize={pageSize} pageSizes={[10, 25, 50]} page={page} onChange={onChange} size="sm" />}
       {isAdmin && (
         <ContainedList
           label="Add Administrators"

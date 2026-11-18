@@ -8,6 +8,7 @@ import { EditNodeModal } from '@app/components/EditNodeModal';
 import { NodeGraphVisualizer } from '@app/components/NodeGraphVisualizer';
 import { NotificationChannelPanel } from '@app/components/notification/NotificationChannelPanel';
 import { UploadTab } from '@app/components/Upload/UploadTab';
+import { usePaginatedQuery } from '@app/context/usePaginatedQuery.tsx';
 import { useFolderPermission } from '@app/context/usePermission.tsx';
 import {
   Button,
@@ -18,6 +19,7 @@ import {
   InlineNotification,
   MenuButton,
   MenuItem,
+  Pagination,
   SkeletonText,
   StructuredListBody,
   StructuredListCell,
@@ -39,12 +41,20 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import '@app/pages/DashboardPage.css';
 
 const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) => {
-  const { data: nodeGroup } = useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
+  // Suspends until the node group is loaded; usePaginatedQuery below reads the same cache entry.
+  useSuspenseQuery(byIdOptions({ path: { id: groupId } }));
   const canModify = useFolderPermission(folderId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [nodeToDelete, setNodeToDelete] = useState<ApiNode | null>(null);
   const [nodeToEdit, setNodeToEdit] = useState<ApiNode | null>(null);
   const [recalculationId, setRecalculationId] = useState<number | null>(null);
+  const {
+    pageRows: pagedNodes,
+    totalItems,
+    page,
+    pageSize,
+    onChange,
+  } = usePaginatedQuery(byIdOptions({ path: { id: groupId } }), (group) => group.sources ?? []);
 
   const { data: recalcStatus } = useQuery({
     ...getRecalculationStatusOptions({ path: { id: recalculationId ?? 0 } }),
@@ -124,9 +134,10 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
         }}
         onRecalculation={setRecalculationId}
       />
-      {nodeGroup.sources?.length === 0 ? (
+      {totalItems === 0 ? (
         <p style={{ margin: 'var(--cds-spacing-05)' }}>No nodes defined yet. Use the Create Node button above to get started.</p>
       ) : (
+        <>
         <StructuredListWrapper>
           <StructuredListHead>
             <StructuredListRow head>
@@ -138,7 +149,7 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
             </StructuredListRow>
           </StructuredListHead>
           <StructuredListBody>
-            {nodeGroup.sources?.map((node: ApiNode) => (
+            {pagedNodes.map((node: ApiNode) => (
               <StructuredListRow key={node.id}>
                 <StructuredListCell>{node.name}</StructuredListCell>
                 <StructuredListCell>
@@ -169,6 +180,8 @@ const NodesTab = ({ folderId, groupId }: { folderId: number; groupId: number }) 
             ))}
           </StructuredListBody>
         </StructuredListWrapper>
+        <Pagination totalItems={totalItems} pageSize={pageSize} pageSizes={[10, 25, 50]} page={page} onChange={onChange} size="sm" />
+        </>
       )}
     </>
   );
@@ -179,7 +192,7 @@ const GraphVisualizer = ({ groupId }: { groupId: number }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   return (
     <>
-      <CreateNodeModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} groupId={groupId} />
+      <CreateNodeModal open={isCreateOpen} onClose={() => { setIsCreateOpen(false); }} groupId={groupId} />
       <NodeGraphVisualizer nodeGroup={nodeGroup} groupId={groupId} />
     </>
   );
@@ -231,7 +244,7 @@ const FolderContent = ({ folderId }: { folderId: number }) => {
           {folder.id != null && folder.groupId != null ? (
             <ErrorBoundary fallback={<InlineLoading status="error" description="Failed to load nodes" />}>
               <Suspense fallback={<SkeletonText paragraph={true} lineCount={5} />}>
-                <NodesTab folderId={folder.id} groupId={folder.groupId} />
+                <NodesTab key={folder.groupId} folderId={folder.id} groupId={folder.groupId} />
               </Suspense>
             </ErrorBoundary>
           ) : (

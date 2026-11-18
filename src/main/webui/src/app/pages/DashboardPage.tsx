@@ -1,5 +1,11 @@
 import type { FolderSummary } from '@client/types.gen.ts';
 
+import { CreateFolderModal } from '@app/components/CreateFolderModal';
+import { AuthorizationContext } from '@app/context/AuthorizationContext.tsx';
+import { useNotification } from '@app/context/useNotification.tsx';
+import { usePaginatedQuery } from '@app/context/usePaginatedQuery.tsx';
+import { canModifyTeam } from '@app/context/usePermission.tsx';
+import { FolderAdd, TrashCan } from '@carbon/icons-react';
 import {
   Button,
   Column,
@@ -7,6 +13,7 @@ import {
   Grid,
   InlineLoading,
   Modal,
+  Pagination,
   SkeletonText,
   StructuredListBody,
   StructuredListCell,
@@ -16,15 +23,10 @@ import {
   Tag,
   Tile,
 } from '@carbon/react';
-import { FolderAdd, TrashCan } from '@carbon/icons-react';
 import { getDashboardSummariesOptions, getDashboardSummariesQueryKey, deleteFolderMutation, listFoldersQueryKey } from '@client/@tanstack/react-query.gen.ts';
-import { CreateFolderModal } from '@app/components/CreateFolderModal';
-import { AuthorizationContext } from '@app/context/AuthorizationContext.tsx';
-import { canModifyTeam } from '@app/context/usePermission.tsx';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useContext, useState,Suspense } from 'react';
 import {useNavigate } from 'react-router-dom';
-import { useNotification } from '@app/context/useNotification.tsx';
 import '@app/pages/DashboardPage.css';
 
 function formatDate(date?: string | null): string {
@@ -90,12 +92,13 @@ const SummaryCards = ({ summaries }: { summaries: FolderSummary[] }) => {
   );
 };
 
-const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
+const FolderTable = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmFolder, setConfirmFolder] = useState<FolderSummary | null>(null);
   const notifications = useNotification();
   const { isAdmin, teams } = useContext(AuthorizationContext);
+  const { pageRows: pagedSummaries, totalItems, page, pageSize, onChange } = usePaginatedQuery(getDashboardSummariesOptions(), (summaries) => summaries);
 
   const deleteFolder = useMutation({
     ...deleteFolderMutation(),
@@ -127,7 +130,7 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
         </StructuredListRow>
       </StructuredListHead>
       <StructuredListBody>
-        {summaries.map((summary) => {
+        {pagedSummaries.map((summary) => {
           const status = folderStatus(summary);
           const canModify = canModifyTeam(summary.teamId, isAdmin, teams);
           return (
@@ -174,6 +177,7 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
         })}
       </StructuredListBody>
     </StructuredListWrapper>
+    <Pagination totalItems={totalItems} pageSize={pageSize} pageSizes={[10, 25, 50]} page={page} onChange={onChange} size="sm" />
 
     <Modal
       open={confirmFolder !== null}
@@ -202,7 +206,7 @@ const DashboardContent = () => {
         kind="primary"
         size="md"
         renderIcon={FolderAdd}
-        onClick={() => setIsOpen(true)}
+        onClick={() => { setIsOpen(true); }}
         className="create-folder-btn"
         style={{ margin: 'var(--cds-spacing-05)' }}>
         Create Folder
@@ -214,10 +218,10 @@ const DashboardContent = () => {
       ) : (
         <>
           <SummaryCards summaries={summaries} />
-          <FolderTable summaries={summaries} />
+          <FolderTable />
         </>
       )}
-      <CreateFolderModal open={isOpen} onClose={()=>setIsOpen(false)} />
+      <CreateFolderModal open={isOpen} onClose={()=>{ setIsOpen(false); }} />
     </>
   );
 };
