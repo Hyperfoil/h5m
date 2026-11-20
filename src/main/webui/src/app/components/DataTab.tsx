@@ -7,6 +7,7 @@ import {
   Dropdown,
   ErrorBoundary,
   InlineLoading,
+  Pagination,
   SkeletonText,
   Stack,
   Table,
@@ -44,6 +45,8 @@ const ViewDataTable = ({
       path: { folderId, viewId: viewId! },
     }),
   );
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   if (isLoading) return <SkeletonText paragraph={true} lineCount={5} />;
   if (isError) return <InlineLoading status="error" description="Failed to load view data" />;
@@ -56,36 +59,52 @@ const ViewDataTable = ({
       header: c.headerName ?? c.nodeName ?? '',
     }));
 
-  const tableRows = rows.map((row: Record<string, unknown>, idx: number) => ({
-    id: String(idx),
+  const start = (page - 1) * pageSize;
+  const pagedRows = rows.slice(start, start + pageSize);
+
+  const tableRows = pagedRows.map((row: Record<string, unknown>, idx: number) => ({
+    id: String(start + idx),
     ...Object.fromEntries(columns.map((col) => [col.key, formatCellValue(row[col.key])])),
   }));
 
   return (
-    <DataTable rows={tableRows} headers={columns}>
-      {({ rows: dataRows, headers, getTableProps, getHeaderProps, getRowProps }) => (
-        <Table {...getTableProps()}>
-          <TableHead>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHeader {...getHeaderProps({ header })}>
-                  {header.header}
-                </TableHeader>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {dataRows.map((row) => (
-              <TableRow {...getRowProps({ row })}>
-                {row.cells.map((cell) => (
-                  <TableCell key={cell.id}>{cell.value}</TableCell>
+    <Stack gap={3}>
+      <DataTable rows={tableRows} headers={columns}>
+        {({ rows: dataRows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+          <Table {...getTableProps()}>
+            <TableHead>
+              <TableRow>
+                {headers.map((header) => (
+                  <TableHeader {...getHeaderProps({ header })}>
+                    {header.header}
+                  </TableHeader>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </DataTable>
+            </TableHead>
+            <TableBody>
+              {dataRows.map((row) => (
+                <TableRow {...getRowProps({ row })}>
+                  {row.cells.map((cell) => (
+                    <TableCell key={cell.id}>{cell.value}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DataTable>
+      <Pagination
+        totalItems={rows.length}
+        pageSize={pageSize}
+        pageSizes={[10, 25, 50]}
+        page={page}
+        onChange={({ page: newPage, pageSize: newPageSize }) => {
+          setPage(newPage);
+          setPageSize(newPageSize);
+        }}
+        size="sm"
+      />
+    </Stack>
   );
 };
 

@@ -7,6 +7,7 @@ import {
   Grid,
   InlineLoading,
   Modal,
+  Pagination,
   SkeletonText,
   StructuredListBody,
   StructuredListCell,
@@ -96,6 +97,10 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
   const [confirmFolder, setConfirmFolder] = useState<FolderSummary | null>(null);
   const notifications = useNotification();
   const { isAdmin, teams } = useContext(AuthorizationContext);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const start = (page - 1) * pageSize;
+  const pagedSummaries = summaries.slice(start, start + pageSize);
 
   const deleteFolder = useMutation({
     ...deleteFolderMutation(),
@@ -127,7 +132,7 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
         </StructuredListRow>
       </StructuredListHead>
       <StructuredListBody>
-        {summaries.map((summary) => {
+        {pagedSummaries.map((summary) => {
           const status = folderStatus(summary);
           const canModify = canModifyTeam(summary.teamId, isAdmin, teams);
           return (
@@ -174,6 +179,17 @@ const FolderTable = ({ summaries }: { summaries: FolderSummary[] }) => {
         })}
       </StructuredListBody>
     </StructuredListWrapper>
+    <Pagination
+      totalItems={summaries.length}
+      pageSize={pageSize}
+      pageSizes={[10, 25, 50]}
+      page={page}
+      onChange={({ page: newPage, pageSize: newPageSize }) => {
+        setPage(newPage);
+        setPageSize(newPageSize);
+      }}
+      size="sm"
+    />
 
     <Modal
       open={confirmFolder !== null}
