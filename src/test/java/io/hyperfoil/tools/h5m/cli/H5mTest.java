@@ -6,6 +6,8 @@ import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import io.quarkus.test.aesh.AeshLauncher;
 import io.quarkus.test.aesh.AeshLauncherImpl;
+import io.quarkus.test.aesh.ExecuteOptions;
+import org.aesh.command.CommandResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -30,42 +32,33 @@ public class H5mTest {
 
     private static final Duration CMD_TIMEOUT = Duration.ofSeconds(30);
 
-    /**
-     * Convert a String[] of args into a single command string for the REPL.
-     * Arguments containing spaces, newlines, or special characters are quoted.
-     * Uses single quotes for arguments with double quotes (aesh doesn't handle
-     * backslash-escaped quotes inside double-quoted strings).
-     */
-    private static String toCommand(String[] args) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < args.length; i++) {
-            if (i > 0) sb.append(' ');
-            String arg = args[i];
-            boolean needsQuoting = arg.contains(" ") || arg.contains("\n") || arg.contains("\"") || arg.contains("{") || arg.contains("}") || arg.contains("|");
-            if (!needsQuoting) {
-                sb.append(arg);
-            } else if (arg.contains("\"") && !arg.contains("'")) {
-                // Use single quotes to preserve double quotes literally
-                sb.append("'").append(arg).append("'");
-            } else {
-                // Default: double-quote and escape internal double quotes
-                sb.append('"').append(arg.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")).append('"');
-            }
-        }
-        return sb.toString();
+    public static List<String> run(AeshLauncher launcher, String... commands) {
+        CommandResult[] expected = new CommandResult[commands.length];
+        java.util.Arrays.fill(expected, CommandResult.SUCCESS);
+        return run(launcher, expected, commands);
     }
 
-    public static List<String> run(AeshLauncher launcher, String[]... args) {
+    /**
+     * Run commands asserting a specific exit result per command. Needed since
+     * aesh 3.17.5 for commands that are supposed to fail (validation errors,
+     * duplicate names, missing context exit non-zero).
+     */
+    public static List<String> run(AeshLauncher launcher, CommandResult[] expected, String... commands) {
+        if (expected.length != commands.length) {
+            throw new IllegalArgumentException(
+                    "expected results count (" + expected.length + ") must match commands count (" + commands.length + ")");
+        }
         List<String> outputs = new ArrayList<>();
-        for (String[] arg : args) {
+        for (int i = 0; i < commands.length; i++) {
             // Minimal pause to let the aesh readline cycle complete between commands.
             // The EventDecoder in aesh 3.16.8 buffers input when stdinHandler is null
             // (preventing data loss), but the command still needs the readline cycle
             // to start before it can be processed.
             try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-            String command = toCommand(arg);
+            String command = commands[i];
             long start = System.currentTimeMillis();
-            String output = launcher.executeCommand(command, CMD_TIMEOUT);
+            String output = launcher.execute(command,
+                    ExecuteOptions.expecting(expected[i]).timeout(CMD_TIMEOUT));
             long elapsed = System.currentTimeMillis() - start;
             System.out.printf("run (%dms): %s%n", elapsed, command);
             outputs.add(output);
@@ -143,8 +136,8 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"folder","list"}
+                "folder add " + testName,
+                "folder list"
         );
         String output = results.getLast();
         assertTrue(output.contains(testName),output);
@@ -154,8 +147,9 @@ public class H5mTest {
     public void add_folder_reserved_name_rejected() {
         String reserved = "h5m.reserved";
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",reserved},
-                new String[]{"folder","list"}
+                new CommandResult[]{CommandResult.FAILURE, CommandResult.SUCCESS},
+                "folder add " + reserved,
+                "folder list"
         );
         String addOutput = results.getFirst();
         assertTrue(addOutput.contains("reserved for internal use"), "reserved folder name should be rejected with a message:\n"+addOutput);
@@ -166,8 +160,8 @@ public class H5mTest {
     @Test
     public void list_folder() {
         List<String> results = run(aeshLauncher,
-            new String[]{"folder","add","foo"},
-            new String[]{"folder","add","bar"}
+            "folder add foo",
+            "folder add bar"
         );
         for(List<String> command : List.of(List.of("folder","list"),List.of("folder","list"))){
             String output = aeshLauncher.executeCommand(String.join(" ", command), CMD_TIMEOUT);
@@ -182,9 +176,9 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"folder","remove",testName},
-                new String[]{"folder","list"}
+                "folder add " + testName,
+                "folder remove " + testName,
+                "folder list"
         );
         String output = results.getLast();
         assertFalse(output.contains(testName),"expect to not find foo folder: "+output);
@@ -196,15 +190,15 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".buz"},
-                new String[]{"node","add","jq","bar",".bar"},
-                new String[]{"node","add","jq","biz",".biz"},
-                new String[]{"node","add","js","dataset","function* dataset({foo, bar, biz}){\nyield foo;\nyield bar;\nyield biz;\n}"},
-                new String[]{"node","list"},
-                new String[]{"node","list"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .buz",
+                "node add jq bar .bar",
+                "node add jq biz .biz",
+                "node add js dataset \"function* dataset({foo, bar, biz}){\\nyield foo;\\nyield bar;\\nyield biz;\\n}\"",
+                "node list",
+                "node list",
+                "cd .."
         );
         // All commands should succeed without throwing
     }
@@ -216,11 +210,11 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"buz",".buz"},
-                new String[]{"node","add","jq","--to",testName,"bizzing","{buz}:.biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"node","list","--from",testName}
+                "folder add " + testName,
+                "node add jq --to " + testName + " buz .buz",
+                "node add jq --to " + testName + " bizzing \"{buz}:.biz\"",
+                "node list --from " + testName,
+                "node list --from " + testName
         );
         String output = results.getLast();
         assertTrue(output.contains("biz"),"expect to find biz: "+output);
@@ -232,16 +226,16 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","domainNode",".x"},
-                new String[]{"node","add","jq","rangeNode",".y"},
-                new String[]{"node","add","jq","fp1",".fp1"},
-                new String[]{"node","add","jq","fp2",".fp2"},
-                new String[]{"node","list"},
-                new String[]{"node","add","relativedifference","rd1","--range","rangeNode","--domain","domainNode","--fingerprint","fp1,fp2"},
-                new String[]{"node","list"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq domainNode .x",
+                "node add jq rangeNode .y",
+                "node add jq fp1 .fp1",
+                "node add jq fp2 .fp2",
+                "node list",
+                "node add relativedifference rd1 --range rangeNode --domain domainNode --fingerprint fp1,fp2",
+                "node list",
+                "cd .."
         );
         String output = results.get(results.size() - 2);
         assertTrue(output.contains("rd1"),"expect to find rd1: "+output);
@@ -278,19 +272,19 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","domainNode",".x"},
-                new String[]{"node","add","jq","rangeNode",".y"},
-                new String[]{"node","add","jq","fp1",".fp1"},
-                new String[]{"node","list"},
-                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--fingerprint","fp1","--window","1","--minPrevious","1"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",filePath01.toString()},
-                new String[]{"run", "upload",filePath02.toString()},
-                new String[]{"run", "upload",filePath03.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq domainNode .x",
+                "node add jq rangeNode .y",
+                "node add jq fp1 .fp1",
+                "node list",
+                "node add relativedifference relativediff --range rangeNode --domain domainNode --fingerprint fp1 --window 1 --minPrevious 1",
+                "node list",
+                "run upload " + filePath01.toString(),
+                "run upload " + filePath02.toString(),
+                "run upload " + filePath03.toString(),
+                "folder values",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -335,21 +329,21 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","split",".each[]"},
-                new String[]{"node","add","jq","domainNode","{split}:.x"},
-                new String[]{"node","add","jq","rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","fp1","{split}:.fp1"},
-                new String[]{"node","add","jq","fp2","{split}:.fp2"},
-                new String[]{"node","list"},
-                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp1,fp2","--window","1","--minPrevious","1"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",filePath01.toString()},
-                new String[]{"run", "upload",filePath02.toString()},
-                new String[]{"run", "upload",filePath03.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq split .each[]",
+                "node add jq domainNode \"{split}:.x\"",
+                "node add jq rangeNode \"{split}:.y\"",
+                "node add jq fp1 \"{split}:.fp1\"",
+                "node add jq fp2 \"{split}:.fp2\"",
+                "node list",
+                "node add relativedifference relativediff --range rangeNode --domain domainNode --by split --fingerprint fp1,fp2 --window 1 --minPrevious 1",
+                "node list",
+                "run upload " + filePath01.toString(),
+                "run upload " + filePath02.toString(),
+                "run upload " + filePath03.toString(),
+                "folder values",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -363,13 +357,13 @@ public class H5mTest {
                 .get()
                 .getMethodName();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","biz",".biz"},
-                new String[]{"node","list"},
-                new String[]{"node","remove","biz"},
-                new String[]{"node","list"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq biz .biz",
+                "node list",
+                "node remove biz",
+                "node list",
+                "cd .."
         );
         String output = results.get(results.size() - 2);
         assertFalse(output.contains("biz"),"expect to NOT find biz: "+output);
@@ -396,14 +390,14 @@ public class H5mTest {
         //filePath.toFile().deleteOnExit();
         // Uses explicit --to/--from (no cd) to verify that path works
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"node","add","jq","--to",testName,"foo",".foo"},
-                new String[]{"node","add","jq","--to",testName,"bar","{foo}:.bar"},
-                new String[]{"node","add","jq","--to",testName,"biz","{bar}:.biz"},
-                new String[]{"node","list","--from",testName},
-                new String[]{"run", "upload",folder.toString(),"--to",testName},
-                new String[]{"folder","values","--from",testName},
-                new String[]{"cd",testName}
+                "folder add " + testName,
+                "node add jq --to " + testName + " foo .foo",
+                "node add jq --to " + testName + " bar \"{foo}:.bar\"",
+                "node add jq --to " + testName + " biz \"{bar}:.biz\"",
+                "node list --from " + testName,
+                "run upload " + folder.toString() + " --to " + testName,
+                "folder values --from " + testName,
+                "cd " + testName
         );
 
         String output = results.get( results.size()-2);
@@ -443,15 +437,15 @@ public class H5mTest {
         );
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo"},
-                new String[]{"node","add","jq","bar","{foo}:.bar"},
-                new String[]{"node","add","jq","biz","{bar}:.biz"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo",
+                "node add jq bar \"{foo}:.bar\"",
+                "node add jq biz \"{bar}:.biz\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
 
         String output = results.get(results.size() - 2);
@@ -481,15 +475,15 @@ public class H5mTest {
         );
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jsonata","foo","foo"},
-                new String[]{"node","add","jsonata","bar","{foo}:bar"},
-                new String[]{"node","add","jsonata","biz","{bar}:biz"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jsonata foo foo",
+                "node add jsonata bar \"{foo}:bar\"",
+                "node add jsonata biz \"{bar}:biz\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
 
         String output = results.get(results.size() - 2);
@@ -517,15 +511,15 @@ public class H5mTest {
         );
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo"},
-                new String[]{"node","add","jq","bar","{foo}:.bar"},
-                new String[]{"node","add","jq","biz","{bar}:.biz"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo",
+                "node add jq bar \"{foo}:.bar\"",
+                "node add jq biz \"{bar}:.biz\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
 
         String output = results.get(results.size() - 2);
@@ -561,16 +555,16 @@ public class H5mTest {
         );
         //filePath.toFile().deleteOnExit();
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo[]"},//this should act like a dataset
-                new String[]{"node","add","jq","name","{foo}:.name"},
-                new String[]{"node","add","jq","bar","{foo}:.bar"},
-                new String[]{"node","add","jq","biz","{bar}:.biz[] + \"-it\""},//this should also split into a dataset
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values","--by","foo"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo[]",//this should act like a dataset
+                "node add jq name \"{foo}:.name\"",
+                "node add jq bar \"{foo}:.bar\"",
+                "node add jq biz '{bar}:.biz[] + \"-it\"'",//this should also split into a dataset
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values --by foo",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -594,16 +588,16 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo[]"},
-                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","fp","{mem,cpu}:."},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo[]",
+                "node add jq cpu \"{foo}:.cpu\"",
+                "node add jq mem \"{foo}:.mem\"",
+                "node add fingerprint fp \"{mem,cpu}:.\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
 
         );
         String output = results.get(results.size() - 2);
@@ -627,16 +621,16 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo[]"},
-                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","fp","{mem,cpu}:."},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo[]",
+                "node add jq cpu \"{foo}:.cpu\"",
+                "node add jq mem \"{foo}:.mem\"",
+                "node add fingerprint fp \"{mem,cpu}:.\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
         String output = results.get(results.size() - 2);
         assertTrue(output.contains("Count: 8"),"expect to find 8 values\n"+output);
@@ -660,18 +654,18 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo[]"},
-                new String[]{"node","add","jq","cpu","{foo}:.cpu"},
-                new String[]{"node","add","jq","mem","{foo}:.mem"},
-                new String[]{"node","add","fingerprint","fp","{mem,cpu}:."},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values"},
-                new String[]{"folder","recalculate"},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo[]",
+                "node add jq cpu \"{foo}:.cpu\"",
+                "node add jq mem \"{foo}:.mem\"",
+                "node add fingerprint fp \"{mem,cpu}:.\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "folder recalculate",
+                "folder values",
+                "cd .."
 
         );
         String output = results.get(results.size() - 2);
@@ -709,16 +703,16 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "rangeNode", ".y"},
-                new String[]{"node", "add", "jq", "fp1", ".fp1"},
-                new String[]{"node", "list"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
-                new String[]{"node", "list"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq rangeNode .y",
+                "node add jq fp1 .fp1",
+                "node list",
+                "node add fixedthreshold ftNode --range rangeNode --fingerprint fp1 --min 10 --max 100",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
 
         // Upload output should contain the processing ID(s) and detection summary
@@ -754,17 +748,17 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","str",".string"},
-                new String[]{"node","add","jq","version",".version"},
-                new String[]{"node","add","jq","double",".double"},
-                new String[]{"node","add","jq","integer",".integer"},
-                new String[]{"node","add","jq","array",".array"},
-                new String[]{"node","add","jq","obj",".object"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values","--as","table"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq str .string",
+                "node add jq version .version",
+                "node add jq double .double",
+                "node add jq integer .integer",
+                "node add jq array .array",
+                "node add jq obj .object",
+                "run upload " + folder.toString(),
+                "folder values --as table",
+                "cd .."
 
         );
 
@@ -796,19 +790,19 @@ public class H5mTest {
                 """
         );
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","foo",".foo[]"},
-                new String[]{"node","add","jq","str","{foo}:.string"},
-                new String[]{"node","add","jq","version","{foo}:.version"},
-                new String[]{"node","add","jq","double","{foo}:.double"},
-                new String[]{"node","add","jq","integer","{foo}:.integer"},
-                new String[]{"node","add","jq","array","{foo}:.array"},
-                new String[]{"node","add","jq","obj","{foo}:.object"},
-                new String[]{"node","list"},
-                new String[]{"run", "upload",folder.toString()},
-                new String[]{"folder","values","--by","foo","--as","table"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo[]",
+                "node add jq str \"{foo}:.string\"",
+                "node add jq version \"{foo}:.version\"",
+                "node add jq double \"{foo}:.double\"",
+                "node add jq integer \"{foo}:.integer\"",
+                "node add jq array \"{foo}:.array\"",
+                "node add jq obj \"{foo}:.object\"",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values --by foo --as table",
+                "cd .."
 
         );
 
@@ -859,17 +853,16 @@ public class H5mTest {
         Path folder = createFixedThresholdSplitData();
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "itemSplit", ".items[]"},
-                new String[]{"node", "add", "jq", "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "add", "jq", "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "add", "jq", "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode",
-                        "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq itemSplit .items[]",
+                "node add jq itemName \"{itemSplit}:.x\"",
+                "node add jq rangeNode \"{itemSplit}:.y\"",
+                "node add jq categoryFp \"{itemSplit}:.fp1\"",
+                "node add fixedthreshold ftNode --range rangeNode --by itemSplit --fingerprint categoryFp --min 10 --max 100",
+                "run upload " + folder.toString(),
+                "folder values",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -894,17 +887,16 @@ public class H5mTest {
         Path folder = createFixedThresholdSplitData();
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "itemSplit", ".items[]"},
-                new String[]{"node", "add", "jq", "itemName", "{itemSplit}:.x"},
-                new String[]{"node", "add", "jq", "rangeNode", "{itemSplit}:.y"},
-                new String[]{"node", "add", "jq", "categoryFp", "{itemSplit}:.fp1"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode",
-                        "--range", "rangeNode", "--by", "itemSplit", "--fingerprint", "categoryFp", "--min", "10", "--max", "100"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values", "--by", "itemSplit"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq itemSplit .items[]",
+                "node add jq itemName \"{itemSplit}:.x\"",
+                "node add jq rangeNode \"{itemSplit}:.y\"",
+                "node add jq categoryFp \"{itemSplit}:.fp1\"",
+                "node add fixedthreshold ftNode --range rangeNode --by itemSplit --fingerprint categoryFp --min 10 --max 100",
+                "run upload " + folder.toString(),
+                "folder values --by itemSplit",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -934,27 +926,23 @@ public class H5mTest {
         // 84315: 88777 (above)
         // Threshold: min=10000, max=35000
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "add", "jq", "version", ".config.QUARKUS_VERSION"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode",
-                        "--range", "throughput",
-                        "--fingerprint", "version",
-                        "--min", "10000",
-                        "--max", "35000"},
-                new String[]{"node", "list"},
-                new String[]{"run", "upload", qvssPath("27405.json")},
-                new String[]{"run", "upload", qvssPath("27406.json")},
-                new String[]{"run", "upload", qvssPath("27271.json")},
-                new String[]{"run", "upload", qvssPath("27272.json")},
-                new String[]{"run", "upload", qvssPath("26594.json")},
-                new String[]{"run", "upload", qvssPath("26598.json")},
-                new String[]{"run", "upload", qvssPath("27279.json")},
-                new String[]{"run", "upload", qvssPath("27897.json")},
-                new String[]{"run", "upload", qvssPath("84315.json")},
-                new String[]{"folder", "values"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq throughput '.results.\"quarkus3-jvm\".load.avThroughput'",
+                "node add jq version .config.QUARKUS_VERSION",
+                "node add fixedthreshold ftNode --range throughput --fingerprint version --min 10000 --max 35000",
+                "node list",
+                "run upload " + qvssPath("27405.json"),
+                "run upload " + qvssPath("27406.json"),
+                "run upload " + qvssPath("27271.json"),
+                "run upload " + qvssPath("27272.json"),
+                "run upload " + qvssPath("26594.json"),
+                "run upload " + qvssPath("26598.json"),
+                "run upload " + qvssPath("27279.json"),
+                "run upload " + qvssPath("27897.json"),
+                "run upload " + qvssPath("84315.json"),
+                "folder values",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -981,30 +969,24 @@ public class H5mTest {
         // 27406: 3.7.4 tp=2206   (2024-02-22) — still low
         // Fingerprint: major.minor version extracted via split/join → "3.7"
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "throughput", ".results.\"quarkus3-jvm\".load.avThroughput"},
-                new String[]{"node", "add", "jq", "majorMinor", ".config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")"},
-                new String[]{"node", "add", "jq", "startTime", ".timing.start"},
-                new String[]{"node", "add", "relativedifference", "rdNode",
-                        "--range", "throughput",
-                        "--domain", "startTime",
-                        "--fingerprint", "majorMinor",
-                        "--window", "1",
-                        "--minPrevious", "3",
-                        "--threshold", "0.2"},
-                new String[]{"node", "list"},
-                new String[]{"run", "upload", qvssPath("26594.json")},
-                new String[]{"run", "upload", qvssPath("26598.json")},
-                new String[]{"run", "upload", qvssPath("26599.json")},
-                new String[]{"run", "upload", qvssPath("26776.json")},
-                new String[]{"run", "upload", qvssPath("27271.json")},
-                new String[]{"run", "upload", qvssPath("27272.json")},
-                new String[]{"run", "upload", qvssPath("27279.json")},
-                new String[]{"run", "upload", qvssPath("27405.json")},
-                new String[]{"run", "upload", qvssPath("27406.json")},
-                new String[]{"folder", "values"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq throughput '.results.\"quarkus3-jvm\".load.avThroughput'",
+                "node add jq majorMinor '.config.QUARKUS_VERSION | split(\".\") | .[0:2] | join(\".\")'",
+                "node add jq startTime .timing.start",
+                "node add relativedifference rdNode --range throughput --domain startTime --fingerprint majorMinor --window 1 --minPrevious 3 --threshold 0.2",
+                "node list",
+                "run upload " + qvssPath("26594.json"),
+                "run upload " + qvssPath("26598.json"),
+                "run upload " + qvssPath("26599.json"),
+                "run upload " + qvssPath("26776.json"),
+                "run upload " + qvssPath("27271.json"),
+                "run upload " + qvssPath("27272.json"),
+                "run upload " + qvssPath("27279.json"),
+                "run upload " + qvssPath("27405.json"),
+                "run upload " + qvssPath("27406.json"),
+                "folder values",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -1029,25 +1011,21 @@ public class H5mTest {
         // Split on .results | to_entries[], fingerprint on framework key
         // Threshold min=15000: all spring-jvm values violate, no quarkus-jvm values violate
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "framework", ".results | to_entries[]"},
-                new String[]{"node", "add", "jq", "throughput", "{framework}:.value.load.avThroughput"},
-                new String[]{"node", "add", "jq", "fwName", "{framework}:.key"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode",
-                        "--range", "throughput",
-                        "--by", "framework",
-                        "--fingerprint", "fwName",
-                        "--min", "15000"},
-                new String[]{"node", "list"},
-                new String[]{"run", "upload", qvssPath("7691.json")},
-                new String[]{"run", "upload", qvssPath("7750.json")},
-                new String[]{"run", "upload", qvssPath("6313.json")},
-                new String[]{"run", "upload", qvssPath("6314.json")},
-                new String[]{"run", "upload", qvssPath("16328.json")},
-                new String[]{"run", "upload", qvssPath("17333.json")},
-                new String[]{"folder", "values", "--limit", "200"},
-                new String[]{"cd", ".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq framework \".results | to_entries[]\"",
+                "node add jq throughput \"{framework}:.value.load.avThroughput\"",
+                "node add jq fwName \"{framework}:.key\"",
+                "node add fixedthreshold ftNode --range throughput --by framework --fingerprint fwName --min 15000",
+                "node list",
+                "run upload " + qvssPath("7691.json"),
+                "run upload " + qvssPath("7750.json"),
+                "run upload " + qvssPath("6313.json"),
+                "run upload " + qvssPath("6314.json"),
+                "run upload " + qvssPath("16328.json"),
+                "run upload " + qvssPath("17333.json"),
+                "folder values --limit 200",
+                "cd .."
         );
 
         String last = results.get(results.size() - 2);
@@ -1104,20 +1082,20 @@ public class H5mTest {
         );
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","split",".Item[]"},
-                new String[]{"node","add","jq","domainNode","{split}:.x"},
-                new String[]{"node","add","jq","rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","fp","{split}:.fp"},
-                new String[]{"node","list"},
-                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
-                new String[]{"run", "upload",filePath01.toString()},
-                new String[]{"run", "upload",filePath02.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath03.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq split .Item[]",
+                "node add jq domainNode \"{split}:.x\"",
+                "node add jq rangeNode \"{split}:.y\"",
+                "node add jq fp \"{split}:.fp\"",
+                "node list",
+                "node add relativedifference relativediff --range rangeNode --domain domainNode --by split --fingerprint fp --window 1 --minPrevious 1",
+                "run upload " + filePath01.toString(),
+                "run upload " + filePath02.toString(),
+                "folder values",
+                "run upload " + filePath03.toString(),
+                "folder values",
+                "cd .."
         );
 
         String afterUpload2 = results.get(results.size() - 4);
@@ -1198,22 +1176,22 @@ public class H5mTest {
         );
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","split",".Item[]"},
-                new String[]{"node","add","jq","domainNode","{split}:.x"},
-                new String[]{"node","add","jq","rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","fp","{split}:.fp"},
-                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","2"},
-                new String[]{"run", "upload",filePath01.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath02.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath03.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath04.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq split .Item[]",
+                "node add jq domainNode \"{split}:.x\"",
+                "node add jq rangeNode \"{split}:.y\"",
+                "node add jq fp \"{split}:.fp\"",
+                "node add relativedifference relativediff --range rangeNode --domain domainNode --by split --fingerprint fp --window 1 --minPrevious 2",
+                "run upload " + filePath01.toString(),
+                "folder values",
+                "run upload " + filePath02.toString(),
+                "folder values",
+                "run upload " + filePath03.toString(),
+                "folder values",
+                "run upload " + filePath04.toString(),
+                "folder values",
+                "cd .."
         );
 
         String output1 = results.get(results.size() - 8);
@@ -1316,22 +1294,22 @@ public class H5mTest {
         );
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder","add",testName},
-                new String[]{"cd",testName},
-                new String[]{"node","add","jq","split",".Item[]"},
-                new String[]{"node","add","jq","domainNode","{split}:.x"},
-                new String[]{"node","add","jq","rangeNode","{split}:.y"},
-                new String[]{"node","add","jq","fp","{split}:.fp"},
-                new String[]{"node","list"},
-                new String[]{"node","add","relativedifference","relativediff","--range","rangeNode","--domain","domainNode","--by","split","--fingerprint","fp","--window","1","--minPrevious","1"},
-                new String[]{"run", "upload",filePath01.toString()},
-                new String[]{"run", "upload",filePath02.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath03.toString()},
-                new String[]{"folder","values"},
-                new String[]{"run", "upload",filePath04.toString()},
-                new String[]{"folder","values"},
-                new String[]{"cd",".."}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq split .Item[]",
+                "node add jq domainNode \"{split}:.x\"",
+                "node add jq rangeNode \"{split}:.y\"",
+                "node add jq fp \"{split}:.fp\"",
+                "node list",
+                "node add relativedifference relativediff --range rangeNode --domain domainNode --by split --fingerprint fp --window 1 --minPrevious 1",
+                "run upload " + filePath01.toString(),
+                "run upload " + filePath02.toString(),
+                "folder values",
+                "run upload " + filePath03.toString(),
+                "folder values",
+                "run upload " + filePath04.toString(),
+                "folder values",
+                "cd .."
         );
 
         String output1 = results.get(results.size() - 8);
@@ -1414,26 +1392,22 @@ public class H5mTest {
                 """));
 
         // Build commands: setup nodes, then upload each file individually in order
-        List<String[]> commands = new java.util.ArrayList<>();
-        commands.add(new String[]{"folder", "add", testName});
-        commands.add(new String[]{"cd", testName});
-        commands.add(new String[]{"node", "add", "jq", "domainNode", ".x"});
-        commands.add(new String[]{"node", "add", "jq", "rangeNode", ".y"});
-        commands.add(new String[]{"node", "add", "jq", "fp1", ".fp1"});
-        commands.add(new String[]{"node", "list"});
-        commands.add(new String[]{"node", "add", "stddev", "sdNode",
-                "range", "rangeNode", "domain", "domainNode",
-                "--fingerprint", "fp1",
-                "windowSize", "5", "deviations", "3", "minDataPoints", "3",
-                "direction", "BOTH"});
-        commands.add(new String[]{"node", "list"});
+        List<String> commands = new java.util.ArrayList<>();
+        commands.add("folder add " + testName);
+        commands.add("cd " + testName);
+        commands.add("node add jq domainNode .x");
+        commands.add("node add jq rangeNode .y");
+        commands.add("node add jq fp1 .fp1");
+        commands.add("node list");
+        commands.add("node add stddev sdNode range rangeNode domain domainNode --fingerprint fp1 windowSize 5 deviations 3 minDataPoints 3 direction BOTH");
+        commands.add("node list");
         for (Path f : uploadFiles) {
-            commands.add(new String[]{"run", "upload", f.toString()});
+            commands.add("run upload " + f.toString());
         }
-        commands.add(new String[]{"folder", "values"});
-        commands.add(new String[]{"cd", ".."});
+        commands.add("folder values");
+        commands.add("cd ..");
 
-        List<String> results = run(aeshLauncher, commands.toArray(new String[0][]));
+        List<String> results = run(aeshLauncher, commands.toArray(new String[0]));
 
         String output = results.get(results.size() - 2);
 
@@ -1465,13 +1439,13 @@ public class H5mTest {
         );
         // Create folder, cd into it, then add nodes and upload without --to/--from
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "cpu", ".cpu"},
-                new String[]{"node", "add", "jq", "mem", ".mem"},
-                new String[]{"node", "list"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values"}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq cpu .cpu",
+                "node add jq mem .mem",
+                "node list",
+                "run upload " + folder.toString(),
+                "folder values"
         );
 
         String nodeList = results.get(4);
@@ -1486,13 +1460,13 @@ public class H5mTest {
     public void cd_add_nodes_remove_node() {
         String testName = "cd_add_nodes_remove_node";
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "foo", ".foo"},
-                new String[]{"node", "add", "jq", "bar", ".bar"},
-                new String[]{"node", "list"},
-                new String[]{"node", "remove", "bar"},
-                new String[]{"node", "list"}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq foo .foo",
+                "node add jq bar .bar",
+                "node list",
+                "node remove bar",
+                "node list"
         );
 
         String beforeRemove = results.get(4);
@@ -1525,13 +1499,13 @@ public class H5mTest {
 
         // cd into folder, set up nodes and detection, upload — all without --to/--from
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "rangeNode", ".y"},
-                new String[]{"node", "add", "jq", "fp1", ".fp1"},
-                new String[]{"node", "add", "fixedthreshold", "ftNode", "--range", "rangeNode", "--fingerprint", "fp1", "--min", "10", "--max", "100"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values"}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq rangeNode .y",
+                "node add jq fp1 .fp1",
+                "node add fixedthreshold ftNode --range rangeNode --fingerprint fp1 --min 10 --max 100",
+                "run upload " + folder.toString(),
+                "folder values"
         );
 
         String values = results.getLast();
@@ -1541,14 +1515,16 @@ public class H5mTest {
 
     @Test
     public void cd_then_cd_back() {
-        // Verify cd .. clears the folder context
+        // Verify cd .. clears the folder context (final node list must fail)
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", "myFolder"},
-                new String[]{"cd", "myFolder"},
-                new String[]{"node", "add", "jq", "foo", ".foo"},
-                new String[]{"node", "list"},
-                new String[]{"cd", ".."},
-                new String[]{"node", "list"}
+                new CommandResult[]{CommandResult.SUCCESS, CommandResult.SUCCESS, CommandResult.SUCCESS,
+                        CommandResult.SUCCESS, CommandResult.SUCCESS, CommandResult.FAILURE},
+                "folder add myFolder",
+                "cd myFolder",
+                "node add jq foo .foo",
+                "node list",
+                "cd ..",
+                "node list"
         );
 
         String inFolder = results.get(3);
@@ -1571,15 +1547,15 @@ public class H5mTest {
         );
 
         List<String> results = run(aeshLauncher,
-                new String[]{"folder", "add", testName},
-                new String[]{"cd", testName},
-                new String[]{"node", "add", "jq", "cpu", ".cpu"},
-                new String[]{"node", "add", "jq", "mem", ".mem"},
-                new String[]{"run", "upload", folder.toString()},
-                new String[]{"folder", "values"},
-                new String[]{"folder", "structure"},
-                new String[]{"folder", "recalculate"},
-                new String[]{"folder", "values"}
+                "folder add " + testName,
+                "cd " + testName,
+                "node add jq cpu .cpu",
+                "node add jq mem .mem",
+                "run upload " + folder.toString(),
+                "folder values",
+                "folder structure",
+                "folder recalculate",
+                "folder values"
         );
 
         String values1 = results.get(5);
@@ -1597,8 +1573,8 @@ public class H5mTest {
      @Test
      public void team_add_and_list() {
          List<String> results = H5mTest.run(aeshLauncher,
-                 new String[]{"team", "add", "test-team"},
-                 new String[]{"team", "list"}
+                 "team add test-team",
+                 "team list"
          );
 
          String addOutput = results.get(0);
@@ -1611,8 +1587,8 @@ public class H5mTest {
      @Test
      public void user_add_and_list() {
          List<String> results = H5mTest.run(aeshLauncher,
-                 new String[]{"user", "add", "test-user"},
-                 new String[]{"user", "list"}
+                 "user add test-user",
+                 "user list"
          );
 
          String addOutput = results.get(0);
@@ -1625,9 +1601,9 @@ public class H5mTest {
      @Test
      public void team_member_add() {
          List<String> results = H5mTest.run(aeshLauncher,
-                 new String[]{"team", "add", "member-team"},
-                 new String[]{"user", "add", "member-user"},
-                 new String[]{"team", "member", "add", "member-user", "--team", "member-team"}
+                 "team add member-team",
+                 "user add member-user",
+                 "team member add member-user --team member-team"
          );
 
          String memberOutput = results.get(2);
@@ -1638,9 +1614,9 @@ public class H5mTest {
      @Test
      public void user_apikey_add_and_list() {
          List<String> results = H5mTest.run(aeshLauncher,
-                 new String[]{"user", "add", "apikey-user"},
-                 new String[]{"user", "apikey", "add", "apikey-user"},
-                 new String[]{"user", "apikey", "list", "apikey-user"}
+                 "user add apikey-user",
+                 "user apikey add apikey-user",
+                 "user apikey list apikey-user"
          );
 
          String addOutput = results.get(1);
